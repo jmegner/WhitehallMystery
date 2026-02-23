@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:gh": "tsc -b && vite build --base=/whitehallmystery/",
+    "test": "playwright test",
     "lint": "eslint .",
     "preview": "vite preview"
   },
