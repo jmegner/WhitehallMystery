@@ -9,32 +9,22 @@ if not exist "wm_helper.py" (
   exit /b 1
 )
 
-set "EXIT_CODE=0"
-
-where py >nul 2>&1
+where pyw >nul 2>&1
 if not errorlevel 1 (
-  py -3 "wm_helper.py"
-  set "EXIT_CODE=%ERRORLEVEL%"
-  goto :after_run
+  start "" pyw -3 "wm_helper.py"
+  exit /b 0
 )
 
-where python >nul 2>&1
+where pythonw >nul 2>&1
 if not errorlevel 1 (
-  python "wm_helper.py"
-  set "EXIT_CODE=%ERRORLEVEL%"
-  goto :after_run
+  start "" pythonw "wm_helper.py"
+  exit /b 0
 )
 
-echo Python was not found on PATH.
-echo Install Python 3 (and Pillow), or use the Python launcher 'py'.
+echo A GUI Python launcher was not found on PATH.
+echo This launcher needs pyw.exe or pythonw.exe so it can start without a console window.
+echo.
+echo If Python is installed, try reinstalling with the Python Launcher enabled,
+echo or run wm_helper.py manually from a terminal.
 pause
 exit /b 1
-
-:after_run
-if not "%EXIT_CODE%"=="0" (
-  echo.
-  echo wm_helper exited with code %EXIT_CODE%.
-  pause
-)
-
-exit /b %EXIT_CODE%
