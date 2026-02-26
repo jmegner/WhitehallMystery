@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import json
 import math
 import re
@@ -12,12 +13,16 @@ from PIL import Image, ImageTk
 
 
 MAGENTA = "#FF00FF"
+RED = "#FF0000"
+SQUARE_OUTLINE_COLOR = "#FFFFFF"
+CIRCLE_RING_DIAMETER_PX = 32
+SQUARE_OUTLINE_SIZE_PX = 10
 MIN_ZOOM = 0.2
 MAX_ZOOM = 6.0
 ZOOM_STEP = 1.15
 SHIFT_MASK = 0x0001
 CONTROL_MASK = 0x0004
-WHEEL_PAN_UNITS = 3
+WHEEL_PAN_UNITS = 1
 SQUARE_VOWELS = set("AEIOU")
 SQUARE_LETTERS = [chr(code) for code in range(ord("A"), ord("Z") + 1) if chr(code) not in SQUARE_VOWELS]
 BARE_JSON_RE = re.compile(
@@ -54,12 +59,14 @@ class MarkerEditDialog:
         image_width: int,
         image_height: int,
         used_square_ids: set[str],
+        on_preview_change: Callable[[Marker | None], None] | None = None,
     ) -> None:
         self.result: tuple[str, Marker | None] | None = None
         self._marker = marker.copy()
         self._image_width = image_width
         self._image_height = image_height
         self._used_square_ids = {value.upper() for value in used_square_ids}
+        self._on_preview_change = on_preview_change
 
         self.window = tk.Toplevel(parent)
         self.window.title(f"Edit {marker.kind.title()}")
@@ -81,11 +88,41 @@ class MarkerEditDialog:
 
         ttk.Label(frame, text="X").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=4)
         self.x_var = tk.StringVar(value=str(marker.x))
-        ttk.Entry(frame, textvariable=self.x_var, width=16).grid(row=2, column=1, sticky="ew", pady=4)
+        x_row = ttk.Frame(frame)
+        x_row.grid(row=2, column=1, sticky="ew", pady=4)
+        self.x_entry = ttk.Entry(x_row, textvariable=self.x_var, width=16)
+        self.x_entry.grid(row=0, column=0, sticky="ew")
+        ttk.Button(
+            x_row,
+            text="-",
+            width=3,
+            command=lambda: self._nudge_coord(self.x_var, -1, self._image_width),
+        ).grid(row=0, column=1, padx=(4, 2))
+        ttk.Button(
+            x_row,
+            text="+",
+            width=3,
+            command=lambda: self._nudge_coord(self.x_var, 1, self._image_width),
+        ).grid(row=0, column=2, padx=(2, 0))
 
         ttk.Label(frame, text="Y").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=4)
         self.y_var = tk.StringVar(value=str(marker.y))
-        ttk.Entry(frame, textvariable=self.y_var, width=16).grid(row=3, column=1, sticky="ew", pady=4)
+        y_row = ttk.Frame(frame)
+        y_row.grid(row=3, column=1, sticky="ew", pady=4)
+        self.y_entry = ttk.Entry(y_row, textvariable=self.y_var, width=16)
+        self.y_entry.grid(row=0, column=0, sticky="ew")
+        ttk.Button(
+            y_row,
+            text="-",
+            width=3,
+            command=lambda: self._nudge_coord(self.y_var, -1, self._image_height),
+        ).grid(row=0, column=1, padx=(4, 2))
+        ttk.Button(
+            y_row,
+            text="+",
+            width=3,
+            command=lambda: self._nudge_coord(self.y_var, 1, self._image_height),
+        ).grid(row=0, column=2, padx=(2, 0))
 
         button_row = ttk.Frame(frame)
         button_row.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(12, 0))
@@ -99,60 +136,29 @@ class MarkerEditDialog:
 
         self.window.bind("<Return>", lambda _event: self.on_ok())
         self.window.bind("<Escape>", lambda _event: self.on_cancel())
+        self.window.bind("<Left>", self._on_arrow_nudge)
+        self.window.bind("<Right>", self._on_arrow_nudge)
+        self.window.bind("<Up>", self._on_arrow_nudge)
+        self.window.bind("<Down>", self._on_arrow_nudge)
+
+        for variable in (self.id_var, self.x_var, self.y_var):
+            variable.trace_add("write", self._on_fields_changed)
 
         self.id_entry.focus_set()
         self.id_entry.selection_range(0, "end")
         self.window.wait_visibility()
         self.window.lift()
+        self.window.after_idle(self._emit_preview)
 
     def show(self) -> tuple[str, Marker | None] | None:
         self.window.wait_window()
         return self.result
 
     def on_ok(self) -> None:
-        try:
-            x = int(self.x_var.get().strip())
-            y = int(self.y_var.get().strip())
-        except ValueError:
-            messagebox.showerror("Invalid coordinates", "X and Y must be integers.", parent=self.window)
+        updated = self._build_marker_from_inputs(show_errors=True)
+        if updated is None:
             return
 
-        if not (0 <= x < self._image_width and 0 <= y < self._image_height):
-            messagebox.showerror(
-                "Coordinates out of bounds",
-                f"Coordinates must be inside image bounds: x=0..{self._image_width - 1}, y=0..{self._image_height - 1}.",
-                parent=self.window,
-            )
-            return
-
-        raw_id = self.id_var.get().strip()
-        if self._marker.kind == "circle":
-            try:
-                marker_id: int | str = int(raw_id)
-            except ValueError:
-                messagebox.showerror("Invalid circle id", "Circle ID must be a number.", parent=self.window)
-                return
-        else:
-            marker_id = raw_id.upper()
-            if len(marker_id) != 2 or any(ch not in SQUARE_LETTERS for ch in marker_id):
-                messagebox.showerror(
-                    "Invalid square id",
-                    "Square ID must be two uppercase consonants (no vowels), e.g. BB.",
-                    parent=self.window,
-                )
-                return
-            if marker_id in self._used_square_ids:
-                messagebox.showerror(
-                    "Duplicate square id",
-                    f'Square ID "{marker_id}" already exists.',
-                    parent=self.window,
-                )
-                return
-
-        updated = self._marker.copy()
-        updated.id = marker_id
-        updated.x = x
-        updated.y = y
         self.result = ("save", updated)
         self.window.destroy()
 
@@ -163,6 +169,92 @@ class MarkerEditDialog:
     def on_delete(self) -> None:
         self.result = ("delete", None)
         self.window.destroy()
+
+    def _nudge_coord(self, variable: tk.StringVar, delta: int, size_limit: int) -> None:
+        try:
+            current = int(variable.get().strip())
+        except ValueError:
+            current = self._marker.x if variable is self.x_var else self._marker.y
+        next_value = max(0, min(size_limit - 1, current + delta))
+        variable.set(str(next_value))
+
+    def _on_arrow_nudge(self, event: tk.Event) -> str:
+        step = 10 if (int(getattr(event, "state", 0)) & SHIFT_MASK) else 1
+        if event.keysym == "Left":
+            self._nudge_coord(self.x_var, -step, self._image_width)
+            return "break"
+        if event.keysym == "Right":
+            self._nudge_coord(self.x_var, step, self._image_width)
+            return "break"
+        if event.keysym == "Up":
+            self._nudge_coord(self.y_var, -step, self._image_height)
+            return "break"
+        if event.keysym == "Down":
+            self._nudge_coord(self.y_var, step, self._image_height)
+            return "break"
+        return ""
+
+    def _on_fields_changed(self, *_args: object) -> None:
+        self._emit_preview()
+
+    def _emit_preview(self) -> None:
+        if self._on_preview_change is None:
+            return
+        preview = self._build_marker_from_inputs(show_errors=False)
+        self._on_preview_change(preview)
+
+    def _build_marker_from_inputs(self, *, show_errors: bool) -> Marker | None:
+        try:
+            x = int(self.x_var.get().strip())
+            y = int(self.y_var.get().strip())
+        except ValueError:
+            if show_errors:
+                messagebox.showerror("Invalid coordinates", "X and Y must be integers.", parent=self.window)
+            return None
+
+        if not (0 <= x < self._image_width and 0 <= y < self._image_height):
+            if show_errors:
+                messagebox.showerror(
+                    "Coordinates out of bounds",
+                    f"Coordinates must be inside image bounds: x=0..{self._image_width - 1}, y=0..{self._image_height - 1}.",
+                    parent=self.window,
+                )
+            return None
+
+        raw_id = self.id_var.get().strip()
+        if self._marker.kind == "circle":
+            try:
+                marker_id: int | str = int(raw_id)
+            except ValueError:
+                if show_errors:
+                    messagebox.showerror("Invalid circle id", "Circle ID must be a number.", parent=self.window)
+                    return None
+                # Keep preview visible while the user is still typing a numeric circle ID.
+                marker_id = raw_id
+        else:
+            marker_id = raw_id.upper()
+            if len(marker_id) != 2 or any(ch not in SQUARE_LETTERS for ch in marker_id):
+                if show_errors:
+                    messagebox.showerror(
+                        "Invalid square id",
+                        "Square ID must be two uppercase consonants (no vowels), e.g. BB.",
+                        parent=self.window,
+                    )
+                    return None
+            if marker_id in self._used_square_ids:
+                if show_errors:
+                    messagebox.showerror(
+                        "Duplicate square id",
+                        f'Square ID "{marker_id}" already exists.',
+                        parent=self.window,
+                    )
+                    return None
+
+        updated = self._marker.copy()
+        updated.id = marker_id
+        updated.x = x
+        updated.y = y
+        return updated
 
 
 class WMHelperApp:
@@ -189,6 +281,8 @@ class WMHelperApp:
         self.overlay_item_ids: list[int] = []
         self._scaled_width = self.image_width
         self._scaled_height = self.image_height
+        self.edit_preview_target: tuple[str, int] | None = None
+        self.edit_preview_marker: Marker | None = None
 
         self.circles: list[Marker] = self._load_markers(self.circles_path, "circle")
         self.squares: list[Marker] = self._load_markers(self.squares_path, "square")
@@ -242,6 +336,9 @@ class WMHelperApp:
         status.grid(row=2, column=0, sticky="ew", pady=(6, 0))
 
         self.canvas.bind("<Button-1>", self._on_left_click)
+        self.canvas.bind("<Control-ButtonPress-1>", self._on_ctrl_pan_start)
+        self.canvas.bind("<Control-B1-Motion>", self._on_ctrl_pan_drag)
+        self.canvas.bind("<Control-ButtonRelease-1>", self._on_ctrl_pan_end)
         self.canvas.bind("<Button-2>", self._on_middle_click)
         self.canvas.bind("<Button-3>", self._on_right_click)
         self.canvas.bind("<MouseWheel>", self._on_mouse_wheel)
@@ -334,26 +431,114 @@ class WMHelperApp:
             self.canvas.delete(item_id)
         self.overlay_item_ids.clear()
 
-        font_size = max(8, min(24, int(round(10 * max(self.zoom, 1.0)))))
-        for marker in (*self.circles, *self.squares):
+        circle_font_size = max(8, min(24, int(round(10 * max(self.zoom, 1.0)))))
+        square_font_size = max(4, min(14, int(round(4 * max(self.zoom, 1.0)))))
+        ring_radius = (CIRCLE_RING_DIAMETER_PX * self.zoom) / 2
+        square_half = (SQUARE_OUTLINE_SIZE_PX * self.zoom) / 2
+        preview_target = self.edit_preview_target if self.edit_preview_marker is not None else None
+
+        def draw_marker(marker: Marker, text_color: str, *, shape_color: str | None = None) -> None:
             x = marker.x * self.zoom
             y = marker.y * self.zoom
-            item_id = self.canvas.create_text(
+            if marker.kind == "circle":
+                ring_id = self.canvas.create_oval(
+                    x - ring_radius,
+                    y - ring_radius,
+                    x + ring_radius,
+                    y + ring_radius,
+                    outline=(shape_color or text_color),
+                    width=1,
+                )
+                self.overlay_item_ids.append(ring_id)
+            elif marker.kind == "square":
+                box_id = self.canvas.create_rectangle(
+                    x - square_half,
+                    y - square_half,
+                    x + square_half,
+                    y + square_half,
+                    outline=(shape_color or SQUARE_OUTLINE_COLOR),
+                    width=1,
+                )
+                self.overlay_item_ids.append(box_id)
+
+            text_id = self.canvas.create_text(
                 x,
                 y,
                 text=str(marker.id),
-                fill=MAGENTA,
-                font=("Consolas", font_size, "bold"),
+                fill=text_color,
+                font=(
+                    "Consolas",
+                    circle_font_size if marker.kind == "circle" else square_font_size,
+                    "bold" if marker.kind == "circle" else "normal",
+                ),
                 anchor="center",
             )
-            self.overlay_item_ids.append(item_id)
+            self.overlay_item_ids.append(text_id)
+
+        for index, marker in enumerate(self.circles):
+            if preview_target == ("circle", index):
+                continue
+            draw_marker(marker, MAGENTA)
+
+        for index, marker in enumerate(self.squares):
+            if preview_target == ("square", index):
+                continue
+            draw_marker(marker, MAGENTA, shape_color=SQUARE_OUTLINE_COLOR)
+
+        if self.edit_preview_marker is not None:
+            draw_marker(self.edit_preview_marker, RED, shape_color=RED)
+
+    def _set_edit_preview(self, kind: str, index: int, marker: Marker | None) -> None:
+        self.edit_preview_target = (kind, index)
+        self.edit_preview_marker = marker.copy() if marker is not None else None
+        self._redraw_overlays()
+
+    def _set_new_marker_preview(self, marker: Marker | None) -> None:
+        self.edit_preview_target = None
+        self.edit_preview_marker = marker.copy() if marker is not None else None
+        self._redraw_overlays()
+
+    def _clear_edit_preview(self) -> None:
+        if self.edit_preview_target is None and self.edit_preview_marker is None:
+            return
+        self.edit_preview_target = None
+        self.edit_preview_marker = None
+        self._redraw_overlays()
+
+    def _run_marker_dialog(
+        self,
+        marker: Marker,
+        *,
+        used_square_ids: set[str],
+        preview_target: tuple[str, int] | None = None,
+    ) -> tuple[str, Marker | None] | None:
+        if preview_target is None:
+            self._set_new_marker_preview(marker)
+            preview_callback = self._set_new_marker_preview
+        else:
+            kind, index = preview_target
+            self._set_edit_preview(kind, index, marker)
+            preview_callback = lambda preview_marker: self._set_edit_preview(kind, index, preview_marker)
+
+        dialog = MarkerEditDialog(
+            parent=self.root,
+            marker=marker,
+            image_width=self.image_width,
+            image_height=self.image_height,
+            used_square_ids=used_square_ids,
+            on_preview_change=preview_callback,
+        )
+        try:
+            return dialog.show()
+        finally:
+            self._clear_edit_preview()
 
     def _update_status(self, prefix: str | None = None) -> None:
         message = (
             f"Zoom: {self.zoom:.2f}x | "
             f"Circles: {len(self.circles)} | Squares: {len(self.squares)} | "
             "Left-click: add circle, Middle-click: add square, Right-click: edit nearest, "
-            "Wheel: zoom, Ctrl+Wheel: pan vertical, Shift+Wheel: pan horizontal"
+            "Wheel: zoom, Ctrl+Wheel: pan vertical, Shift+Wheel: pan horizontal, Ctrl+Drag: pan"
         )
         if prefix:
             message = f"{prefix} | {message}"
@@ -381,6 +566,21 @@ class WMHelperApp:
 
         factor = ZOOM_STEP if event.delta > 0 else (1 / ZOOM_STEP)
         self._zoom_canvas(event.x, event.y, factor, relative_to_center=False)
+        return "break"
+
+    def _on_ctrl_pan_start(self, event: tk.Event) -> str:
+        self.canvas.scan_mark(event.x, event.y)
+        self.canvas.configure(cursor="fleur")
+        self._update_status()
+        return "break"
+
+    def _on_ctrl_pan_drag(self, event: tk.Event) -> str:
+        self.canvas.scan_dragto(event.x, event.y, gain=1)
+        return "break"
+
+    def _on_ctrl_pan_end(self, _event: tk.Event) -> str:
+        self.canvas.configure(cursor="")
+        self._update_status()
         return "break"
 
     def _reset_zoom(self) -> None:
@@ -431,24 +631,25 @@ class WMHelperApp:
         return image_x, image_y
 
     def _on_left_click(self, event: tk.Event) -> None:
+        if int(getattr(event, "state", 0)) & CONTROL_MASK:
+            return
         coords = self._event_to_image_coords(event)
         if coords is None:
             return
 
-        circle_id = simpledialog.askinteger(
-            "Circle ID",
-            "Enter circle numerical id:",
-            parent=self.root,
-        )
-        if circle_id is None:
-            self._update_status("Circle add canceled")
+        marker = Marker(kind="circle", id="", x=coords[0], y=coords[1])
+        result = self._run_marker_dialog(marker, used_square_ids=set())
+        if result is None:
             return
-
-        marker = Marker(kind="circle", id=int(circle_id), x=coords[0], y=coords[1])
-        self.circles.append(marker)
-        self._save_markers()
-        self._redraw_overlays()
-        self._update_status(f"Added circle {marker.id} @ ({marker.x}, {marker.y})")
+        action, updated_marker = result
+        if action in {"cancel", "delete"}:
+            self._update_status("Circle creation canceled")
+            return
+        if action == "save" and updated_marker is not None:
+            self.circles.append(updated_marker)
+            self._save_markers()
+            self._redraw_overlays()
+            self._update_status(f"Added circle {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
 
     def _on_middle_click(self, event: tk.Event) -> None:
         coords = self._event_to_image_coords(event)
@@ -465,10 +666,21 @@ class WMHelperApp:
             return
 
         marker = Marker(kind="square", id=square_id, x=coords[0], y=coords[1])
-        self.squares.append(marker)
-        self._save_markers()
-        self._redraw_overlays()
-        self._update_status(f"Added square {marker.id} @ ({marker.x}, {marker.y})")
+        result = self._run_marker_dialog(
+            marker,
+            used_square_ids={str(m.id).upper() for m in self.squares},
+        )
+        if result is None:
+            return
+        action, updated_marker = result
+        if action in {"cancel", "delete"}:
+            self._update_status("Square creation canceled")
+            return
+        if action == "save" and updated_marker is not None:
+            self.squares.append(updated_marker)
+            self._save_markers()
+            self._redraw_overlays()
+            self._update_status(f"Added square {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
 
     def _on_right_click(self, event: tk.Event) -> None:
         coords = self._event_to_image_coords(event)
@@ -485,14 +697,7 @@ class WMHelperApp:
         if kind == "square":
             used_square_ids = {str(m.id).upper() for i, m in enumerate(self.squares) if i != index}
 
-        dialog = MarkerEditDialog(
-            parent=self.root,
-            marker=marker,
-            image_width=self.image_width,
-            image_height=self.image_height,
-            used_square_ids=used_square_ids,
-        )
-        result = dialog.show()
+        result = self._run_marker_dialog(marker, used_square_ids=used_square_ids, preview_target=(kind, index))
         if result is None:
             return
 
