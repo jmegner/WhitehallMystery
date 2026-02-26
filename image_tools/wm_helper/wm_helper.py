@@ -432,7 +432,8 @@ class WMHelperApp:
         self.overlay_item_ids.clear()
 
         circle_font_size = max(8, min(24, int(round(10 * max(self.zoom, 1.0)))))
-        square_font_size = max(4, min(14, int(round(4 * max(self.zoom, 1.0)))))
+        # Use pixel-sized text for squares so the two-letter label fills most of the 10px outline.
+        square_font_size = -max(6, min(96, int(round(SQUARE_OUTLINE_SIZE_PX * self.zoom * 0.95))))
         ring_radius = (CIRCLE_RING_DIAMETER_PX * self.zoom) / 2
         square_half = (SQUARE_OUTLINE_SIZE_PX * self.zoom) / 2
         preview_target = self.edit_preview_target if self.edit_preview_marker is not None else None
@@ -469,7 +470,7 @@ class WMHelperApp:
                 font=(
                     "Consolas",
                     circle_font_size if marker.kind == "circle" else square_font_size,
-                    "bold" if marker.kind == "circle" else "normal",
+                    "bold",
                 ),
                 anchor="center",
             )
