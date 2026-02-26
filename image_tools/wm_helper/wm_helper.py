@@ -539,7 +539,7 @@ class WMHelperApp:
             f"Zoom: {self.zoom:.2f}x | "
             f"Circles: {len(self.circles)} | Squares: {len(self.squares)} | "
             "Left-click: add circle, Middle-click: add square, Right-click: edit nearest, "
-            "Wheel: zoom, Ctrl+Wheel: pan vertical, Shift+Wheel: pan horizontal, Ctrl+Drag: pan"
+            "Wheel: pan vertical, Shift+Wheel: pan horizontal, Ctrl+Wheel: zoom, Ctrl+Drag: pan"
         )
         if prefix:
             message = f"{prefix} | {message}"
@@ -557,16 +557,16 @@ class WMHelperApp:
         state = int(getattr(event, "state", 0))
 
         if state & CONTROL_MASK:
-            self.canvas.yview_scroll(direction * steps * WHEEL_PAN_UNITS, "units")
-            self._update_status()
+            factor = ZOOM_STEP if event.delta > 0 else (1 / ZOOM_STEP)
+            self._zoom_canvas(event.x, event.y, factor, relative_to_center=False)
             return "break"
         if state & SHIFT_MASK:
             self.canvas.xview_scroll(direction * steps * WHEEL_PAN_UNITS, "units")
             self._update_status()
             return "break"
 
-        factor = ZOOM_STEP if event.delta > 0 else (1 / ZOOM_STEP)
-        self._zoom_canvas(event.x, event.y, factor, relative_to_center=False)
+        self.canvas.yview_scroll(direction * steps * WHEEL_PAN_UNITS, "units")
+        self._update_status()
         return "break"
 
     def _on_ctrl_pan_start(self, event: tk.Event) -> str:
