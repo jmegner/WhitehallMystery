@@ -684,11 +684,23 @@ class WMHelperApp:
         if self._scaled_height > 0:
             self.canvas.yview_moveto(max(0.0, min(1.0, top / self._scaled_height)))
 
-    def _event_to_image_coords(self, event: tk.Event) -> tuple[int, int] | None:
+    @staticmethod
+    def _snap_to_half(value: float) -> float:
+        return round(value / NUDGE_STEP) * NUDGE_STEP
+
+    def _event_to_image_coords(self, event: tk.Event, *, snap_to_half: bool = False) -> tuple[float, float] | None:
         canvas_x = self.canvas.canvasx(event.x)
         canvas_y = self.canvas.canvasy(event.y)
-        image_x = int(canvas_x / self.zoom)
-        image_y = int(canvas_y / self.zoom)
+        image_x = canvas_x / self.zoom
+        image_y = canvas_y / self.zoom
+
+        if snap_to_half:
+            max_x = max(0.0, self.image_width - NUDGE_STEP)
+            max_y = max(0.0, self.image_height - NUDGE_STEP)
+            image_x = max(0.0, min(max_x, self._snap_to_half(image_x)))
+            image_y = max(0.0, min(max_y, self._snap_to_half(image_y)))
+            return image_x, image_y
+
         if not (0 <= image_x < self.image_width and 0 <= image_y < self.image_height):
             return None
         return image_x, image_y
@@ -696,7 +708,7 @@ class WMHelperApp:
     def _on_left_click(self, event: tk.Event) -> None:
         if int(getattr(event, "state", 0)) & CONTROL_MASK:
             return
-        coords = self._event_to_image_coords(event)
+        coords = self._event_to_image_coords(event, snap_to_half=True)
         if coords is None:
             return
 
@@ -715,7 +727,7 @@ class WMHelperApp:
             self._update_status(f"Added circle {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
 
     def _on_middle_click(self, event: tk.Event) -> None:
-        coords = self._event_to_image_coords(event)
+        coords = self._event_to_image_coords(event, snap_to_half=True)
         if coords is None:
             return
 
