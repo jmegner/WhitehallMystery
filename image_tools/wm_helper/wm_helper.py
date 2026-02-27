@@ -572,7 +572,7 @@ class WMHelperApp:
         message = (
             f"Zoom: {self.zoom:.2f}x | "
             f"Circles: {len(self.circles)} | Squares: {len(self.squares)} | "
-            "Left-click: add circle, Middle-click: add square, Right-click: edit nearest, "
+            "Left-click: edit nearest, Middle-click: add square, Right-click: add circle, "
             "Wheel: pan vertical, Shift+Wheel: pan horizontal, Ctrl+Wheel: zoom, Ctrl+Drag: pan"
         )
         if prefix:
@@ -711,57 +711,6 @@ class WMHelperApp:
         coords = self._event_to_image_coords(event, snap_to_half=True)
         if coords is None:
             return
-
-        marker = Marker(kind="circle", id="", x=coords[0], y=coords[1])
-        result = self._run_marker_dialog(marker, used_square_ids=set())
-        if result is None:
-            return
-        action, updated_marker = result
-        if action in {"cancel", "delete"}:
-            self._update_status("Circle creation canceled")
-            return
-        if action == "save" and updated_marker is not None:
-            self.circles.append(updated_marker)
-            self._save_markers()
-            self._redraw_overlays()
-            self._update_status(f"Added circle {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
-
-    def _on_middle_click(self, event: tk.Event) -> None:
-        coords = self._event_to_image_coords(event, snap_to_half=True)
-        if coords is None:
-            return
-
-        square_id = self._next_square_id()
-        if square_id is None:
-            messagebox.showerror(
-                "No square IDs left",
-                "All available square IDs from BB to ZZ (excluding vowels) are already used.",
-                parent=self.root,
-            )
-            return
-
-        marker = Marker(kind="square", id=square_id, x=coords[0], y=coords[1])
-        result = self._run_marker_dialog(
-            marker,
-            used_square_ids={str(m.id).upper() for m in self.squares},
-        )
-        if result is None:
-            return
-        action, updated_marker = result
-        if action in {"cancel", "delete"}:
-            self._update_status("Square creation canceled")
-            return
-        if action == "save" and updated_marker is not None:
-            self.squares.append(updated_marker)
-            self._save_markers()
-            self._redraw_overlays()
-            self._update_status(f"Added square {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
-
-    def _on_right_click(self, event: tk.Event) -> None:
-        coords = self._event_to_image_coords(event)
-        if coords is None:
-            return
-
         nearest = self._find_nearest_marker(coords[0], coords[1])
         if nearest is None:
             self._update_status("No markers to edit")
@@ -797,6 +746,57 @@ class WMHelperApp:
             self._save_markers()
             self._redraw_overlays()
             self._update_status(f"Saved {updated_marker.kind} {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
+
+    def _on_middle_click(self, event: tk.Event) -> None:
+        coords = self._event_to_image_coords(event, snap_to_half=True)
+        if coords is None:
+            return
+
+        square_id = self._next_square_id()
+        if square_id is None:
+            messagebox.showerror(
+                "No square IDs left",
+                "All available square IDs from BB to ZZ (excluding vowels) are already used.",
+                parent=self.root,
+            )
+            return
+
+        marker = Marker(kind="square", id=square_id, x=coords[0], y=coords[1])
+        result = self._run_marker_dialog(
+            marker,
+            used_square_ids={str(m.id).upper() for m in self.squares},
+        )
+        if result is None:
+            return
+        action, updated_marker = result
+        if action in {"cancel", "delete"}:
+            self._update_status("Square creation canceled")
+            return
+        if action == "save" and updated_marker is not None:
+            self.squares.append(updated_marker)
+            self._save_markers()
+            self._redraw_overlays()
+            self._update_status(f"Added square {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
+
+    def _on_right_click(self, event: tk.Event) -> None:
+        coords = self._event_to_image_coords(event, snap_to_half=True)
+        if coords is None:
+            return
+
+        marker = Marker(kind="circle", id="", x=coords[0], y=coords[1])
+        result = self._run_marker_dialog(marker, used_square_ids=set())
+        if result is None:
+            return
+
+        action, updated_marker = result
+        if action in {"cancel", "delete"}:
+            self._update_status("Circle creation canceled")
+            return
+        if action == "save" and updated_marker is not None:
+            self.circles.append(updated_marker)
+            self._save_markers()
+            self._redraw_overlays()
+            self._update_status(f"Added circle {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
 
     def _find_nearest_marker(self, x: float, y: float) -> tuple[str, int, Marker] | None:
         candidates: list[tuple[str, int, Marker]] = []
