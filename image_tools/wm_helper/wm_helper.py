@@ -148,6 +148,7 @@ class MarkerEditDialog:
 
         self.window.bind("<Return>", lambda _event: self.on_ok())
         self.window.bind("<Escape>", lambda _event: self.on_cancel())
+        self.window.bind("<Home>", self._on_home_submit)
         self.window.bind("<Left>", self._on_arrow_nudge)
         self.window.bind("<Right>", self._on_arrow_nudge)
         self.window.bind("<Up>", self._on_arrow_nudge)
@@ -181,6 +182,10 @@ class MarkerEditDialog:
     def on_delete(self) -> None:
         self.result = ("delete", None)
         self.window.destroy()
+
+    def _on_home_submit(self, _event: tk.Event) -> str:
+        self.on_ok()
+        return "break"
 
     def _nudge_coord(self, variable: tk.StringVar, delta: float, size_limit: int) -> None:
         try:
