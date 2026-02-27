@@ -7,7 +7,7 @@ import re
 import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import messagebox, ttk
 
 from PIL import Image, ImageTk
 
@@ -23,14 +23,16 @@ ZOOM_STEP = 1.15
 SHIFT_MASK = 0x0001
 CONTROL_MASK = 0x0004
 WHEEL_PAN_UNITS = 1
+HQ_RENDER_DELAY_MS = 90
+NUDGE_STEP = 0.5
 SQUARE_VOWELS = set("AEIOU")
 SQUARE_LETTERS = [chr(code) for code in range(ord("A"), ord("Z") + 1) if chr(code) not in SQUARE_VOWELS]
 BARE_JSON_RE = re.compile(
     r"""
     ^\s*\{\s*
     id\s*:\s*(?P<id>"[^"]*"|'[^']*'|[^,}]+)\s*,\s*
-    x\s*:\s*(?P<x>-?\d+)\s*,\s*
-    y\s*:\s*(?P<y>-?\d+)\s*
+    x\s*:\s*(?P<x>-?\d+(?:\.\d+)?)\s*,\s*
+    y\s*:\s*(?P<y>-?\d+(?:\.\d+)?)\s*
     \}\s*$
     """,
     re.VERBOSE,
@@ -41,14 +43,24 @@ BARE_JSON_RE = re.compile(
 class Marker:
     kind: str  # "circle" or "square"
     id: int | str
-    x: int
-    y: int
+    x: float
+    y: float
 
-    def to_record(self) -> dict[str, int | str]:
-        return {"id": self.id, "x": self.x, "y": self.y}
+    def to_record(self) -> dict[str, int | float | str]:
+        return {
+            "id": self.id,
+            "x": self._json_number(self.x),
+            "y": self._json_number(self.y),
+        }
 
     def copy(self) -> "Marker":
         return Marker(self.kind, self.id, self.x, self.y)
+
+    @staticmethod
+    def _json_number(value: float) -> int | float:
+        if math.isclose(value, round(value), abs_tol=1e-9):
+            return int(round(value))
+        return round(value, 3)
 
 
 class MarkerEditDialog:
@@ -96,13 +108,13 @@ class MarkerEditDialog:
             x_row,
             text="-",
             width=3,
-            command=lambda: self._nudge_coord(self.x_var, -1, self._image_width),
+            command=lambda: self._nudge_coord(self.x_var, -NUDGE_STEP, self._image_width),
         ).grid(row=0, column=1, padx=(4, 2))
         ttk.Button(
             x_row,
             text="+",
             width=3,
-            command=lambda: self._nudge_coord(self.x_var, 1, self._image_width),
+            command=lambda: self._nudge_coord(self.x_var, NUDGE_STEP, self._image_width),
         ).grid(row=0, column=2, padx=(2, 0))
 
         ttk.Label(frame, text="Y").grid(row=3, column=0, sticky="w", padx=(0, 8), pady=4)
@@ -115,13 +127,13 @@ class MarkerEditDialog:
             y_row,
             text="-",
             width=3,
-            command=lambda: self._nudge_coord(self.y_var, -1, self._image_height),
+            command=lambda: self._nudge_coord(self.y_var, -NUDGE_STEP, self._image_height),
         ).grid(row=0, column=1, padx=(4, 2))
         ttk.Button(
             y_row,
             text="+",
             width=3,
-            command=lambda: self._nudge_coord(self.y_var, 1, self._image_height),
+            command=lambda: self._nudge_coord(self.y_var, NUDGE_STEP, self._image_height),
         ).grid(row=0, column=2, padx=(2, 0))
 
         button_row = ttk.Frame(frame)
@@ -170,29 +182,41 @@ class MarkerEditDialog:
         self.result = ("delete", None)
         self.window.destroy()
 
-    def _nudge_coord(self, variable: tk.StringVar, delta: int, size_limit: int) -> None:
+    def _nudge_coord(self, variable: tk.StringVar, delta: float, size_limit: int) -> None:
         try:
-            current = int(variable.get().strip())
+            current = float(variable.get().strip())
         except ValueError:
-            current = self._marker.x if variable is self.x_var else self._marker.y
-        next_value = max(0, min(size_limit - 1, current + delta))
-        variable.set(str(next_value))
+            current = float(self._marker.x if variable is self.x_var else self._marker.y)
+        max_value = max(0.0, size_limit - NUDGE_STEP)
+        next_value = self._snap_to_half(max(0.0, min(max_value, current + delta)))
+        variable.set(self._format_coord(next_value))
 
     def _on_arrow_nudge(self, event: tk.Event) -> str:
         step = 10 if (int(getattr(event, "state", 0)) & SHIFT_MASK) else 1
+        delta = NUDGE_STEP * step
         if event.keysym == "Left":
-            self._nudge_coord(self.x_var, -step, self._image_width)
+            self._nudge_coord(self.x_var, -delta, self._image_width)
             return "break"
         if event.keysym == "Right":
-            self._nudge_coord(self.x_var, step, self._image_width)
+            self._nudge_coord(self.x_var, delta, self._image_width)
             return "break"
         if event.keysym == "Up":
-            self._nudge_coord(self.y_var, -step, self._image_height)
+            self._nudge_coord(self.y_var, -delta, self._image_height)
             return "break"
         if event.keysym == "Down":
-            self._nudge_coord(self.y_var, step, self._image_height)
+            self._nudge_coord(self.y_var, delta, self._image_height)
             return "break"
         return ""
+
+    @staticmethod
+    def _snap_to_half(value: float) -> float:
+        return round(value / NUDGE_STEP) * NUDGE_STEP
+
+    @staticmethod
+    def _format_coord(value: float) -> str:
+        if math.isclose(value, round(value), abs_tol=1e-9):
+            return str(int(round(value)))
+        return f"{value:.1f}"
 
     def _on_fields_changed(self, *_args: object) -> None:
         self._emit_preview()
@@ -205,11 +229,11 @@ class MarkerEditDialog:
 
     def _build_marker_from_inputs(self, *, show_errors: bool) -> Marker | None:
         try:
-            x = int(self.x_var.get().strip())
-            y = int(self.y_var.get().strip())
+            x = float(self.x_var.get().strip())
+            y = float(self.y_var.get().strip())
         except ValueError:
             if show_errors:
-                messagebox.showerror("Invalid coordinates", "X and Y must be integers.", parent=self.window)
+                messagebox.showerror("Invalid coordinates", "X and Y must be numbers.", parent=self.window)
             return None
 
         if not (0 <= x < self._image_width and 0 <= y < self._image_height):
@@ -281,6 +305,7 @@ class WMHelperApp:
         self.overlay_item_ids: list[int] = []
         self._scaled_width = self.image_width
         self._scaled_height = self.image_height
+        self._hq_render_after_id: str | None = None
         self.edit_preview_target: tuple[str, int] | None = None
         self.edit_preview_marker: Marker | None = None
 
@@ -361,7 +386,7 @@ class WMHelperApp:
                 continue
             try:
                 record = self._parse_record_line(line)
-                marker = Marker(kind=kind, id=record["id"], x=int(record["x"]), y=int(record["y"]))
+                marker = Marker(kind=kind, id=record["id"], x=float(record["x"]), y=float(record["y"]))
                 if kind == "circle":
                     marker.id = int(marker.id)
                 else:
@@ -395,8 +420,8 @@ class WMHelperApp:
                     record_id = stripped
             return {
                 "id": record_id,
-                "x": int(match.group("x")),
-                "y": int(match.group("y")),
+                "x": float(match.group("x")),
+                "y": float(match.group("y")),
             }
 
     def _save_markers(self) -> None:
@@ -410,10 +435,13 @@ class WMHelperApp:
                 handle.write(json.dumps(marker.to_record(), ensure_ascii=True))
                 handle.write("\n")
 
-    def _render_image_and_overlays(self) -> None:
+    def _render_image_and_overlays(self, *, high_quality: bool = True) -> None:
         self._scaled_width = max(1, int(round(self.image_width * self.zoom)))
         self._scaled_height = max(1, int(round(self.image_height * self.zoom)))
-        resample = Image.Resampling.LANCZOS if self.zoom >= 1 else Image.Resampling.BILINEAR
+        if high_quality:
+            resample = Image.Resampling.LANCZOS if self.zoom >= 1 else Image.Resampling.BILINEAR
+        else:
+            resample = Image.Resampling.BILINEAR
         scaled = self.image_original.resize((self._scaled_width, self._scaled_height), resample)
         self.tk_image = ImageTk.PhotoImage(scaled)
 
@@ -431,7 +459,8 @@ class WMHelperApp:
             self.canvas.delete(item_id)
         self.overlay_item_ids.clear()
 
-        circle_font_size = max(8, min(24, int(round(10 * max(self.zoom, 1.0)))))
+        # Pixel-sized circle labels keep text scale proportional to the map/ring at all zoom levels.
+        circle_font_size = -max(8, min(160, int(round(10 * self.zoom))))
         # Use pixel-sized text for squares so the two-letter label fills most of the 10px outline.
         square_font_size = -max(6, min(96, int(round(SQUARE_OUTLINE_SIZE_PX * self.zoom * 0.95))))
         ring_radius = (CIRCLE_RING_DIAMETER_PX * self.zoom) / 2
@@ -558,7 +587,7 @@ class WMHelperApp:
 
         if state & CONTROL_MASK:
             factor = ZOOM_STEP if event.delta > 0 else (1 / ZOOM_STEP)
-            self._zoom_canvas(event.x, event.y, factor, relative_to_center=False)
+            self._zoom_canvas(event.x, event.y, factor, relative_to_center=False, fast_preview=True)
             return "break"
         if state & SHIFT_MASK:
             self.canvas.xview_scroll(direction * steps * WHEEL_PAN_UNITS, "units")
@@ -587,12 +616,21 @@ class WMHelperApp:
     def _reset_zoom(self) -> None:
         if abs(self.zoom - 1.0) < 1e-9:
             return
+        self._cancel_deferred_hq_render()
         self.zoom = 1.0
         self._render_image_and_overlays()
         self.canvas.xview_moveto(0)
         self.canvas.yview_moveto(0)
 
-    def _zoom_canvas(self, view_x: float, view_y: float, factor: float, *, relative_to_center: bool) -> None:
+    def _zoom_canvas(
+        self,
+        view_x: float,
+        view_y: float,
+        factor: float,
+        *,
+        relative_to_center: bool,
+        fast_preview: bool = False,
+    ) -> None:
         new_zoom = max(MIN_ZOOM, min(MAX_ZOOM, self.zoom * factor))
         if math.isclose(new_zoom, self.zoom, rel_tol=1e-9, abs_tol=1e-9):
             return
@@ -607,11 +645,30 @@ class WMHelperApp:
         image_y = old_canvas_y / self.zoom
 
         self.zoom = new_zoom
-        self._render_image_and_overlays()
+        self._render_image_and_overlays(high_quality=not fast_preview)
 
         new_canvas_x = image_x * self.zoom
         new_canvas_y = image_y * self.zoom
         self._scroll_to_keep_point(view_x, view_y, new_canvas_x, new_canvas_y)
+
+        if fast_preview:
+            self._schedule_high_quality_render()
+        else:
+            self._cancel_deferred_hq_render()
+
+    def _schedule_high_quality_render(self) -> None:
+        self._cancel_deferred_hq_render()
+        self._hq_render_after_id = self.root.after(HQ_RENDER_DELAY_MS, self._run_deferred_high_quality_render)
+
+    def _cancel_deferred_hq_render(self) -> None:
+        if self._hq_render_after_id is None:
+            return
+        self.root.after_cancel(self._hq_render_after_id)
+        self._hq_render_after_id = None
+
+    def _run_deferred_high_quality_render(self) -> None:
+        self._hq_render_after_id = None
+        self._render_image_and_overlays(high_quality=True)
 
     def _scroll_to_keep_point(self, view_x: float, view_y: float, canvas_x: float, canvas_y: float) -> None:
         left = canvas_x - view_x
@@ -724,7 +781,7 @@ class WMHelperApp:
             self._redraw_overlays()
             self._update_status(f"Saved {updated_marker.kind} {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
 
-    def _find_nearest_marker(self, x: int, y: int) -> tuple[str, int, Marker] | None:
+    def _find_nearest_marker(self, x: float, y: float) -> tuple[str, int, Marker] | None:
         candidates: list[tuple[str, int, Marker]] = []
         candidates.extend(("circle", index, marker) for index, marker in enumerate(self.circles))
         candidates.extend(("square", index, marker) for index, marker in enumerate(self.squares))
