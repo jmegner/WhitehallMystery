@@ -50,15 +50,11 @@ class Marker:
     adjacent_circles: list[int] = field(default_factory=list)
 
     def to_record(self) -> dict[str, object]:
-        record: dict[str, int | float | str | list[int] | list[str]] = {
+        return {
             "id": self.id,
             "x": self._json_number(self.x),
             "y": self._json_number(self.y),
-            "adjacentSquares": [str(value).upper() for value in self.adjacent_squares],
         }
-        if self.kind == "square":
-            record["adjacentCircles"] = [int(value) for value in self.adjacent_circles]
-        return record
 
     def copy(self) -> "Marker":
         return Marker(
@@ -426,6 +422,7 @@ class WMHelperApp:
         self.image_path = self.repo_root / "public" / "map_pptx_simplified.jpg"
         self.circles_path = self.script_dir / "circles.jsonl"
         self.squares_path = self.script_dir / "squares.jsonl"
+        self.connections_path = self.script_dir / "connections.jsonl"
 
         if not self.image_path.exists():
             raise FileNotFoundError(f"Image not found: {self.image_path}")
@@ -447,6 +444,13 @@ class WMHelperApp:
 
         self.circles: list[Marker] = self._load_markers(self.circles_path, "circle")
         self.squares: list[Marker] = self._load_markers(self.squares_path, "square")
+        loaded_connections, has_connections_file = self._load_connections()
+        if has_connections_file:
+            self.connections: set[tuple[str, str]] = loaded_connections
+        else:
+            # Fallback for older circles/squares files that carried adjacency arrays.
+            self.connections = self._build_connections_from_marker_adjacency()
+        self._sync_marker_adjacency_from_connections()
 
         self.status_var = tk.StringVar()
         self._build_ui()
@@ -611,9 +615,172 @@ class WMHelperApp:
                 "adjacentCircles": [],
             }
 
+    @staticmethod
+    def _marker_token(marker: Marker) -> str:
+        if marker.kind == "square":
+            return str(marker.id).upper()
+        return str(int(marker.id))
+
+    @classmethod
+    def _try_marker_token(cls, marker: Marker) -> str | None:
+        try:
+            return cls._marker_token(marker)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _is_square_token(token: str) -> bool:
+        return len(token) == 2 and all(ch in SQUARE_LETTERS for ch in token)
+
+    @staticmethod
+    def _is_circle_token(token: str) -> bool:
+        try:
+            int(token)
+            return True
+        except ValueError:
+            return False
+
+    @classmethod
+    def _normalize_node_token(cls, raw_value: object) -> str | None:
+        text = str(raw_value).strip()
+        if not text:
+            return None
+        candidate_square = text.upper()
+        if cls._is_square_token(candidate_square):
+            return candidate_square
+        try:
+            return str(int(text))
+        except ValueError:
+            return None
+
+    @classmethod
+    def _normalized_connection_pair(cls, a: object, b: object) -> tuple[str, str] | None:
+        token_a = cls._normalize_node_token(a)
+        token_b = cls._normalize_node_token(b)
+        if token_a is None or token_b is None or token_a == token_b:
+            return None
+        a_is_square = cls._is_square_token(token_a)
+        b_is_square = cls._is_square_token(token_b)
+        a_is_circle = cls._is_circle_token(token_a)
+        b_is_circle = cls._is_circle_token(token_b)
+        if not (a_is_square or a_is_circle):
+            return None
+        if not (b_is_square or b_is_circle):
+            return None
+        if a_is_circle and b_is_circle:
+            return None
+        return tuple(sorted((token_a, token_b)))
+
+    def _load_connections(self) -> tuple[set[tuple[str, str]], bool]:
+        if not self.connections_path.exists():
+            return set(), False
+
+        connections: set[tuple[str, str]] = set()
+        for line_number, raw_line in enumerate(self.connections_path.read_text(encoding="utf-8").splitlines(), start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                parsed = json.loads(line)
+                if not isinstance(parsed, list) or len(parsed) != 2:
+                    raise ValueError("connection must be a JSON array with two ids")
+                pair = self._normalized_connection_pair(parsed[0], parsed[1])
+                if pair is None:
+                    raise ValueError("invalid connection endpoints")
+                connections.add(pair)
+            except Exception as exc:  # noqa: BLE001
+                print(f"Skipping invalid line in {self.connections_path.name}:{line_number}: {exc}")
+        return connections, True
+
+    def _write_connections(self) -> None:
+        self.connections_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.connections_path.open("w", encoding="utf-8", newline="\n") as handle:
+            for pair in sorted(self.connections):
+                handle.write(json.dumps([pair[0], pair[1]], ensure_ascii=True))
+                handle.write("\n")
+
+    def _build_connections_from_marker_adjacency(self) -> set[tuple[str, str]]:
+        connections: set[tuple[str, str]] = set()
+        for circle in self.circles:
+            connections.update(self._connection_pairs_for_marker(circle))
+        for square in self.squares:
+            connections.update(self._connection_pairs_for_marker(square))
+        return connections
+
+    def _connection_pairs_for_marker(self, marker: Marker) -> set[tuple[str, str]]:
+        marker_token = self._try_marker_token(marker)
+        if marker_token is None:
+            return set()
+        pairs: set[tuple[str, str]] = set()
+        for square_id in self._normalize_adjacent_squares(marker.adjacent_squares):
+            pair = self._normalized_connection_pair(marker_token, square_id)
+            if pair is not None:
+                pairs.add(pair)
+        if marker.kind == "square":
+            for circle_id in self._normalize_adjacent_circles(marker.adjacent_circles):
+                pair = self._normalized_connection_pair(marker_token, str(circle_id))
+                if pair is not None:
+                    pairs.add(pair)
+        return pairs
+
+    def _sync_marker_adjacency_from_connections(self) -> None:
+        circles_by_token: dict[str, list[Marker]] = {}
+        squares_by_token: dict[str, list[Marker]] = {}
+        for circle in self.circles:
+            circle.adjacent_squares = []
+            circle.adjacent_circles = []
+            circles_by_token.setdefault(self._marker_token(circle), []).append(circle)
+        for square in self.squares:
+            square.adjacent_squares = []
+            square.adjacent_circles = []
+            squares_by_token.setdefault(self._marker_token(square), []).append(square)
+
+        for token_a, token_b in self.connections:
+            a_is_square = self._is_square_token(token_a)
+            b_is_square = self._is_square_token(token_b)
+            if a_is_square and b_is_square:
+                for square in squares_by_token.get(token_a, []):
+                    square.adjacent_squares.append(token_b)
+                for square in squares_by_token.get(token_b, []):
+                    square.adjacent_squares.append(token_a)
+                continue
+
+            if a_is_square:
+                square_token, circle_token = token_a, token_b
+            else:
+                square_token, circle_token = token_b, token_a
+
+            for square in squares_by_token.get(square_token, []):
+                square.adjacent_circles.append(int(circle_token))
+            for circle in circles_by_token.get(circle_token, []):
+                circle.adjacent_squares.append(square_token)
+
+        for circle in self.circles:
+            circle.adjacent_squares = self._normalize_adjacent_squares(circle.adjacent_squares)
+            circle.adjacent_circles = []
+        for square in self.squares:
+            square.adjacent_squares = self._normalize_adjacent_squares(square.adjacent_squares)
+            square.adjacent_circles = self._normalize_adjacent_circles(square.adjacent_circles)
+
+    def _remove_marker_connections(self, marker: Marker) -> None:
+        marker_token = self._marker_token(marker)
+        self.connections = {pair for pair in self.connections if marker_token not in pair}
+
+    def _add_marker_connections(self, marker: Marker) -> None:
+        self.connections.update(self._connection_pairs_for_marker(marker))
+
+    def _replace_marker_connections(self, old_marker: Marker, updated_marker: Marker) -> None:
+        self._remove_marker_connections(old_marker)
+        self._add_marker_connections(updated_marker)
+
+    def _persist_marker_state(self) -> None:
+        self._sync_marker_adjacency_from_connections()
+        self._save_markers()
+
     def _save_markers(self) -> None:
         self._write_jsonl(self.circles_path, self.circles)
         self._write_jsonl(self.squares_path, self.squares)
+        self._write_connections()
 
     def _write_jsonl(self, path: Path, markers: list[Marker]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -653,11 +820,178 @@ class WMHelperApp:
         ring_radius = (CIRCLE_RING_DIAMETER_PX * self.zoom) / 2
         square_half = (SQUARE_OUTLINE_SIZE_PX * self.zoom) / 2
         preview_target = self.edit_preview_target if self.edit_preview_marker is not None else None
+        selected_line_key: tuple[object, ...] | None = None
+        if self.active_edit_dialog is not None:
+            if self.edit_preview_marker is not None:
+                if self.edit_preview_target is not None:
+                    selected_line_key = (self.edit_preview_target[0], self.edit_preview_target[1])
+                else:
+                    selected_line_key = ("preview", self.edit_preview_marker.kind)
+            elif self.active_edit_preview_target is not None:
+                selected_line_key = (self.active_edit_preview_target[0], self.active_edit_preview_target[1])
+
         highlighted_square_ids: set[str] = set()
         highlighted_circle_ids: set[int] = set()
         if self.edit_preview_marker is not None:
             highlighted_square_ids = set(self._normalize_adjacent_squares(self.edit_preview_marker.adjacent_squares))
             highlighted_circle_ids = set(self._normalize_adjacent_circles(self.edit_preview_marker.adjacent_circles))
+
+        display_circles: list[tuple[tuple[object, ...], Marker]] = []
+        display_squares: list[tuple[tuple[object, ...], Marker]] = []
+        for index, marker in enumerate(self.circles):
+            if self.edit_preview_target == ("circle", index) and self.edit_preview_marker is not None:
+                display_circles.append((("circle", index), self.edit_preview_marker))
+            else:
+                display_circles.append((("circle", index), marker))
+        for index, marker in enumerate(self.squares):
+            if self.edit_preview_target == ("square", index) and self.edit_preview_marker is not None:
+                display_squares.append((("square", index), self.edit_preview_marker))
+            else:
+                display_squares.append((("square", index), marker))
+        if self.edit_preview_target is None and self.edit_preview_marker is not None:
+            preview_key = ("preview", self.edit_preview_marker.kind)
+            if self.edit_preview_marker.kind == "circle":
+                display_circles.append((preview_key, self.edit_preview_marker))
+            else:
+                display_squares.append((preview_key, self.edit_preview_marker))
+
+        display_entries = [*display_circles, *display_squares]
+        display_by_key: dict[tuple[object, ...], Marker] = {key: marker for key, marker in display_entries}
+        entries_by_token: dict[str, list[tuple[tuple[object, ...], Marker]]] = {}
+        for entry in display_entries:
+            token = self._try_marker_token(entry[1])
+            if token is None:
+                continue
+            entries_by_token.setdefault(token, []).append(entry)
+
+        selected_marker_token: str | None = None
+        if selected_line_key is not None and selected_line_key in display_by_key:
+            selected_marker_token = self._try_marker_token(display_by_key[selected_line_key])
+
+        working_connections = set(self.connections)
+        if self.edit_preview_marker is not None:
+            if self.edit_preview_target is not None:
+                target_kind, target_index = self.edit_preview_target
+                original_marker = self.circles[target_index] if target_kind == "circle" else self.squares[target_index]
+                original_token = self._try_marker_token(original_marker)
+                if original_token is not None:
+                    working_connections = {pair for pair in working_connections if original_token not in pair}
+            working_connections.update(self._connection_pairs_for_marker(self.edit_preview_marker))
+
+        def distance_sq(
+            first: tuple[tuple[object, ...], Marker],
+            second: tuple[tuple[object, ...], Marker],
+        ) -> float:
+            return ((first[1].x - second[1].x) ** 2) + ((first[1].y - second[1].y) ** 2)
+
+        def choose_connection_entries(
+            token_a: str,
+            token_b: str,
+        ) -> tuple[tuple[tuple[object, ...], Marker], tuple[tuple[object, ...], Marker]] | None:
+            candidates_a = entries_by_token.get(token_a, [])
+            candidates_b = entries_by_token.get(token_b, [])
+            if not candidates_a or not candidates_b:
+                return None
+
+            forced_a: tuple[tuple[object, ...], Marker] | None = None
+            forced_b: tuple[tuple[object, ...], Marker] | None = None
+            if selected_line_key is not None and selected_marker_token is not None:
+                if selected_marker_token == token_a:
+                    forced_a = next((entry for entry in candidates_a if entry[0] == selected_line_key), None)
+                if selected_marker_token == token_b:
+                    forced_b = next((entry for entry in candidates_b if entry[0] == selected_line_key), None)
+
+            if forced_a is not None and forced_b is not None:
+                if forced_a[0] == forced_b[0]:
+                    return None
+                return forced_a, forced_b
+            if forced_a is not None:
+                best_b = min(
+                    (entry for entry in candidates_b if entry[0] != forced_a[0]),
+                    key=lambda entry: distance_sq(forced_a, entry),
+                    default=None,
+                )
+                if best_b is None:
+                    return None
+                return forced_a, best_b
+            if forced_b is not None:
+                best_a = min(
+                    (entry for entry in candidates_a if entry[0] != forced_b[0]),
+                    key=lambda entry: distance_sq(entry, forced_b),
+                    default=None,
+                )
+                if best_a is None:
+                    return None
+                return best_a, forced_b
+
+            best_pair: tuple[tuple[tuple[object, ...], Marker], tuple[tuple[object, ...], Marker]] | None = None
+            best_distance: float | None = None
+            for entry_a in candidates_a:
+                for entry_b in candidates_b:
+                    if entry_a[0] == entry_b[0]:
+                        continue
+                    current_distance = distance_sq(entry_a, entry_b)
+                    if best_distance is None or current_distance < best_distance:
+                        best_distance = current_distance
+                        best_pair = (entry_a, entry_b)
+            return best_pair
+
+        connection_pairs: list[tuple[tuple[object, ...], Marker, tuple[object, ...], Marker]] = []
+        for token_a, token_b in sorted(working_connections):
+            chosen = choose_connection_entries(token_a, token_b)
+            if chosen is None:
+                continue
+            connection_pairs.append((chosen[0][0], chosen[0][1], chosen[1][0], chosen[1][1]))
+
+        def endpoint_offset(marker: Marker) -> float:
+            if marker.kind == "circle":
+                return 17.0 * self.zoom
+            return 8.0 * self.zoom
+
+        def draw_connection(
+            source_key: tuple[object, ...],
+            source_marker: Marker,
+            target_key: tuple[object, ...],
+            target_marker: Marker,
+        ) -> None:
+            start_x = source_marker.x * self.zoom
+            start_y = source_marker.y * self.zoom
+            end_x = target_marker.x * self.zoom
+            end_y = target_marker.y * self.zoom
+            dx = end_x - start_x
+            dy = end_y - start_y
+            length = math.hypot(dx, dy)
+            if length <= 1e-9:
+                return
+
+            start_offset = endpoint_offset(source_marker)
+            end_offset = endpoint_offset(target_marker)
+            if length <= (start_offset + end_offset):
+                return
+
+            unit_x = dx / length
+            unit_y = dy / length
+            clipped_start_x = start_x + (unit_x * start_offset)
+            clipped_start_y = start_y + (unit_y * start_offset)
+            clipped_end_x = end_x - (unit_x * end_offset)
+            clipped_end_y = end_y - (unit_y * end_offset)
+
+            line_color = MAGENTA
+            if selected_line_key is not None and (source_key == selected_line_key or target_key == selected_line_key):
+                line_color = GREEN
+
+            line_id = self.canvas.create_line(
+                clipped_start_x,
+                clipped_start_y,
+                clipped_end_x,
+                clipped_end_y,
+                fill=line_color,
+                width=1,
+            )
+            self.overlay_item_ids.append(line_id)
+
+        for source_key, source_marker, target_key, target_marker in connection_pairs:
+            draw_connection(source_key, source_marker, target_key, target_marker)
 
         def draw_marker(marker: Marker, text_color: str, *, shape_color: str | None = None) -> None:
             x = marker.x * self.zoom
@@ -697,14 +1031,18 @@ class WMHelperApp:
             )
             self.overlay_item_ids.append(text_id)
 
-        for index, marker in enumerate(self.circles):
-            if preview_target == ("circle", index):
+        for key, marker in display_circles:
+            if key[0] == "preview":
+                continue
+            if preview_target is not None and key == (preview_target[0], preview_target[1]):
                 continue
             circle_color = GREEN if int(marker.id) in highlighted_circle_ids else MAGENTA
             draw_marker(marker, circle_color)
 
-        for index, marker in enumerate(self.squares):
-            if preview_target == ("square", index):
+        for key, marker in display_squares:
+            if key[0] == "preview":
+                continue
+            if preview_target is not None and key == (preview_target[0], preview_target[1]):
                 continue
             square_id = str(marker.id).upper()
             if square_id in highlighted_square_ids:
@@ -1069,16 +1407,20 @@ class WMHelperApp:
                 removed = self.circles.pop(index)
             else:
                 removed = self.squares.pop(index)
-            self._save_markers()
+            self._remove_marker_connections(removed)
+            self._persist_marker_state()
             self._redraw_overlays()
             self._update_status(f"Deleted {removed.kind} {removed.id}")
             return
         if action == "save" and updated_marker is not None:
             if kind == "circle":
+                original_marker = self.circles[index]
                 self.circles[index] = updated_marker
             else:
+                original_marker = self.squares[index]
                 self.squares[index] = updated_marker
-            self._save_markers()
+            self._replace_marker_connections(original_marker, updated_marker)
+            self._persist_marker_state()
             self._redraw_overlays()
             self._update_status(f"Saved {updated_marker.kind} {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
 
@@ -1112,7 +1454,8 @@ class WMHelperApp:
             return
         if action == "save" and updated_marker is not None:
             self.squares.append(updated_marker)
-            self._save_markers()
+            self._add_marker_connections(updated_marker)
+            self._persist_marker_state()
             self._redraw_overlays()
             self._update_status(f"Added square {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
 
@@ -1135,7 +1478,8 @@ class WMHelperApp:
             return
         if action == "save" and updated_marker is not None:
             self.circles.append(updated_marker)
-            self._save_markers()
+            self._add_marker_connections(updated_marker)
+            self._persist_marker_state()
             self._redraw_overlays()
             self._update_status(f"Added circle {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
 
