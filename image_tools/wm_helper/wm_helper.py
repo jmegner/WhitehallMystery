@@ -508,6 +508,8 @@ class WMHelperApp:
         self.root.bind("+", lambda _event: self._zoom_canvas(1.0, 1.0, ZOOM_STEP, relative_to_center=True))
         self.root.bind("-", lambda _event: self._zoom_canvas(1.0, 1.0, 1 / ZOOM_STEP, relative_to_center=True))
         self.root.bind("0", lambda _event: self._reset_zoom())
+        self.root.bind_all("<Home>", self._on_global_home_key, add="+")
+        self.root.bind_all("<Escape>", self._on_global_escape_key, add="+")
 
         self.canvas.focus_set()
 
@@ -773,6 +775,33 @@ class WMHelperApp:
         if prefix:
             message = f"{prefix} | {message}"
         self.status_var.set(message)
+
+    def _is_focus_inside_active_dialog(self) -> bool:
+        if self.active_edit_dialog is None:
+            return False
+        focused = self.root.focus_get()
+        if focused is None:
+            return False
+        try:
+            return focused.winfo_toplevel() == self.active_edit_dialog.window
+        except tk.TclError:
+            return False
+
+    def _on_global_home_key(self, _event: tk.Event) -> str | None:
+        if self.active_edit_dialog is None:
+            return None
+        if self._is_focus_inside_active_dialog():
+            return None
+        self.active_edit_dialog.on_ok()
+        return "break"
+
+    def _on_global_escape_key(self, _event: tk.Event) -> str | None:
+        if self.active_edit_dialog is None:
+            return None
+        if self._is_focus_inside_active_dialog():
+            return None
+        self.active_edit_dialog.on_cancel()
+        return "break"
 
     def _on_canvas_configure(self, _event: tk.Event) -> None:
         self._update_status()
