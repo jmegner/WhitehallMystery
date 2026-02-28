@@ -1,174 +1,174 @@
-{"id": "BB", "x": 227, "y": 79.5}
-{"id": "BC", "x": 265, "y": 72}
-{"id": "BD", "x": 342, "y": 82}
-{"id": "BF", "x": 387, "y": 91}
-{"id": "BG", "x": 403.5, "y": 42.5}
-{"id": "BH", "x": 431, "y": 100}
-{"id": "BJ", "x": 261, "y": 142}
-{"id": "BK", "x": 175, "y": 152}
-{"id": "BL", "x": 297.5, "y": 147.5}
-{"id": "BM", "x": 132, "y": 183}
-{"id": "BN", "x": 286, "y": 188}
-{"id": "BP", "x": 236, "y": 228}
-{"id": "BQ", "x": 367, "y": 147.5}
-{"id": "BR", "x": 512.5, "y": 114}
-{"id": "BS", "x": 456, "y": 158.5}
-{"id": "BT", "x": 523.5, "y": 154}
-{"id": "BV", "x": 156, "y": 114.5}
-{"id": "BW", "x": 596.5, "y": 85.5}
-{"id": "BX", "x": 719.5, "y": 46.5}
-{"id": "BY", "x": 762.5, "y": 86.5}
-{"id": "BZ", "x": 591.5, "y": 163}
-{"id": "CB", "x": 634, "y": 124.5}
-{"id": "CC", "x": 704.5, "y": 145.5}
-{"id": "CD", "x": 817, "y": 118}
-{"id": "CF", "x": 536, "y": 257}
-{"id": "CG", "x": 591, "y": 229.5}
-{"id": "CH", "x": 658, "y": 192.5}
-{"id": "CJ", "x": 748.5, "y": 157.5}
-{"id": "CK", "x": 907.5, "y": 88.5}
-{"id": "CL", "x": 875, "y": 145}
-{"id": "CM", "x": 776.5, "y": 196}
-{"id": "CN", "x": 821.5, "y": 196}
-{"id": "CP", "x": 688.5, "y": 262}
-{"id": "CQ", "x": 780, "y": 258}
-{"id": "CR", "x": 887, "y": 209.5}
-{"id": "CS", "x": 973.5, "y": 63.5}
-{"id": "CT", "x": 976.5, "y": 132}
-{"id": "CV", "x": 1050, "y": 139}
-{"id": "CW", "x": 1097, "y": 168}
-{"id": "CX", "x": 185.5, "y": 272}
-{"id": "CY", "x": 288.5, "y": 293.5}
-{"id": "CZ", "x": 325.5, "y": 260.5}
-{"id": "DB", "x": 372.5, "y": 273}
-{"id": "DC", "x": 440, "y": 257.5}
-{"id": "DD", "x": 463.5, "y": 294.5}
-{"id": "DF", "x": 332.5, "y": 206}
-{"id": "DG", "x": 393.5, "y": 206.5}
-{"id": "DH", "x": 470.5, "y": 209.5}
-{"id": "DJ", "x": 141.5, "y": 320}
-{"id": "DK", "x": 218.5, "y": 319}
-{"id": "DL", "x": 313, "y": 339.5}
-{"id": "DM", "x": 390.5, "y": 329.5}
-{"id": "DN", "x": 138.5, "y": 362}
-{"id": "DP", "x": 247, "y": 380}
-{"id": "DQ", "x": 491, "y": 391.5}
-{"id": "DR", "x": 203.5, "y": 402}
-{"id": "DS", "x": 269.5, "y": 421}
-{"id": "DT", "x": 350.5, "y": 406.5}
-{"id": "DV", "x": 129.5, "y": 440.5}
-{"id": "DW", "x": 428.5, "y": 410}
-{"id": "DX", "x": 448.5, "y": 449.5}
-{"id": "DY", "x": 171.5, "y": 475.5}
-{"id": "DZ", "x": 384.5, "y": 468.5}
-{"id": "FB", "x": 318.5, "y": 509.5}
-{"id": "FC", "x": 415, "y": 524}
-{"id": "FD", "x": 202.5, "y": 537.5}
-{"id": "FF", "x": 251.5, "y": 545.5}
-{"id": "FG", "x": 349.5, "y": 564.5}
-{"id": "FH", "x": 147.5, "y": 613}
-{"id": "FJ", "x": 205.5, "y": 611.5}
-{"id": "FK", "x": 285.5, "y": 604.5}
-{"id": "FL", "x": 389, "y": 623.5}
-{"id": "FM", "x": 223, "y": 644.5}
-{"id": "FN", "x": 306, "y": 679.5}
-{"id": "FP", "x": 472.5, "y": 633.5}
-{"id": "FQ", "x": 144, "y": 693}
-{"id": "FR", "x": 403, "y": 683}
-{"id": "FS", "x": 406, "y": 720}
-{"id": "FT", "x": 185, "y": 767.5}
-{"id": "FV", "x": 282.5, "y": 766}
-{"id": "FW", "x": 421, "y": 792.5}
-{"id": "FX", "x": 287.5, "y": 789.5}
-{"id": "FY", "x": 214.5, "y": 838.5}
-{"id": "FZ", "x": 352, "y": 822}
-{"id": "GB", "x": 478, "y": 846}
-{"id": "GC", "x": 306, "y": 871}
-{"id": "GD", "x": 217, "y": 911.5}
-{"id": "GF", "x": 131, "y": 892.5}
-{"id": "GG", "x": 230, "y": 960}
-{"id": "GH", "x": 290.5, "y": 950.5}
-{"id": "GJ", "x": 409, "y": 939.5}
-{"id": "GK", "x": 465.5, "y": 913.5}
-{"id": "GL", "x": 363, "y": 998}
-{"id": "GM", "x": 118.5, "y": 961}
-{"id": "GN", "x": 124, "y": 1016}
-{"id": "GP", "x": 210.5, "y": 1028.5}
-{"id": "GQ", "x": 132.5, "y": 1069.5}
-{"id": "GR", "x": 286.5, "y": 1041}
-{"id": "GS", "x": 450, "y": 1009.5}
-{"id": "GT", "x": 508.5, "y": 1016}
-{"id": "GV", "x": 641.5, "y": 1028}
-{"id": "GW", "x": 744.5, "y": 1030.5}
-{"id": "GX", "x": 513.5, "y": 933}
-{"id": "GY", "x": 644, "y": 948.5}
-{"id": "GZ", "x": 748.5, "y": 975}
-{"id": "HB", "x": 647.5, "y": 867.5}
-{"id": "HC", "x": 758.5, "y": 853.5}
-{"id": "HD", "x": 507.5, "y": 853.5}
-{"id": "HF", "x": 500.5, "y": 794.5}
-{"id": "HG", "x": 494, "y": 762}
-{"id": "HH", "x": 576, "y": 788.5}
-{"id": "HJ", "x": 625, "y": 776}
-{"id": "HK", "x": 772.5, "y": 758}
-{"id": "HL", "x": 561, "y": 714.5}
-{"id": "HM", "x": 497, "y": 718.5}
-{"id": "HN", "x": 601.5, "y": 686.5}
-{"id": "HP", "x": 597, "y": 652}
-{"id": "HQ", "x": 660.5, "y": 662}
-{"id": "HR", "x": 717.5, "y": 715.5}
-{"id": "HS", "x": 777.5, "y": 728.5}
-{"id": "HT", "x": 721, "y": 641}
-{"id": "HV", "x": 802.5, "y": 635.5}
-{"id": "HW", "x": 819.5, "y": 595}
-{"id": "HX", "x": 681, "y": 590.5}
-{"id": "HY", "x": 588, "y": 579.5}
-{"id": "HZ", "x": 512, "y": 554}
-{"id": "JB", "x": 614.5, "y": 520}
-{"id": "JC", "x": 710, "y": 534.5}
-{"id": "JD", "x": 501.5, "y": 478}
-{"id": "JF", "x": 598.5, "y": 462}
-{"id": "JG", "x": 654.5, "y": 481.5}
-{"id": "JH", "x": 728, "y": 480}
-{"id": "JJ", "x": 782, "y": 496}
-{"id": "JK", "x": 692.5, "y": 444}
-{"id": "JL", "x": 598.5, "y": 400}
-{"id": "JM", "x": 653.5, "y": 401}
-{"id": "JN", "x": 768, "y": 385.5}
-{"id": "JP", "x": 808.5, "y": 409.5}
-{"id": "JQ", "x": 532, "y": 350.5}
-{"id": "JR", "x": 731, "y": 338}
-{"id": "JS", "x": 592.5, "y": 294}
-{"id": "JT", "x": 653, "y": 274.5}
-{"id": "JV", "x": 849.5, "y": 241}
-{"id": "JW", "x": 973.5, "y": 243}
-{"id": "JX", "x": 918, "y": 279.5}
-{"id": "JY", "x": 1140.5, "y": 281}
-{"id": "JZ", "x": 849, "y": 327}
-{"id": "KB", "x": 993, "y": 353.5}
-{"id": "KC", "x": 1076.5, "y": 338.5}
-{"id": "KD", "x": 905, "y": 393}
-{"id": "KF", "x": 1004, "y": 373.5}
-{"id": "KG", "x": 953.5, "y": 408.5}
-{"id": "KH", "x": 892, "y": 471}
-{"id": "KJ", "x": 843, "y": 544.5}
-{"id": "KK", "x": 1113.5, "y": 566.5}
-{"id": "KL", "x": 1074, "y": 593}
-{"id": "KM", "x": 1030.5, "y": 635}
-{"id": "KN", "x": 1098.5, "y": 669.5}
-{"id": "KP", "x": 1003.5, "y": 691}
-{"id": "KQ", "x": 985.5, "y": 731.5}
-{"id": "KR", "x": 1073, "y": 727}
-{"id": "KS", "x": 1131.5, "y": 750.5}
-{"id": "KT", "x": 971.5, "y": 766.5}
-{"id": "KV", "x": 1055, "y": 791.5}
-{"id": "KW", "x": 1107, "y": 811.5}
-{"id": "KX", "x": 963, "y": 835.5}
-{"id": "KY", "x": 1038, "y": 851.5}
-{"id": "KZ", "x": 1081, "y": 916.5}
-{"id": "LB", "x": 1022.5, "y": 887.5}
-{"id": "LC", "x": 955.5, "y": 940}
-{"id": "LD", "x": 995, "y": 954}
-{"id": "LF", "x": 1051, "y": 974.5}
-{"id": "LG", "x": 981, "y": 1036}
-{"id": "LH", "x": 932.5, "y": 1035.5}
+{"id": "BB", "x": 227, "y": 79.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BC", "x": 265, "y": 72, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BD", "x": 342, "y": 82, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BF", "x": 387, "y": 91, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BG", "x": 403.5, "y": 42.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BH", "x": 431, "y": 100, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BJ", "x": 261, "y": 142, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BK", "x": 175, "y": 152, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BL", "x": 297.5, "y": 147.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BM", "x": 132, "y": 183, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BN", "x": 286, "y": 188, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BP", "x": 236, "y": 228, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BQ", "x": 367, "y": 147.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BR", "x": 512.5, "y": 114, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BS", "x": 456, "y": 158.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BT", "x": 523.5, "y": 154, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BV", "x": 156, "y": 114.5, "adjacentSquares": ["BK"], "adjacentCircles": [1, 8, 9]}
+{"id": "BW", "x": 596.5, "y": 85.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BX", "x": 719.5, "y": 46.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BY", "x": 762.5, "y": 86.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "BZ", "x": 591.5, "y": 163, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CB", "x": 634, "y": 124.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CC", "x": 704.5, "y": 145.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CD", "x": 817, "y": 118, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CF", "x": 536, "y": 257, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CG", "x": 591, "y": 229.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CH", "x": 658, "y": 192.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CJ", "x": 748.5, "y": 157.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CK", "x": 907.5, "y": 88.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CL", "x": 875, "y": 145, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CM", "x": 776.5, "y": 196, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CN", "x": 821.5, "y": 196, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CP", "x": 688.5, "y": 262, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CQ", "x": 780, "y": 258, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CR", "x": 887, "y": 209.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CS", "x": 973.5, "y": 63.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CT", "x": 976.5, "y": 132, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CV", "x": 1050, "y": 139, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CW", "x": 1097, "y": 168, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CX", "x": 185.5, "y": 272, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CY", "x": 288.5, "y": 293.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "CZ", "x": 325.5, "y": 260.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DB", "x": 372.5, "y": 273, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DC", "x": 440, "y": 257.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DD", "x": 463.5, "y": 294.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DF", "x": 332.5, "y": 206, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DG", "x": 393.5, "y": 206.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DH", "x": 470.5, "y": 209.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DJ", "x": 141.5, "y": 320, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DK", "x": 218.5, "y": 319, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DL", "x": 313, "y": 339.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DM", "x": 390.5, "y": 329.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DN", "x": 138.5, "y": 362, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DP", "x": 247, "y": 380, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DQ", "x": 491, "y": 391.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DR", "x": 203.5, "y": 402, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DS", "x": 269.5, "y": 421, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DT", "x": 350.5, "y": 406.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DV", "x": 129.5, "y": 440.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DW", "x": 428.5, "y": 410, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DX", "x": 448.5, "y": 449.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DY", "x": 171.5, "y": 475.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "DZ", "x": 384.5, "y": 468.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FB", "x": 318.5, "y": 509.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FC", "x": 415, "y": 524, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FD", "x": 202.5, "y": 537.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FF", "x": 251.5, "y": 545.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FG", "x": 349.5, "y": 564.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FH", "x": 147.5, "y": 613, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FJ", "x": 205.5, "y": 611.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FK", "x": 285.5, "y": 604.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FL", "x": 389, "y": 623.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FM", "x": 223, "y": 644.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FN", "x": 306, "y": 679.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FP", "x": 472.5, "y": 633.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FQ", "x": 144, "y": 693, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FR", "x": 403, "y": 683, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FS", "x": 406, "y": 720, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FT", "x": 185, "y": 767.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FV", "x": 282.5, "y": 766, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FW", "x": 421, "y": 792.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FX", "x": 287.5, "y": 789.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FY", "x": 214.5, "y": 838.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "FZ", "x": 352, "y": 822, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GB", "x": 478, "y": 846, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GC", "x": 306, "y": 871, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GD", "x": 217, "y": 911.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GF", "x": 131, "y": 892.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GG", "x": 230, "y": 960, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GH", "x": 290.5, "y": 950.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GJ", "x": 409, "y": 939.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GK", "x": 465.5, "y": 913.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GL", "x": 363, "y": 998, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GM", "x": 118.5, "y": 961, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GN", "x": 124, "y": 1016, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GP", "x": 210.5, "y": 1028.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GQ", "x": 132.5, "y": 1069.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GR", "x": 286.5, "y": 1041, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GS", "x": 450, "y": 1009.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GT", "x": 508.5, "y": 1016, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GV", "x": 641.5, "y": 1028, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GW", "x": 744.5, "y": 1030.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GX", "x": 513.5, "y": 933, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GY", "x": 644, "y": 948.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "GZ", "x": 748.5, "y": 975, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HB", "x": 647.5, "y": 867.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HC", "x": 758.5, "y": 853.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HD", "x": 507.5, "y": 853.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HF", "x": 500.5, "y": 794.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HG", "x": 494, "y": 762, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HH", "x": 576, "y": 788.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HJ", "x": 625, "y": 776, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HK", "x": 772.5, "y": 758, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HL", "x": 561, "y": 714.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HM", "x": 497, "y": 718.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HN", "x": 601.5, "y": 686.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HP", "x": 597, "y": 652, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HQ", "x": 660.5, "y": 662, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HR", "x": 717.5, "y": 715.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HS", "x": 777.5, "y": 728.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HT", "x": 721, "y": 641, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HV", "x": 802.5, "y": 635.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HW", "x": 819.5, "y": 595, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HX", "x": 681, "y": 590.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HY", "x": 588, "y": 579.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "HZ", "x": 512, "y": 554, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JB", "x": 614.5, "y": 520, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JC", "x": 710, "y": 534.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JD", "x": 501.5, "y": 478, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JF", "x": 598.5, "y": 462, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JG", "x": 654.5, "y": 481.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JH", "x": 728, "y": 480, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JJ", "x": 782, "y": 496, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JK", "x": 692.5, "y": 444, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JL", "x": 598.5, "y": 400, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JM", "x": 653.5, "y": 401, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JN", "x": 768, "y": 385.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JP", "x": 808.5, "y": 409.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JQ", "x": 532, "y": 350.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JR", "x": 731, "y": 338, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JS", "x": 592.5, "y": 294, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JT", "x": 653, "y": 274.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JV", "x": 849.5, "y": 241, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JW", "x": 973.5, "y": 243, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JX", "x": 918, "y": 279.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JY", "x": 1140.5, "y": 281, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "JZ", "x": 849, "y": 327, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KB", "x": 993, "y": 353.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KC", "x": 1076.5, "y": 338.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KD", "x": 905, "y": 393, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KF", "x": 1004, "y": 373.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KG", "x": 953.5, "y": 408.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KH", "x": 892, "y": 471, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KJ", "x": 843, "y": 544.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KK", "x": 1113.5, "y": 566.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KL", "x": 1074, "y": 593, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KM", "x": 1030.5, "y": 635, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KN", "x": 1098.5, "y": 669.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KP", "x": 1003.5, "y": 691, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KQ", "x": 985.5, "y": 731.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KR", "x": 1073, "y": 727, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KS", "x": 1131.5, "y": 750.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KT", "x": 971.5, "y": 766.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KV", "x": 1055, "y": 791.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KW", "x": 1107, "y": 811.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KX", "x": 963, "y": 835.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KY", "x": 1038, "y": 851.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "KZ", "x": 1081, "y": 916.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "LB", "x": 1022.5, "y": 887.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "LC", "x": 955.5, "y": 940, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "LD", "x": 995, "y": 954, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "LF", "x": 1051, "y": 974.5, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "LG", "x": 981, "y": 1036, "adjacentSquares": [], "adjacentCircles": []}
+{"id": "LH", "x": 932.5, "y": 1035.5, "adjacentSquares": [], "adjacentCircles": []}

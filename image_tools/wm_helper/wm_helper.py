@@ -5,7 +5,7 @@ import json
 import math
 import re
 import tkinter as tk
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -14,6 +14,7 @@ from PIL import Image, ImageTk
 
 MAGENTA = "#FF00FF"
 RED = "#FF0000"
+GREEN = "#00FF00"
 SQUARE_OUTLINE_COLOR = "#FFFFFF"
 CIRCLE_RING_DIAMETER_PX = 32
 SQUARE_OUTLINE_SIZE_PX = 10
@@ -45,16 +46,29 @@ class Marker:
     id: int | str
     x: float
     y: float
+    adjacent_squares: list[str] = field(default_factory=list)
+    adjacent_circles: list[int] = field(default_factory=list)
 
-    def to_record(self) -> dict[str, int | float | str]:
-        return {
+    def to_record(self) -> dict[str, object]:
+        record: dict[str, int | float | str | list[int] | list[str]] = {
             "id": self.id,
             "x": self._json_number(self.x),
             "y": self._json_number(self.y),
+            "adjacentSquares": [str(value).upper() for value in self.adjacent_squares],
         }
+        if self.kind == "square":
+            record["adjacentCircles"] = [int(value) for value in self.adjacent_circles]
+        return record
 
     def copy(self) -> "Marker":
-        return Marker(self.kind, self.id, self.x, self.y)
+        return Marker(
+            self.kind,
+            self.id,
+            self.x,
+            self.y,
+            list(self.adjacent_squares),
+            list(self.adjacent_circles),
+        )
 
     @staticmethod
     def _json_number(value: float) -> int | float:
@@ -84,7 +98,6 @@ class MarkerEditDialog:
         self.window.title(f"Edit {marker.kind.title()}")
         self.window.transient(parent)
         self.window.resizable(False, False)
-        self.window.grab_set()
         self.window.protocol("WM_DELETE_WINDOW", self.on_cancel)
 
         frame = ttk.Frame(self.window, padding=12)
@@ -136,8 +149,24 @@ class MarkerEditDialog:
             command=lambda: self._nudge_coord(self.y_var, NUDGE_STEP, self._image_height),
         ).grid(row=0, column=2, padx=(2, 0))
 
+        ttk.Label(frame, text="Adjacent Squares").grid(row=4, column=0, sticky="w", padx=(0, 8), pady=4)
+        self.adjacent_squares_var = tk.StringVar(value=", ".join(str(value).upper() for value in marker.adjacent_squares))
+        self.adjacent_squares_entry = ttk.Entry(frame, textvariable=self.adjacent_squares_var, width=28)
+        self.adjacent_squares_entry.grid(row=4, column=1, sticky="ew", pady=4)
+
+        self.adjacent_circles_var = tk.StringVar(value=", ".join(str(value) for value in marker.adjacent_circles))
+        button_row_index = 5
+        self._show_adjacent_circles = marker.kind == "square"
+        if self._show_adjacent_circles:
+            ttk.Label(frame, text="Adjacent Circles").grid(row=5, column=0, sticky="w", padx=(0, 8), pady=4)
+            self.adjacent_circles_entry = ttk.Entry(frame, textvariable=self.adjacent_circles_var, width=28)
+            self.adjacent_circles_entry.grid(row=5, column=1, sticky="ew", pady=4)
+            button_row_index = 6
+        else:
+            self.adjacent_circles_entry = None
+
         button_row = ttk.Frame(frame)
-        button_row.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        button_row.grid(row=button_row_index, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         button_row.columnconfigure(0, weight=1)
         button_row.columnconfigure(1, weight=1)
         button_row.columnconfigure(2, weight=1)
@@ -154,7 +183,7 @@ class MarkerEditDialog:
         self.window.bind("<Up>", self._on_arrow_nudge)
         self.window.bind("<Down>", self._on_arrow_nudge)
 
-        for variable in (self.id_var, self.x_var, self.y_var):
+        for variable in (self.id_var, self.x_var, self.y_var, self.adjacent_squares_var, self.adjacent_circles_var):
             variable.trace_add("write", self._on_fields_changed)
 
         self.id_entry.focus_set()
@@ -186,6 +215,19 @@ class MarkerEditDialog:
     def _on_home_submit(self, _event: tk.Event) -> str:
         self.on_ok()
         return "break"
+
+    def set_adjacent_squares(self, adjacent_squares: list[str]) -> None:
+        normalized = self._normalize_square_id_list(adjacent_squares)
+        self.adjacent_squares_var.set(", ".join(normalized))
+
+    def set_adjacent_circles(self, adjacent_circles: list[int]) -> None:
+        if not self._show_adjacent_circles:
+            return
+        normalized = self._normalize_circle_id_list(adjacent_circles)
+        self.adjacent_circles_var.set(", ".join(str(value) for value in normalized))
+
+    def get_preview_marker(self) -> Marker | None:
+        return self._build_marker_from_inputs(show_errors=False)
 
     def _nudge_coord(self, variable: tk.StringVar, delta: float, size_limit: int) -> None:
         try:
@@ -225,6 +267,82 @@ class MarkerEditDialog:
 
     def _on_fields_changed(self, *_args: object) -> None:
         self._emit_preview()
+
+    @staticmethod
+    def _split_csv_ids(raw_text: str) -> list[str]:
+        return [token.strip() for token in raw_text.split(",") if token.strip()]
+
+    @staticmethod
+    def _normalize_square_id_list(values: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            candidate = str(value).strip().upper()
+            if len(candidate) != 2 or any(ch not in SQUARE_LETTERS for ch in candidate):
+                continue
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            normalized.append(candidate)
+        return normalized
+
+    @staticmethod
+    def _normalize_circle_id_list(values: list[int | str]) -> list[int]:
+        normalized: list[int] = []
+        seen: set[int] = set()
+        for value in values:
+            try:
+                candidate = int(value)
+            except (TypeError, ValueError):
+                continue
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            normalized.append(candidate)
+        return normalized
+
+    def _parse_adjacent_square_ids(self, *, show_errors: bool) -> list[str] | None:
+        values: list[str] = []
+        seen: set[str] = set()
+        for raw in self._split_csv_ids(self.adjacent_squares_var.get()):
+            candidate = raw.upper()
+            if len(candidate) != 2 or any(ch not in SQUARE_LETTERS for ch in candidate):
+                if show_errors:
+                    messagebox.showerror(
+                        "Invalid adjacent square id",
+                        f'Adjacent square id "{raw}" must be two uppercase consonants (e.g. BB).',
+                        parent=self.window,
+                    )
+                    return None
+                continue
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            values.append(candidate)
+        return values
+
+    def _parse_adjacent_circle_ids(self, *, show_errors: bool) -> list[int] | None:
+        if not self._show_adjacent_circles:
+            return []
+        values: list[int] = []
+        seen: set[int] = set()
+        for raw in self._split_csv_ids(self.adjacent_circles_var.get()):
+            try:
+                candidate = int(raw)
+            except ValueError:
+                if show_errors:
+                    messagebox.showerror(
+                        "Invalid adjacent circle id",
+                        f'Adjacent circle id "{raw}" must be a number.',
+                        parent=self.window,
+                    )
+                    return None
+                continue
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            values.append(candidate)
+        return values
 
     def _emit_preview(self) -> None:
         if self._on_preview_change is None:
@@ -279,10 +397,21 @@ class MarkerEditDialog:
                     )
                     return None
 
+        adjacent_squares = self._parse_adjacent_square_ids(show_errors=show_errors)
+        if adjacent_squares is None:
+            return None
+        adjacent_circles = self._parse_adjacent_circle_ids(show_errors=show_errors)
+        if adjacent_circles is None:
+            return None
+        if self._marker.kind == "square" and isinstance(marker_id, str):
+            adjacent_squares = [value for value in adjacent_squares if value != marker_id]
+
         updated = self._marker.copy()
         updated.id = marker_id
         updated.x = x
         updated.y = y
+        updated.adjacent_squares = adjacent_squares
+        updated.adjacent_circles = adjacent_circles
         return updated
 
 
@@ -313,6 +442,8 @@ class WMHelperApp:
         self._hq_render_after_id: str | None = None
         self.edit_preview_target: tuple[str, int] | None = None
         self.edit_preview_marker: Marker | None = None
+        self.active_edit_dialog: MarkerEditDialog | None = None
+        self.active_edit_preview_target: tuple[str, int] | None = None
 
         self.circles: list[Marker] = self._load_markers(self.circles_path, "circle")
         self.squares: list[Marker] = self._load_markers(self.squares_path, "square")
@@ -380,6 +511,39 @@ class WMHelperApp:
 
         self.canvas.focus_set()
 
+    @staticmethod
+    def _normalize_adjacent_squares(raw_values: object) -> list[str]:
+        if not isinstance(raw_values, list):
+            return []
+        values: list[str] = []
+        seen: set[str] = set()
+        for raw in raw_values:
+            candidate = str(raw).strip().upper()
+            if len(candidate) != 2 or any(ch not in SQUARE_LETTERS for ch in candidate):
+                continue
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            values.append(candidate)
+        return values
+
+    @staticmethod
+    def _normalize_adjacent_circles(raw_values: object) -> list[int]:
+        if not isinstance(raw_values, list):
+            return []
+        values: list[int] = []
+        seen: set[int] = set()
+        for raw in raw_values:
+            try:
+                candidate = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            values.append(candidate)
+        return values
+
     def _load_markers(self, path: Path, kind: str) -> list[Marker]:
         markers: list[Marker] = []
         if not path.exists():
@@ -391,9 +555,17 @@ class WMHelperApp:
                 continue
             try:
                 record = self._parse_record_line(line)
-                marker = Marker(kind=kind, id=record["id"], x=float(record["x"]), y=float(record["y"]))
+                marker = Marker(
+                    kind=kind,
+                    id=record["id"],
+                    x=float(record["x"]),
+                    y=float(record["y"]),
+                    adjacent_squares=self._normalize_adjacent_squares(record.get("adjacentSquares")),
+                    adjacent_circles=self._normalize_adjacent_circles(record.get("adjacentCircles")),
+                )
                 if kind == "circle":
                     marker.id = int(marker.id)
+                    marker.adjacent_circles = []
                 else:
                     marker.id = str(marker.id).upper()
                 markers.append(marker)
@@ -402,14 +574,20 @@ class WMHelperApp:
 
         return markers
 
-    def _parse_record_line(self, line: str) -> dict[str, int | str]:
+    def _parse_record_line(self, line: str) -> dict[str, object]:
         try:
             parsed = json.loads(line)
             if not isinstance(parsed, dict):
                 raise ValueError("record is not an object")
             if not {"id", "x", "y"}.issubset(parsed):
                 raise ValueError("missing one of id/x/y")
-            return {"id": parsed["id"], "x": parsed["x"], "y": parsed["y"]}
+            return {
+                "id": parsed["id"],
+                "x": parsed["x"],
+                "y": parsed["y"],
+                "adjacentSquares": parsed.get("adjacentSquares", []),
+                "adjacentCircles": parsed.get("adjacentCircles", []),
+            }
         except json.JSONDecodeError:
             match = BARE_JSON_RE.match(line)
             if not match:
@@ -427,6 +605,8 @@ class WMHelperApp:
                 "id": record_id,
                 "x": float(match.group("x")),
                 "y": float(match.group("y")),
+                "adjacentSquares": [],
+                "adjacentCircles": [],
             }
 
     def _save_markers(self) -> None:
@@ -471,6 +651,11 @@ class WMHelperApp:
         ring_radius = (CIRCLE_RING_DIAMETER_PX * self.zoom) / 2
         square_half = (SQUARE_OUTLINE_SIZE_PX * self.zoom) / 2
         preview_target = self.edit_preview_target if self.edit_preview_marker is not None else None
+        highlighted_square_ids: set[str] = set()
+        highlighted_circle_ids: set[int] = set()
+        if self.edit_preview_marker is not None:
+            highlighted_square_ids = set(self._normalize_adjacent_squares(self.edit_preview_marker.adjacent_squares))
+            highlighted_circle_ids = set(self._normalize_adjacent_circles(self.edit_preview_marker.adjacent_circles))
 
         def draw_marker(marker: Marker, text_color: str, *, shape_color: str | None = None) -> None:
             x = marker.x * self.zoom
@@ -513,12 +698,17 @@ class WMHelperApp:
         for index, marker in enumerate(self.circles):
             if preview_target == ("circle", index):
                 continue
-            draw_marker(marker, MAGENTA)
+            circle_color = GREEN if int(marker.id) in highlighted_circle_ids else MAGENTA
+            draw_marker(marker, circle_color)
 
         for index, marker in enumerate(self.squares):
             if preview_target == ("square", index):
                 continue
-            draw_marker(marker, MAGENTA, shape_color=SQUARE_OUTLINE_COLOR)
+            square_id = str(marker.id).upper()
+            if square_id in highlighted_square_ids:
+                draw_marker(marker, GREEN, shape_color=GREEN)
+            else:
+                draw_marker(marker, MAGENTA, shape_color=SQUARE_OUTLINE_COLOR)
 
         if self.edit_preview_marker is not None:
             draw_marker(self.edit_preview_marker, RED, shape_color=RED)
@@ -563,9 +753,13 @@ class WMHelperApp:
             used_square_ids=used_square_ids,
             on_preview_change=preview_callback,
         )
+        self.active_edit_dialog = dialog
+        self.active_edit_preview_target = preview_target
         try:
             return dialog.show()
         finally:
+            self.active_edit_dialog = None
+            self.active_edit_preview_target = None
             self._clear_edit_preview()
 
     def _update_status(self, prefix: str | None = None) -> None:
@@ -573,7 +767,8 @@ class WMHelperApp:
             f"Zoom: {self.zoom:.2f}x | "
             f"Circles: {len(self.circles)} | Squares: {len(self.squares)} | "
             "Left-click: edit nearest, Middle-click: add square, Right-click: add circle, "
-            "Wheel: pan vertical, Shift+Wheel: pan horizontal, Ctrl+Wheel: zoom, Ctrl+Drag: pan"
+            "Wheel: pan vertical, Shift+Wheel: pan horizontal, Ctrl+Wheel: zoom, Ctrl+Drag: pan, "
+            "Dialog open + Left-click: toggle adjacency"
         )
         if prefix:
             message = f"{prefix} | {message}"
@@ -705,10 +900,121 @@ class WMHelperApp:
             return None
         return image_x, image_y
 
+    def _find_nearest_square(self, x: float, y: float, *, exclude_index: int | None = None) -> Marker | None:
+        nearest_marker: Marker | None = None
+        nearest_distance: float | None = None
+        for index, marker in enumerate(self.squares):
+            if exclude_index is not None and index == exclude_index:
+                continue
+            dx = marker.x - x
+            dy = marker.y - y
+            distance = (dx * dx) + (dy * dy)
+            if nearest_distance is None or distance < nearest_distance:
+                nearest_distance = distance
+                nearest_marker = marker
+        return nearest_marker
+
+    def _find_nearest_circle(self, x: float, y: float) -> Marker | None:
+        nearest_marker: Marker | None = None
+        nearest_distance: float | None = None
+        for marker in self.circles:
+            dx = marker.x - x
+            dy = marker.y - y
+            distance = (dx * dx) + (dy * dy)
+            if nearest_distance is None or distance < nearest_distance:
+                nearest_distance = distance
+                nearest_marker = marker
+        return nearest_marker
+
+    def _find_nearest_adjacent_target_for_square(self, x: float, y: float) -> tuple[str, Marker] | None:
+        exclude_square_index: int | None = None
+        if self.active_edit_preview_target is not None and self.active_edit_preview_target[0] == "square":
+            exclude_square_index = self.active_edit_preview_target[1]
+
+        nearest_square = self._find_nearest_square(x, y, exclude_index=exclude_square_index)
+        nearest_circle = self._find_nearest_circle(x, y)
+        if nearest_square is None and nearest_circle is None:
+            return None
+        if nearest_square is None:
+            return ("circle", nearest_circle)
+        if nearest_circle is None:
+            return ("square", nearest_square)
+
+        square_dx = nearest_square.x - x
+        square_dy = nearest_square.y - y
+        circle_dx = nearest_circle.x - x
+        circle_dy = nearest_circle.y - y
+        square_distance = (square_dx * square_dx) + (square_dy * square_dy)
+        circle_distance = (circle_dx * circle_dx) + (circle_dy * circle_dy)
+        if square_distance <= circle_distance:
+            return ("square", nearest_square)
+        return ("circle", nearest_circle)
+
+    def _toggle_dialog_adjacency_from_click(self, event: tk.Event) -> bool:
+        if self.active_edit_dialog is None:
+            return False
+        coords = self._event_to_image_coords(event, snap_to_half=False)
+        if coords is None:
+            return True
+
+        preview_marker = self.active_edit_dialog.get_preview_marker()
+        if preview_marker is None:
+            self._update_status("Cannot toggle adjacency while current edit values are invalid")
+            return True
+
+        if preview_marker.kind == "circle":
+            nearest_square = self._find_nearest_square(coords[0], coords[1])
+            if nearest_square is None:
+                self._update_status("No squares available to toggle adjacency")
+                return True
+            square_id = str(nearest_square.id).upper()
+            adjacent = self._normalize_adjacent_squares(preview_marker.adjacent_squares)
+            if square_id in adjacent:
+                adjacent = [value for value in adjacent if value != square_id]
+            else:
+                adjacent.append(square_id)
+            adjacent.sort()
+            self.active_edit_dialog.set_adjacent_squares(adjacent)
+            self._update_status(f'Toggled adjacent square "{square_id}"')
+            return True
+
+        target = self._find_nearest_adjacent_target_for_square(coords[0], coords[1])
+        if target is None:
+            self._update_status("No circles or squares available to toggle adjacency")
+            return True
+
+        target_kind, target_marker = target
+        if target_kind == "square":
+            square_id = str(target_marker.id).upper()
+            adjacent_squares = self._normalize_adjacent_squares(preview_marker.adjacent_squares)
+            if square_id in adjacent_squares:
+                adjacent_squares = [value for value in adjacent_squares if value != square_id]
+            else:
+                adjacent_squares.append(square_id)
+            adjacent_squares.sort()
+            self.active_edit_dialog.set_adjacent_squares(adjacent_squares)
+            self._update_status(f'Toggled adjacent square "{square_id}"')
+            return True
+
+        circle_id = int(target_marker.id)
+        adjacent_circles = self._normalize_adjacent_circles(preview_marker.adjacent_circles)
+        if circle_id in adjacent_circles:
+            adjacent_circles = [value for value in adjacent_circles if value != circle_id]
+        else:
+            adjacent_circles.append(circle_id)
+        adjacent_circles.sort()
+        self.active_edit_dialog.set_adjacent_circles(adjacent_circles)
+        self._update_status(f'Toggled adjacent circle "{circle_id}"')
+        return True
+
     def _on_left_click(self, event: tk.Event) -> None:
         if int(getattr(event, "state", 0)) & CONTROL_MASK:
             return
-        coords = self._event_to_image_coords(event, snap_to_half=True)
+        if self.active_edit_dialog is not None:
+            if self._toggle_dialog_adjacency_from_click(event):
+                return
+
+        coords = self._event_to_image_coords(event, snap_to_half=False)
         if coords is None:
             return
         nearest = self._find_nearest_marker(coords[0], coords[1])
@@ -748,6 +1054,9 @@ class WMHelperApp:
             self._update_status(f"Saved {updated_marker.kind} {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
 
     def _on_middle_click(self, event: tk.Event) -> None:
+        if self.active_edit_dialog is not None:
+            self._update_status("Finish or cancel the current edit before creating another marker")
+            return
         coords = self._event_to_image_coords(event, snap_to_half=True)
         if coords is None:
             return
@@ -779,6 +1088,9 @@ class WMHelperApp:
             self._update_status(f"Added square {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
 
     def _on_right_click(self, event: tk.Event) -> None:
+        if self.active_edit_dialog is not None:
+            self._update_status("Finish or cancel the current edit before creating another marker")
+            return
         coords = self._event_to_image_coords(event, snap_to_half=True)
         if coords is None:
             return
