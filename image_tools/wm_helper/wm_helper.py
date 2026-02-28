@@ -1386,12 +1386,19 @@ class WMHelperApp:
         coords = self._event_to_image_coords(event, snap_to_half=False)
         if coords is None:
             return
-        nearest = self._find_nearest_marker(coords[0], coords[1])
+        self._edit_nearest_at_coords(coords[0], coords[1])
+
+    def _edit_nearest_at_coords(self, x: float, y: float) -> None:
+        nearest = self._find_nearest_marker(x, y)
         if nearest is None:
             self._update_status("No markers to edit")
             return
 
-        kind, index, marker = nearest
+        kind, index, _marker = nearest
+        self._open_existing_marker_editor(kind, index)
+
+    def _open_existing_marker_editor(self, kind: str, index: int) -> None:
+        marker = self.circles[index] if kind == "circle" else self.squares[index]
         used_square_ids: set[str] = set()
         if kind == "square":
             used_square_ids = {str(m.id).upper() for i, m in enumerate(self.squares) if i != index}
@@ -1426,9 +1433,18 @@ class WMHelperApp:
             self._redraw_overlays()
             self._update_status(f"Saved {updated_marker.kind} {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
 
+    def _submit_and_edit_nearest_after_idle(self, x: float, y: float) -> None:
+        # If the dialog is still present, submission likely failed validation.
+        if self.active_edit_dialog is not None:
+            return
+        self._edit_nearest_at_coords(x, y)
+
     def _on_middle_click(self, event: tk.Event) -> None:
         if self.active_edit_dialog is not None:
+            coords = self._event_to_image_coords(event, snap_to_half=False)
             self.active_edit_dialog.on_ok()
+            if coords is not None:
+                self.root.after_idle(lambda x=coords[0], y=coords[1]: self._submit_and_edit_nearest_after_idle(x, y))
             return
         coords = self._event_to_image_coords(event, snap_to_half=True)
         if coords is None:
