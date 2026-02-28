@@ -15,6 +15,8 @@ from PIL import Image, ImageTk
 MAGENTA = "#FF00FF"
 RED = "#FF0000"
 GREEN = "#00FF00"
+CONNECTION_BLUE = "#3333FF"
+CONNECTION_LINE_WIDTH = 2
 SQUARE_OUTLINE_COLOR = "#FFFFFF"
 CIRCLE_RING_DIAMETER_PX = 32
 SQUARE_OUTLINE_SIZE_PX = 10
@@ -945,8 +947,8 @@ class WMHelperApp:
 
         def endpoint_offset(marker: Marker) -> float:
             if marker.kind == "circle":
-                return 17.0 * self.zoom
-            return 8.0 * self.zoom
+                return 16.0 * self.zoom
+            return 6.0 * self.zoom
 
         def draw_connection(
             source_key: tuple[object, ...],
@@ -976,7 +978,7 @@ class WMHelperApp:
             clipped_end_x = end_x - (unit_x * end_offset)
             clipped_end_y = end_y - (unit_y * end_offset)
 
-            line_color = MAGENTA
+            line_color = CONNECTION_BLUE
             if selected_line_key is not None and (source_key == selected_line_key or target_key == selected_line_key):
                 line_color = GREEN
 
@@ -986,7 +988,7 @@ class WMHelperApp:
                 clipped_end_x,
                 clipped_end_y,
                 fill=line_color,
-                width=1,
+                width=CONNECTION_LINE_WIDTH,
             )
             self.overlay_item_ids.append(line_id)
 
@@ -1426,7 +1428,7 @@ class WMHelperApp:
 
     def _on_middle_click(self, event: tk.Event) -> None:
         if self.active_edit_dialog is not None:
-            self._update_status("Finish or cancel the current edit before creating another marker")
+            self.active_edit_dialog.on_ok()
             return
         coords = self._event_to_image_coords(event, snap_to_half=True)
         if coords is None:
