@@ -17,6 +17,10 @@ RED = "#FF0000"
 GREEN = "#00FF00"
 CONNECTION_BLUE = "#3333FF"
 CONNECTION_LINE_WIDTH = 2
+WATER_COLOR = "#159E9C"
+WATER_CIRCLE_BLUE = "#0080FF"
+WATER_HULL_LINE_WIDTH = 2
+WATER_HULL_SAMPLES_PER_CIRCLE = 16
 SQUARE_OUTLINE_COLOR = "#FFFFFF"
 CIRCLE_RING_DIAMETER_PX = 32
 SQUARE_OUTLINE_SIZE_PX = 10
@@ -73,6 +77,116 @@ class Marker:
         if math.isclose(value, round(value), abs_tol=1e-9):
             return int(round(value))
         return round(value, 3)
+
+
+def convex_hull(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Return the counter-clockwise convex hull without repeating its first point."""
+    unique_points = sorted(set(points))
+    if len(unique_points) <= 1:
+        return unique_points
+
+    def cross(
+        origin: tuple[float, float],
+        first: tuple[float, float],
+        second: tuple[float, float],
+    ) -> float:
+        return ((first[0] - origin[0]) * (second[1] - origin[1])) - (
+            (first[1] - origin[1]) * (second[0] - origin[0])
+        )
+
+    lower: list[tuple[float, float]] = []
+    for point in unique_points:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], point) <= 0:
+            lower.pop()
+        lower.append(point)
+
+    upper: list[tuple[float, float]] = []
+    for point in reversed(unique_points):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], point) <= 0:
+            upper.pop()
+        upper.append(point)
+    return lower[:-1] + upper[:-1]
+
+
+def polygon_center(points: list[tuple[float, float]]) -> tuple[float, float]:
+    """Return the centroid of a polygon, with sensible fallbacks for short hulls."""
+    if not points:
+        raise ValueError("cannot find the center of an empty polygon")
+    if len(points) < 3:
+        return (
+            sum(point[0] for point in points) / len(points),
+            sum(point[1] for point in points) / len(points),
+        )
+
+    twice_area = 0.0
+    weighted_x = 0.0
+    weighted_y = 0.0
+    for index, point in enumerate(points):
+        next_point = points[(index + 1) % len(points)]
+        cross_product = (point[0] * next_point[1]) - (next_point[0] * point[1])
+        twice_area += cross_product
+        weighted_x += (point[0] + next_point[0]) * cross_product
+        weighted_y += (point[1] + next_point[1]) * cross_product
+    if math.isclose(twice_area, 0.0, abs_tol=1e-9):
+        return (
+            sum(point[0] for point in points) / len(points),
+            sum(point[1] for point in points) / len(points),
+        )
+    return weighted_x / (3 * twice_area), weighted_y / (3 * twice_area)
+
+
+class WaterGroupEditDialog:
+    def __init__(
+        self,
+        parent: tk.Tk,
+        group_id: int,
+        circle_ids: list[int],
+    ) -> None:
+        self.result: str | None = None
+        self.window = tk.Toplevel(parent)
+        self.window.title("Edit Water Group")
+        self.window.transient(parent)
+        self.window.resizable(False, False)
+        self.window.protocol("WM_DELETE_WINDOW", self.on_cancel)
+
+        frame = ttk.Frame(self.window, padding=12)
+        frame.grid(row=0, column=0, sticky="nsew")
+        ttk.Label(frame, text=f"Water group {group_id}").grid(row=0, column=0, columnspan=3, sticky="w")
+        ttk.Label(frame, text="Click circles on the map to add or remove them.").grid(
+            row=1, column=0, columnspan=3, sticky="w", pady=(4, 8)
+        )
+        self.members_var = tk.StringVar()
+        ttk.Label(frame, textvariable=self.members_var, wraplength=360).grid(
+            row=2, column=0, columnspan=3, sticky="w", pady=(0, 10)
+        )
+        ttk.Button(frame, text="OK", command=self.on_ok).grid(row=3, column=0, padx=(0, 4), sticky="ew")
+        ttk.Button(frame, text="Cancel", command=self.on_cancel).grid(row=3, column=1, padx=4, sticky="ew")
+        ttk.Button(frame, text="Delete", command=self.on_delete).grid(row=3, column=2, padx=(4, 0), sticky="ew")
+        self.set_circle_ids(circle_ids)
+        self.window.bind("<Return>", lambda _event: self.on_ok())
+        self.window.bind("<Escape>", lambda _event: self.on_cancel())
+        self.window.wait_visibility()
+        self.window.lift()
+
+    def set_circle_ids(self, circle_ids: list[int]) -> None:
+        text = ", ".join(str(circle_id) for circle_id in sorted(circle_ids)) or "(empty; saving will delete this group)"
+        self.members_var.set(f"Circles: {text}")
+
+    def show(self) -> str | None:
+        self.window.wait_window()
+        return self.result
+
+    def on_ok(self) -> None:
+        self.result = "save"
+        self.window.destroy()
+
+    def on_cancel(self) -> None:
+        self.result = "cancel"
+        self.window.destroy()
+
+    def on_delete(self) -> None:
+        self.result = "delete"
+        self.window.destroy()
 
 
 class MarkerEditDialog:
@@ -425,6 +539,7 @@ class WMHelperApp:
         self.circles_path = self.script_dir / "circles.jsonl"
         self.squares_path = self.script_dir / "squares.jsonl"
         self.connections_path = self.script_dir / "connections.jsonl"
+        self.water_groups_path = self.script_dir / "water_groups.jsonl"
 
         if not self.image_path.exists():
             raise FileNotFoundError(f"Image not found: {self.image_path}")
@@ -443,9 +558,15 @@ class WMHelperApp:
         self.edit_preview_marker: Marker | None = None
         self.active_edit_dialog: MarkerEditDialog | None = None
         self.active_edit_preview_target: tuple[str, int] | None = None
+        self.active_water_group_dialog: WaterGroupEditDialog | None = None
+        self.active_water_group_index: int | None = None
+        self.active_water_group_members: set[int] | None = None
+        self._ctrl_press_canvas_coords: tuple[float, float] | None = None
+        self._ctrl_pan_moved = False
 
         self.circles: list[Marker] = self._load_markers(self.circles_path, "circle")
         self.squares: list[Marker] = self._load_markers(self.squares_path, "square")
+        self.water_groups: list[list[int]] = self._load_water_groups()
         loaded_connections, has_connections_file = self._load_connections()
         if has_connections_file:
             self.connections: set[tuple[str, str]] = loaded_connections
@@ -694,6 +815,34 @@ class WMHelperApp:
                 print(f"Skipping invalid line in {self.connections_path.name}:{line_number}: {exc}")
         return connections, True
 
+    def _load_water_groups(self) -> list[list[int]]:
+        if not self.water_groups_path.exists():
+            return []
+        valid_circle_ids = {int(marker.id) for marker in self.circles}
+        groups: list[list[int]] = []
+        for line_number, raw_line in enumerate(self.water_groups_path.read_text(encoding="utf-8").splitlines(), start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                parsed = json.loads(line)
+                if not isinstance(parsed, list):
+                    raise ValueError("water group must be a JSON array of circle ids")
+                group = sorted({int(raw_id) for raw_id in parsed if int(raw_id) in valid_circle_ids})
+                if group:
+                    groups.append(group)
+            except Exception as exc:  # noqa: BLE001
+                print(f"Skipping invalid line in {self.water_groups_path.name}:{line_number}: {exc}")
+        return groups
+
+    def _write_water_groups(self) -> None:
+        self.water_groups_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.water_groups_path.open("w", encoding="utf-8", newline="\n") as handle:
+            for group in self.water_groups:
+                if group:
+                    handle.write(json.dumps(sorted(set(group)), ensure_ascii=True))
+                    handle.write("\n")
+
     def _write_connections(self) -> None:
         self.connections_path.parent.mkdir(parents=True, exist_ok=True)
         with self.connections_path.open("w", encoding="utf-8", newline="\n") as handle:
@@ -775,6 +924,24 @@ class WMHelperApp:
         self._remove_marker_connections(old_marker)
         self._add_marker_connections(updated_marker)
 
+    def _remove_circle_from_water_groups(self, circle_id: int) -> None:
+        self.water_groups = [
+            [member_id for member_id in group if member_id != circle_id]
+            for group in self.water_groups
+        ]
+        self.water_groups = [group for group in self.water_groups if group]
+
+    def _replace_circle_in_water_groups(self, old_circle_id: int, new_circle_id: int) -> None:
+        if old_circle_id == new_circle_id:
+            return
+        updated_groups: list[list[int]] = []
+        for group in self.water_groups:
+            updated = [new_circle_id if member_id == old_circle_id else member_id for member_id in group]
+            normalized = sorted(set(updated))
+            if normalized:
+                updated_groups.append(normalized)
+        self.water_groups = updated_groups
+
     def _persist_marker_state(self) -> None:
         self._sync_marker_adjacency_from_connections()
         self._save_markers()
@@ -783,6 +950,7 @@ class WMHelperApp:
         self._write_jsonl(self.circles_path, self.circles)
         self._write_jsonl(self.squares_path, self.squares)
         self._write_connections()
+        self._write_water_groups()
 
     def _write_jsonl(self, path: Path, markers: list[Marker]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -865,6 +1033,44 @@ class WMHelperApp:
             if token is None:
                 continue
             entries_by_token.setdefault(token, []).append(entry)
+
+        displayed_circles_by_id: dict[int, Marker] = {}
+        for _key, marker in display_circles:
+            try:
+                displayed_circles_by_id[int(marker.id)] = marker
+            except (TypeError, ValueError):
+                continue
+
+        displayed_water_groups = [list(group) for group in self.water_groups]
+        if self.active_water_group_dialog is not None and self.active_water_group_members is not None:
+            preview_group = sorted(self.active_water_group_members)
+            if self.active_water_group_index is None:
+                displayed_water_groups.append(preview_group)
+            else:
+                displayed_water_groups[self.active_water_group_index] = preview_group
+
+        water_circle_ids = {
+            circle_id
+            for group in displayed_water_groups
+            for circle_id in group
+            if circle_id in displayed_circles_by_id
+        }
+
+        water_group_labels: list[tuple[int, tuple[float, float]]] = []
+        for group_index, group in enumerate(displayed_water_groups):
+            geometry = self._water_group_geometry(group, displayed_circles_by_id)
+            if geometry is None:
+                continue
+            hull, center = geometry
+            scaled_hull = [coordinate * self.zoom for point in hull for coordinate in point]
+            hull_id = self.canvas.create_polygon(
+                *scaled_hull,
+                fill="",
+                outline=WATER_COLOR,
+                width=WATER_HULL_LINE_WIDTH,
+            )
+            self.overlay_item_ids.append(hull_id)
+            water_group_labels.append((group_index + 1, center))
 
         selected_marker_token: str | None = None
         if selected_line_key is not None and selected_line_key in display_by_key:
@@ -1038,7 +1244,13 @@ class WMHelperApp:
                 continue
             if preview_target is not None and key == (preview_target[0], preview_target[1]):
                 continue
-            circle_color = GREEN if int(marker.id) in highlighted_circle_ids else MAGENTA
+            circle_id = int(marker.id)
+            if circle_id in highlighted_circle_ids:
+                circle_color = GREEN
+            elif circle_id in water_circle_ids:
+                circle_color = WATER_CIRCLE_BLUE
+            else:
+                circle_color = MAGENTA
             draw_marker(marker, circle_color)
 
         for key, marker in display_squares:
@@ -1054,6 +1266,37 @@ class WMHelperApp:
 
         if self.edit_preview_marker is not None:
             draw_marker(self.edit_preview_marker, RED, shape_color=RED)
+
+        # Keep group ids above circles and connection lines, especially for one-circle groups.
+        for group_id, center in water_group_labels:
+            label_id = self.canvas.create_text(
+                center[0] * self.zoom,
+                center[1] * self.zoom,
+                text=str(group_id),
+                fill=WATER_COLOR,
+                font=("Consolas", circle_font_size, "bold"),
+                anchor="center",
+            )
+            self.overlay_item_ids.append(label_id)
+
+    @staticmethod
+    def _water_group_geometry(
+        group: list[int],
+        circles_by_id: dict[int, Marker],
+    ) -> tuple[list[tuple[float, float]], tuple[float, float]] | None:
+        markers = [circles_by_id[circle_id] for circle_id in group if circle_id in circles_by_id]
+        if not markers:
+            return None
+        radius = CIRCLE_RING_DIAMETER_PX / 2
+        outline_points: list[tuple[float, float]] = []
+        for marker in markers:
+            for sample_index in range(WATER_HULL_SAMPLES_PER_CIRCLE):
+                angle = (2 * math.pi * sample_index) / WATER_HULL_SAMPLES_PER_CIRCLE
+                outline_points.append(
+                    (marker.x + (radius * math.cos(angle)), marker.y + (radius * math.sin(angle)))
+                )
+        hull = convex_hull(outline_points)
+        return hull, polygon_center(hull)
 
     def _set_edit_preview(self, kind: str, index: int, marker: Marker | None) -> None:
         self.edit_preview_target = (kind, index)
@@ -1107,41 +1350,52 @@ class WMHelperApp:
     def _update_status(self, prefix: str | None = None) -> None:
         message = (
             f"Zoom: {self.zoom:.2f}x | "
-            f"Circles: {len(self.circles)} | Squares: {len(self.squares)} | "
+            f"Circles: {len(self.circles)} | Squares: {len(self.squares)} | Water groups: {len(self.water_groups)} | "
             "Left-click: edit nearest, Middle-click: add square, Right-click: add circle, "
-            "Wheel: pan vertical, Shift+Wheel: pan horizontal, Ctrl+Wheel: zoom, Ctrl+Drag: pan, "
-            "Dialog open + Left-click: toggle adjacency"
+            "Ctrl+click: edit water group, Wheel: pan vertical, Shift+Wheel: pan horizontal, "
+            "Ctrl+Wheel: zoom, Ctrl+Drag: pan, Dialog open + Left-click: toggle membership/adjacency"
         )
         if prefix:
             message = f"{prefix} | {message}"
         self.status_var.set(message)
 
     def _is_focus_inside_active_dialog(self) -> bool:
-        if self.active_edit_dialog is None:
+        dialog_window: tk.Toplevel | None = None
+        if self.active_edit_dialog is not None:
+            dialog_window = self.active_edit_dialog.window
+        elif self.active_water_group_dialog is not None:
+            dialog_window = self.active_water_group_dialog.window
+        if dialog_window is None:
             return False
         focused = self.root.focus_get()
         if focused is None:
             return False
         try:
-            return focused.winfo_toplevel() == self.active_edit_dialog.window
+            return focused.winfo_toplevel() == dialog_window
         except tk.TclError:
             return False
 
     def _on_global_home_key(self, _event: tk.Event) -> str | None:
-        if self.active_edit_dialog is None:
-            return None
         if self._is_focus_inside_active_dialog():
             return None
-        self.active_edit_dialog.on_ok()
-        return "break"
+        if self.active_edit_dialog is not None:
+            self.active_edit_dialog.on_ok()
+            return "break"
+        if self.active_water_group_dialog is not None:
+            self.active_water_group_dialog.on_ok()
+            return "break"
+        return None
 
     def _on_global_escape_key(self, _event: tk.Event) -> str | None:
-        if self.active_edit_dialog is None:
-            return None
         if self._is_focus_inside_active_dialog():
             return None
-        self.active_edit_dialog.on_cancel()
-        return "break"
+        if self.active_edit_dialog is not None:
+            self.active_edit_dialog.on_cancel()
+            return "break"
+        if self.active_water_group_dialog is not None:
+            self.active_water_group_dialog.on_cancel()
+            return "break"
+        return None
 
     def _on_canvas_configure(self, _event: tk.Event) -> None:
         self._update_status()
@@ -1168,18 +1422,33 @@ class WMHelperApp:
         return "break"
 
     def _on_ctrl_pan_start(self, event: tk.Event) -> str:
+        self._ctrl_press_canvas_coords = (float(event.x), float(event.y))
+        self._ctrl_pan_moved = False
         self.canvas.scan_mark(event.x, event.y)
-        self.canvas.configure(cursor="fleur")
         self._update_status()
         return "break"
 
     def _on_ctrl_pan_drag(self, event: tk.Event) -> str:
+        if self._ctrl_press_canvas_coords is not None:
+            dx = float(event.x) - self._ctrl_press_canvas_coords[0]
+            dy = float(event.y) - self._ctrl_press_canvas_coords[1]
+            if math.hypot(dx, dy) >= 4:
+                self._ctrl_pan_moved = True
+        if not self._ctrl_pan_moved:
+            return "break"
+        self.canvas.configure(cursor="fleur")
         self.canvas.scan_dragto(event.x, event.y, gain=1)
         return "break"
 
-    def _on_ctrl_pan_end(self, _event: tk.Event) -> str:
+    def _on_ctrl_pan_end(self, event: tk.Event) -> str:
         self.canvas.configure(cursor="")
-        self._update_status()
+        was_click = self._ctrl_press_canvas_coords is not None and not self._ctrl_pan_moved
+        self._ctrl_press_canvas_coords = None
+        self._ctrl_pan_moved = False
+        if was_click:
+            self._on_ctrl_click(event)
+        else:
+            self._update_status()
         return "break"
 
     def _reset_zoom(self) -> None:
@@ -1295,6 +1564,98 @@ class WMHelperApp:
                 nearest_marker = marker
         return nearest_marker
 
+    def _find_water_group_label_at(self, x: float, y: float) -> int | None:
+        circles_by_id = {int(marker.id): marker for marker in self.circles}
+        hit_radius_sq = (CIRCLE_RING_DIAMETER_PX / 2) ** 2
+        closest: tuple[float, int] | None = None
+        for group_index, group in enumerate(self.water_groups):
+            geometry = self._water_group_geometry(group, circles_by_id)
+            if geometry is None:
+                continue
+            center = geometry[1]
+            distance_sq = ((center[0] - x) ** 2) + ((center[1] - y) ** 2)
+            if distance_sq <= hit_radius_sq and (closest is None or distance_sq < closest[0]):
+                closest = (distance_sq, group_index)
+        return None if closest is None else closest[1]
+
+    def _on_ctrl_click(self, event: tk.Event) -> None:
+        if self.active_edit_dialog is not None or self.active_water_group_dialog is not None:
+            self._update_status("Finish or cancel the current edit before editing a water group")
+            return
+        coords = self._event_to_image_coords(event, snap_to_half=False)
+        if coords is None:
+            return
+        group_index = self._find_water_group_label_at(coords[0], coords[1])
+        if group_index is not None:
+            self._run_water_group_dialog(group_index, self.water_groups[group_index])
+            return
+        nearest_circle = self._find_nearest_circle(coords[0], coords[1])
+        if nearest_circle is None:
+            self._update_status("No circles available for a water group")
+            return
+        self._run_water_group_dialog(None, [int(nearest_circle.id)])
+
+    def _run_water_group_dialog(self, group_index: int | None, circle_ids: list[int]) -> None:
+        group_id = (group_index + 1) if group_index is not None else (len(self.water_groups) + 1)
+        dialog = WaterGroupEditDialog(self.root, group_id, circle_ids)
+        self.active_water_group_dialog = dialog
+        self.active_water_group_index = group_index
+        self.active_water_group_members = set(circle_ids)
+        self._redraw_overlays()
+        try:
+            action = dialog.show()
+            if action == "cancel" or action is None:
+                self._update_status("Water group edit canceled")
+                return
+            if group_index is None:
+                if action == "save" and self.active_water_group_members:
+                    self.water_groups.append(sorted(self.active_water_group_members))
+                    self._write_water_groups()
+                    self._update_status(f"Added water group {len(self.water_groups)}")
+                else:
+                    self._update_status("Empty water group discarded")
+                return
+
+            if action == "delete" or not self.active_water_group_members:
+                del self.water_groups[group_index]
+                self._write_water_groups()
+                self._update_status(f"Deleted water group {group_id}")
+            else:
+                self.water_groups[group_index] = sorted(self.active_water_group_members)
+                self._write_water_groups()
+                self._update_status(f"Saved water group {group_id}")
+        finally:
+            self.active_water_group_dialog = None
+            self.active_water_group_index = None
+            self.active_water_group_members = None
+            self._redraw_overlays()
+
+    def _toggle_water_group_circle_from_click(self, event: tk.Event) -> bool:
+        if self.active_water_group_dialog is None or self.active_water_group_members is None:
+            return False
+        coords = self._event_to_image_coords(event, snap_to_half=False)
+        if coords is None:
+            return True
+        nearest_circle = self._find_nearest_circle(coords[0], coords[1])
+        if nearest_circle is None:
+            self._update_status("No circles available to toggle")
+            return True
+        circle_id = int(nearest_circle.id)
+        if circle_id in self.active_water_group_members:
+            self.active_water_group_members.remove(circle_id)
+            action = "Removed"
+        else:
+            self.active_water_group_members.add(circle_id)
+            action = "Added"
+        self.active_water_group_dialog.set_circle_ids(sorted(self.active_water_group_members))
+        self._redraw_overlays()
+        if not self.active_water_group_members:
+            self._update_status("Removed the last circle; deleting the empty water group")
+            self.active_water_group_dialog.on_delete()
+            return True
+        self._update_status(f"{action} circle {circle_id} {'from' if action == 'Removed' else 'to'} water group")
+        return True
+
     def _find_nearest_adjacent_target_for_square(self, x: float, y: float) -> tuple[str, Marker] | None:
         exclude_square_index: int | None = None
         if self.active_edit_preview_target is not None and self.active_edit_preview_target[0] == "square":
@@ -1379,6 +1740,8 @@ class WMHelperApp:
     def _on_left_click(self, event: tk.Event) -> None:
         if int(getattr(event, "state", 0)) & CONTROL_MASK:
             return
+        if self._toggle_water_group_circle_from_click(event):
+            return
         if self.active_edit_dialog is not None:
             if self._toggle_dialog_adjacency_from_click(event):
                 return
@@ -1414,6 +1777,7 @@ class WMHelperApp:
         if action == "delete":
             if kind == "circle":
                 removed = self.circles.pop(index)
+                self._remove_circle_from_water_groups(int(removed.id))
             else:
                 removed = self.squares.pop(index)
             self._remove_marker_connections(removed)
@@ -1425,6 +1789,7 @@ class WMHelperApp:
             if kind == "circle":
                 original_marker = self.circles[index]
                 self.circles[index] = updated_marker
+                self._replace_circle_in_water_groups(int(original_marker.id), int(updated_marker.id))
             else:
                 original_marker = self.squares[index]
                 self.squares[index] = updated_marker
@@ -1440,6 +1805,9 @@ class WMHelperApp:
         self._edit_nearest_at_coords(x, y)
 
     def _on_middle_click(self, event: tk.Event) -> None:
+        if self.active_water_group_dialog is not None:
+            self._update_status("Use left-click to toggle circles, then finish the water group dialog")
+            return
         if self.active_edit_dialog is not None:
             coords = self._event_to_image_coords(event, snap_to_half=False)
             self.active_edit_dialog.on_ok()
@@ -1478,6 +1846,9 @@ class WMHelperApp:
             self._update_status(f"Added square {updated_marker.id} @ ({updated_marker.x}, {updated_marker.y})")
 
     def _on_right_click(self, event: tk.Event) -> None:
+        if self.active_water_group_dialog is not None:
+            self._update_status("Use left-click to toggle circles, then finish the water group dialog")
+            return
         if self.active_edit_dialog is not None:
             self._update_status("Finish or cancel the current edit before creating another marker")
             return
