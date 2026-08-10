@@ -15,12 +15,21 @@ from PIL import Image, ImageTk
 MAGENTA = "#FF00FF"
 RED = "#FF0000"
 GREEN = "#00FF00"
+WHITE_CIRCLE_ORANGE = "#FF7A00"
 CONNECTION_BLUE = "#3333FF"
 CONNECTION_LINE_WIDTH = 2
 WATER_COLOR = "#159E9C"
 WATER_CIRCLE_BLUE = "#0080FF"
 WATER_HULL_LINE_WIDTH = 2
 WATER_HULL_SAMPLES_PER_CIRCLE = 16
+ALLEY_GROUP_ID_COLOR = "#000000"
+ALLEY_GROUP_LABEL_BACKGROUND = "#FFFFFF"
+ALLEY_GROUP_LINE_COLOR = "#888888"
+ALLEY_GROUP_LINE_WIDTH = 2
+ALLEY_LABEL_GAP_PX = 0.5
+ALLEY_LABEL_PADDING_PX = 0.5
+ALLEY_CIRCLE_PIERCE_PX = 5.5
+GROUP_ID_FONT_SIZE_PX = 16
 SQUARE_OUTLINE_COLOR = "#FFFFFF"
 CIRCLE_RING_DIAMETER_PX = 32
 SQUARE_OUTLINE_SIZE_PX = 10
@@ -54,13 +63,17 @@ class Marker:
     y: float
     adjacent_squares: list[str] = field(default_factory=list)
     adjacent_circles: list[int] = field(default_factory=list)
+    color: str | None = None
 
     def to_record(self) -> dict[str, object]:
-        return {
+        record: dict[str, object] = {
             "id": self.id,
             "x": self._json_number(self.x),
             "y": self._json_number(self.y),
         }
+        if self.kind == "circle":
+            record["color"] = self.color if self.color in {"blue", "black", "white"} else "white"
+        return record
 
     def copy(self) -> "Marker":
         return Marker(
@@ -70,6 +83,7 @@ class Marker:
             self.y,
             list(self.adjacent_squares),
             list(self.adjacent_circles),
+            self.color,
         )
 
     @staticmethod
@@ -261,24 +275,42 @@ class MarkerEditDialog:
             command=lambda: self._nudge_coord(self.y_var, NUDGE_STEP, self._image_height),
         ).grid(row=0, column=2, padx=(2, 0))
 
-        ttk.Label(frame, text="Adjacent Squares").grid(row=4, column=0, sticky="w", padx=(0, 8), pady=4)
+        self.color_var = tk.StringVar(
+            value=marker.color if marker.color in {"white", "black", "blue"} else "white"
+        )
+        next_row = 4
+        if marker.kind == "circle":
+            ttk.Label(frame, text="Circle Color").grid(row=next_row, column=0, sticky="w", padx=(0, 8), pady=4)
+            self.color_combo = ttk.Combobox(
+                frame,
+                textvariable=self.color_var,
+                values=("white", "black", "blue"),
+                state="readonly",
+                width=25,
+            )
+            self.color_combo.grid(row=next_row, column=1, sticky="ew", pady=4)
+            next_row += 1
+        else:
+            self.color_combo = None
+
+        ttk.Label(frame, text="Adjacent Squares").grid(row=next_row, column=0, sticky="w", padx=(0, 8), pady=4)
         self.adjacent_squares_var = tk.StringVar(value=", ".join(str(value).upper() for value in marker.adjacent_squares))
         self.adjacent_squares_entry = ttk.Entry(frame, textvariable=self.adjacent_squares_var, width=28)
-        self.adjacent_squares_entry.grid(row=4, column=1, sticky="ew", pady=4)
+        self.adjacent_squares_entry.grid(row=next_row, column=1, sticky="ew", pady=4)
+        next_row += 1
 
         self.adjacent_circles_var = tk.StringVar(value=", ".join(str(value) for value in marker.adjacent_circles))
-        button_row_index = 5
         self._show_adjacent_circles = marker.kind == "square"
         if self._show_adjacent_circles:
-            ttk.Label(frame, text="Adjacent Circles").grid(row=5, column=0, sticky="w", padx=(0, 8), pady=4)
+            ttk.Label(frame, text="Adjacent Circles").grid(row=next_row, column=0, sticky="w", padx=(0, 8), pady=4)
             self.adjacent_circles_entry = ttk.Entry(frame, textvariable=self.adjacent_circles_var, width=28)
-            self.adjacent_circles_entry.grid(row=5, column=1, sticky="ew", pady=4)
-            button_row_index = 6
+            self.adjacent_circles_entry.grid(row=next_row, column=1, sticky="ew", pady=4)
+            next_row += 1
         else:
             self.adjacent_circles_entry = None
 
         button_row = ttk.Frame(frame)
-        button_row.grid(row=button_row_index, column=0, columnspan=2, sticky="ew", pady=(12, 0))
+        button_row.grid(row=next_row, column=0, columnspan=2, sticky="ew", pady=(12, 0))
         button_row.columnconfigure(0, weight=1)
         button_row.columnconfigure(1, weight=1)
         button_row.columnconfigure(2, weight=1)
@@ -295,7 +327,14 @@ class MarkerEditDialog:
         self.window.bind("<Up>", self._on_arrow_nudge)
         self.window.bind("<Down>", self._on_arrow_nudge)
 
-        for variable in (self.id_var, self.x_var, self.y_var, self.adjacent_squares_var, self.adjacent_circles_var):
+        for variable in (
+            self.id_var,
+            self.x_var,
+            self.y_var,
+            self.color_var,
+            self.adjacent_squares_var,
+            self.adjacent_circles_var,
+        ):
             variable.trace_add("write", self._on_fields_changed)
 
         self.id_entry.focus_set()
@@ -351,6 +390,8 @@ class MarkerEditDialog:
         variable.set(self._format_coord(next_value))
 
     def _on_arrow_nudge(self, event: tk.Event) -> str:
+        if self.color_combo is not None and event.widget is self.color_combo:
+            return ""
         step = 10 if (int(getattr(event, "state", 0)) & SHIFT_MASK) else 1
         delta = NUDGE_STEP * step
         if event.keysym == "Left":
@@ -524,6 +565,17 @@ class MarkerEditDialog:
         updated.y = y
         updated.adjacent_squares = adjacent_squares
         updated.adjacent_circles = adjacent_circles
+        if updated.kind == "circle":
+            color = self.color_var.get().strip().lower()
+            if color not in {"white", "black", "blue"}:
+                if show_errors:
+                    messagebox.showerror(
+                        "Invalid circle color",
+                        "Circle Color must be white, black, or blue.",
+                        parent=self.window,
+                    )
+                return None
+            updated.color = color
         return updated
 
 
@@ -540,6 +592,7 @@ class WMHelperApp:
         self.squares_path = self.script_dir / "squares.jsonl"
         self.connections_path = self.script_dir / "connections.jsonl"
         self.water_groups_path = self.script_dir / "water_groups.jsonl"
+        self.alley_groups_path = self.script_dir / "alley_groups.jsonl"
 
         if not self.image_path.exists():
             raise FileNotFoundError(f"Image not found: {self.image_path}")
@@ -563,10 +616,14 @@ class WMHelperApp:
         self.active_water_group_members: set[int] | None = None
         self._ctrl_press_canvas_coords: tuple[float, float] | None = None
         self._ctrl_pan_moved = False
+        self.show_alleys_var = tk.BooleanVar(value=True)
+        self.alley_hover_var = tk.StringVar(value="| Alley —")
+        self._last_alley_hover_coords: tuple[float, float] | None = None
 
         self.circles: list[Marker] = self._load_markers(self.circles_path, "circle")
         self.squares: list[Marker] = self._load_markers(self.squares_path, "square")
         self.water_groups: list[list[int]] = self._load_water_groups()
+        self.alley_groups: list[list[int]] = self._load_alley_groups()
         loaded_connections, has_connections_file = self._load_connections()
         if has_connections_file:
             self.connections: set[tuple[str, str]] = loaded_connections
@@ -600,6 +657,13 @@ class WMHelperApp:
             command=lambda: self._zoom_canvas(1.0, 1.0, 1 / ZOOM_STEP, relative_to_center=True),
         ).pack(side="left", padx=(4, 0))
         ttk.Button(toolbar, text="Reset Zoom", command=self._reset_zoom).pack(side="left", padx=(4, 0))
+        ttk.Checkbutton(
+            toolbar,
+            text="Show alleys",
+            variable=self.show_alleys_var,
+            command=self._on_show_alleys_toggled,
+        ).pack(side="left", padx=(10, 0))
+        ttk.Label(toolbar, textvariable=self.alley_hover_var).pack(side="left", padx=(8, 0))
 
         canvas_frame = ttk.Frame(outer)
         canvas_frame.grid(row=1, column=0, sticky="nsew")
@@ -630,6 +694,8 @@ class WMHelperApp:
         self.canvas.bind("<Button-2>", self._on_middle_click)
         self.canvas.bind("<Button-3>", self._on_right_click)
         self.canvas.bind("<MouseWheel>", self._on_mouse_wheel)
+        self.canvas.bind("<Motion>", self._on_canvas_motion)
+        self.canvas.bind("<Leave>", self._on_canvas_leave)
         self.canvas.bind("<Configure>", self._on_canvas_configure)
 
         self.root.bind("+", lambda _event: self._zoom_canvas(1.0, 1.0, ZOOM_STEP, relative_to_center=True))
@@ -691,6 +757,7 @@ class WMHelperApp:
                     y=float(record["y"]),
                     adjacent_squares=self._normalize_adjacent_squares(record.get("adjacentSquares")),
                     adjacent_circles=self._normalize_adjacent_circles(record.get("adjacentCircles")),
+                    color=self._normalize_circle_color(record.get("color")) if kind == "circle" else None,
                 )
                 if kind == "circle":
                     marker.id = int(marker.id)
@@ -703,6 +770,11 @@ class WMHelperApp:
 
         return markers
 
+    @staticmethod
+    def _normalize_circle_color(raw_color: object) -> str:
+        color = str(raw_color).strip().lower()
+        return color if color in {"blue", "black", "white"} else "white"
+
     def _parse_record_line(self, line: str) -> dict[str, object]:
         try:
             parsed = json.loads(line)
@@ -714,6 +786,7 @@ class WMHelperApp:
                 "id": parsed["id"],
                 "x": parsed["x"],
                 "y": parsed["y"],
+                "color": parsed.get("color"),
                 "adjacentSquares": parsed.get("adjacentSquares", []),
                 "adjacentCircles": parsed.get("adjacentCircles", []),
             }
@@ -734,6 +807,7 @@ class WMHelperApp:
                 "id": record_id,
                 "x": float(match.group("x")),
                 "y": float(match.group("y")),
+                "color": None,
                 "adjacentSquares": [],
                 "adjacentCircles": [],
             }
@@ -843,6 +917,40 @@ class WMHelperApp:
                     handle.write(json.dumps(sorted(set(group)), ensure_ascii=True))
                     handle.write("\n")
 
+    def _load_alley_groups(self) -> list[list[int]]:
+        if not self.alley_groups_path.exists():
+            return []
+        valid_circle_ids = {int(marker.id) for marker in self.circles}
+        groups: list[list[int]] = []
+        for line_number, raw_line in enumerate(self.alley_groups_path.read_text(encoding="utf-8").splitlines(), start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                parsed = json.loads(line)
+                if not isinstance(parsed, list):
+                    raise ValueError("alley group must be a JSON array of circle ids")
+                group: list[int] = []
+                seen: set[int] = set()
+                for raw_id in parsed:
+                    circle_id = int(raw_id)
+                    if circle_id in valid_circle_ids and circle_id not in seen:
+                        group.append(circle_id)
+                        seen.add(circle_id)
+                if len(group) >= 2:
+                    groups.append(group)
+            except Exception as exc:  # noqa: BLE001
+                print(f"Skipping invalid line in {self.alley_groups_path.name}:{line_number}: {exc}")
+        return groups
+
+    def _write_alley_groups(self) -> None:
+        self.alley_groups_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.alley_groups_path.open("w", encoding="utf-8", newline="\n") as handle:
+            for group in self.alley_groups:
+                if len(group) >= 2:
+                    handle.write(json.dumps([str(circle_id) for circle_id in group], ensure_ascii=True))
+                    handle.write("\n")
+
     def _write_connections(self) -> None:
         self.connections_path.parent.mkdir(parents=True, exist_ok=True)
         with self.connections_path.open("w", encoding="utf-8", newline="\n") as handle:
@@ -942,6 +1050,29 @@ class WMHelperApp:
                 updated_groups.append(normalized)
         self.water_groups = updated_groups
 
+    def _remove_circle_from_alley_groups(self, circle_id: int) -> None:
+        self.alley_groups = [
+            [member_id for member_id in group if member_id != circle_id]
+            for group in self.alley_groups
+        ]
+        self.alley_groups = [group for group in self.alley_groups if len(group) >= 2]
+
+    def _replace_circle_in_alley_groups(self, old_circle_id: int, new_circle_id: int) -> None:
+        if old_circle_id == new_circle_id:
+            return
+        updated_groups: list[list[int]] = []
+        for group in self.alley_groups:
+            updated: list[int] = []
+            seen: set[int] = set()
+            for member_id in group:
+                candidate = new_circle_id if member_id == old_circle_id else member_id
+                if candidate not in seen:
+                    updated.append(candidate)
+                    seen.add(candidate)
+            if len(updated) >= 2:
+                updated_groups.append(updated)
+        self.alley_groups = updated_groups
+
     def _persist_marker_state(self) -> None:
         self._sync_marker_adjacency_from_connections()
         self._save_markers()
@@ -951,6 +1082,7 @@ class WMHelperApp:
         self._write_jsonl(self.squares_path, self.squares)
         self._write_connections()
         self._write_water_groups()
+        self._write_alley_groups()
 
     def _write_jsonl(self, path: Path, markers: list[Marker]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -987,6 +1119,7 @@ class WMHelperApp:
         circle_font_size = -max(8, min(160, int(round(10 * self.zoom))))
         # Use pixel-sized text for squares so the two-letter label fills most of the 10px outline.
         square_font_size = -max(6, min(96, int(round(SQUARE_OUTLINE_SIZE_PX * self.zoom * 0.95))))
+        group_id_font_size = -max(12, min(256, int(round(GROUP_ID_FONT_SIZE_PX * self.zoom))))
         ring_radius = (CIRCLE_RING_DIAMETER_PX * self.zoom) / 2
         square_half = (SQUARE_OUTLINE_SIZE_PX * self.zoom) / 2
         preview_target = self.edit_preview_target if self.edit_preview_marker is not None else None
@@ -1071,6 +1204,15 @@ class WMHelperApp:
             )
             self.overlay_item_ids.append(hull_id)
             water_group_labels.append((group_index + 1, center))
+
+        alley_group_displays: list[tuple[int, tuple[float, float], list[Marker]]] = []
+        if self.show_alleys_var.get():
+            for group_index, group in enumerate(self.alley_groups):
+                geometry = self._alley_group_geometry(group, displayed_circles_by_id)
+                if geometry is None:
+                    continue
+                center, markers = geometry
+                alley_group_displays.append((group_index + 1, center, markers))
 
         selected_marker_token: str | None = None
         if selected_line_key is not None and selected_line_key in display_by_key:
@@ -1201,6 +1343,77 @@ class WMHelperApp:
         for source_key, source_marker, target_key, target_marker in connection_pairs:
             draw_connection(source_key, source_marker, target_key, target_marker)
 
+        alley_group_label_items: list[tuple[int, int]] = []
+        for group_id, center, markers in alley_group_displays:
+            center_x = center[0] * self.zoom
+            center_y = center[1] * self.zoom
+            label_id = self.canvas.create_text(
+                center_x,
+                center_y,
+                text=str(group_id),
+                fill=ALLEY_GROUP_ID_COLOR,
+                font=("Consolas", circle_font_size, "bold"),
+                anchor="center",
+            )
+            self.overlay_item_ids.append(label_id)
+            label_bounds = self.canvas.bbox(label_id)
+            if label_bounds is None:
+                continue
+            label_left, label_top, label_right, label_bottom = label_bounds
+            background_padding = ALLEY_LABEL_PADDING_PX * self.zoom
+            label_left -= background_padding
+            label_top -= background_padding
+            label_right += background_padding
+            label_bottom += background_padding
+            connector_gap = ALLEY_LABEL_GAP_PX * self.zoom
+            circle_end_offset = max(0.0, ring_radius - (ALLEY_CIRCLE_PIERCE_PX * self.zoom))
+
+            for marker in markers:
+                target_x = marker.x * self.zoom
+                target_y = marker.y * self.zoom
+                dx = target_x - center_x
+                dy = target_y - center_y
+                length = math.hypot(dx, dy)
+                if length <= circle_end_offset:
+                    continue
+
+                horizontal_exit = math.inf
+                if dx > 1e-9:
+                    horizontal_exit = ((label_right + connector_gap) - center_x) / dx
+                elif dx < -1e-9:
+                    horizontal_exit = ((label_left - connector_gap) - center_x) / dx
+
+                vertical_exit = math.inf
+                if dy > 1e-9:
+                    vertical_exit = ((label_bottom + connector_gap) - center_y) / dy
+                elif dy < -1e-9:
+                    vertical_exit = ((label_top - connector_gap) - center_y) / dy
+
+                start_fraction = min(horizontal_exit, vertical_exit)
+                end_fraction = 1 - (circle_end_offset / length)
+                if start_fraction >= end_fraction:
+                    continue
+                line_id = self.canvas.create_line(
+                    center_x + (dx * start_fraction),
+                    center_y + (dy * start_fraction),
+                    center_x + (dx * end_fraction),
+                    center_y + (dy * end_fraction),
+                    fill=ALLEY_GROUP_LINE_COLOR,
+                    width=ALLEY_GROUP_LINE_WIDTH,
+                )
+                self.overlay_item_ids.append(line_id)
+
+            background_id = self.canvas.create_rectangle(
+                label_left,
+                label_top,
+                label_right,
+                label_bottom,
+                fill=ALLEY_GROUP_LABEL_BACKGROUND,
+                outline="",
+            )
+            self.overlay_item_ids.append(background_id)
+            alley_group_label_items.append((background_id, label_id))
+
         def draw_marker(marker: Marker, text_color: str, *, shape_color: str | None = None) -> None:
             x = marker.x * self.zoom
             y = marker.y * self.zoom
@@ -1246,12 +1459,13 @@ class WMHelperApp:
                 continue
             circle_id = int(marker.id)
             if circle_id in highlighted_circle_ids:
-                circle_color = GREEN
-            elif circle_id in water_circle_ids:
-                circle_color = WATER_CIRCLE_BLUE
+                draw_marker(marker, GREEN, shape_color=GREEN)
+            elif marker.color == "blue" or circle_id in water_circle_ids:
+                draw_marker(marker, WATER_CIRCLE_BLUE)
+            elif marker.color == "white":
+                draw_marker(marker, MAGENTA, shape_color=WHITE_CIRCLE_ORANGE)
             else:
-                circle_color = MAGENTA
-            draw_marker(marker, circle_color)
+                draw_marker(marker, MAGENTA)
 
         for key, marker in display_squares:
             if key[0] == "preview":
@@ -1267,6 +1481,10 @@ class WMHelperApp:
         if self.edit_preview_marker is not None:
             draw_marker(self.edit_preview_marker, RED, shape_color=RED)
 
+        for background_id, label_id in alley_group_label_items:
+            self.canvas.tag_raise(background_id)
+            self.canvas.tag_raise(label_id)
+
         # Keep group ids above circles and connection lines, especially for one-circle groups.
         for group_id, center in water_group_labels:
             label_id = self.canvas.create_text(
@@ -1274,10 +1492,24 @@ class WMHelperApp:
                 center[1] * self.zoom,
                 text=str(group_id),
                 fill=WATER_COLOR,
-                font=("Consolas", circle_font_size, "bold"),
+                font=("Consolas", group_id_font_size, "bold"),
                 anchor="center",
             )
             self.overlay_item_ids.append(label_id)
+
+    @staticmethod
+    def _alley_group_geometry(
+        group: list[int],
+        circles_by_id: dict[int, Marker],
+    ) -> tuple[tuple[float, float], list[Marker]] | None:
+        markers = [circles_by_id[circle_id] for circle_id in group if circle_id in circles_by_id]
+        if len(markers) < 2:
+            return None
+        center = (
+            sum(marker.x for marker in markers) / len(markers),
+            sum(marker.y for marker in markers) / len(markers),
+        )
+        return center, markers
 
     @staticmethod
     def _water_group_geometry(
@@ -1350,7 +1582,8 @@ class WMHelperApp:
     def _update_status(self, prefix: str | None = None) -> None:
         message = (
             f"Zoom: {self.zoom:.2f}x | "
-            f"Circles: {len(self.circles)} | Squares: {len(self.squares)} | Water groups: {len(self.water_groups)} | "
+            f"Circles: {len(self.circles)} | Squares: {len(self.squares)} | "
+            f"Water groups: {len(self.water_groups)} | Alley groups: {len(self.alley_groups)} | "
             "Left-click: edit nearest, Middle-click: add square, Right-click: add circle, "
             "Ctrl+click: edit water group, Wheel: pan vertical, Shift+Wheel: pan horizontal, "
             "Ctrl+Wheel: zoom, Ctrl+Drag: pan, Dialog open + Left-click: toggle membership/adjacency"
@@ -1400,6 +1633,43 @@ class WMHelperApp:
     def _on_canvas_configure(self, _event: tk.Event) -> None:
         self._update_status()
 
+    def _on_show_alleys_toggled(self) -> None:
+        self._redraw_overlays()
+        self._update_alley_hover_text(self._last_alley_hover_coords)
+
+    def _on_canvas_motion(self, event: tk.Event) -> None:
+        self._last_alley_hover_coords = self._event_to_image_coords(event, snap_to_half=False)
+        self._update_alley_hover_text(self._last_alley_hover_coords)
+
+    def _on_canvas_leave(self, _event: tk.Event) -> None:
+        self._last_alley_hover_coords = None
+        self._update_alley_hover_text(None)
+
+    def _update_alley_hover_text(self, coords: tuple[float, float] | None) -> None:
+        if not self.show_alleys_var.get():
+            self.alley_hover_var.set("")
+            return
+        if coords is None:
+            self.alley_hover_var.set("| Alley —")
+            return
+
+        circles_by_id = {int(marker.id): marker for marker in self.circles}
+        nearest: tuple[float, int, list[int]] | None = None
+        for group_index, group in enumerate(self.alley_groups):
+            geometry = self._alley_group_geometry(group, circles_by_id)
+            if geometry is None:
+                continue
+            center, _markers = geometry
+            distance_sq = ((center[0] - coords[0]) ** 2) + ((center[1] - coords[1]) ** 2)
+            if nearest is None or distance_sq < nearest[0]:
+                nearest = (distance_sq, group_index + 1, group)
+
+        if nearest is None:
+            self.alley_hover_var.set("| Alley —")
+            return
+        circle_list = ", ".join(str(circle_id) for circle_id in nearest[2])
+        self.alley_hover_var.set(f"| Alley {nearest[1]}: [{circle_list}]")
+
     def _on_mouse_wheel(self, event: tk.Event) -> str:
         if not getattr(event, "delta", 0):
             return "break"
@@ -1411,13 +1681,16 @@ class WMHelperApp:
         if state & CONTROL_MASK:
             factor = ZOOM_STEP if event.delta > 0 else (1 / ZOOM_STEP)
             self._zoom_canvas(event.x, event.y, factor, relative_to_center=False, fast_preview=True)
+            self._on_canvas_motion(event)
             return "break"
         if state & SHIFT_MASK:
             self.canvas.xview_scroll(direction * steps * WHEEL_PAN_UNITS, "units")
+            self._on_canvas_motion(event)
             self._update_status()
             return "break"
 
         self.canvas.yview_scroll(direction * steps * WHEEL_PAN_UNITS, "units")
+        self._on_canvas_motion(event)
         self._update_status()
         return "break"
 
@@ -1438,6 +1711,7 @@ class WMHelperApp:
             return "break"
         self.canvas.configure(cursor="fleur")
         self.canvas.scan_dragto(event.x, event.y, gain=1)
+        self._on_canvas_motion(event)
         return "break"
 
     def _on_ctrl_pan_end(self, event: tk.Event) -> str:
@@ -1778,6 +2052,7 @@ class WMHelperApp:
             if kind == "circle":
                 removed = self.circles.pop(index)
                 self._remove_circle_from_water_groups(int(removed.id))
+                self._remove_circle_from_alley_groups(int(removed.id))
             else:
                 removed = self.squares.pop(index)
             self._remove_marker_connections(removed)
@@ -1790,6 +2065,7 @@ class WMHelperApp:
                 original_marker = self.circles[index]
                 self.circles[index] = updated_marker
                 self._replace_circle_in_water_groups(int(original_marker.id), int(updated_marker.id))
+                self._replace_circle_in_alley_groups(int(original_marker.id), int(updated_marker.id))
             else:
                 original_marker = self.squares[index]
                 self.squares[index] = updated_marker
@@ -1856,7 +2132,7 @@ class WMHelperApp:
         if coords is None:
             return
 
-        marker = Marker(kind="circle", id="", x=coords[0], y=coords[1])
+        marker = Marker(kind="circle", id="", x=coords[0], y=coords[1], color="white")
         result = self._run_marker_dialog(marker, used_square_ids=set())
         if result is None:
             return
