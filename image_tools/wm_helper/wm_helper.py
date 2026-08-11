@@ -31,6 +31,10 @@ ALLEY_LABEL_PADDING_PX = 0.5
 ALLEY_CIRCLE_PIERCE_PX = 5.5
 GROUP_ID_FONT_SIZE_PX = 16
 SQUARE_OUTLINE_COLOR = "#FFFFFF"
+STARTING_SQUARE_YELLOW = "#FFD700"
+STARTING_SQUARE_BLUE = "#0066FF"
+STARTING_SQUARE_OUTLINE_WIDTH = 2
+STARTING_SQUARE_DASH = (4, 3)
 CIRCLE_RING_DIAMETER_PX = 32
 SQUARE_OUTLINE_SIZE_PX = 10
 MIN_ZOOM = 0.2
@@ -64,6 +68,7 @@ class Marker:
     adjacent_squares: list[str] = field(default_factory=list)
     adjacent_circles: list[int] = field(default_factory=list)
     color: str | None = None
+    starting: bool = False
 
     def to_record(self) -> dict[str, object]:
         record: dict[str, object] = {
@@ -73,6 +78,8 @@ class Marker:
         }
         if self.kind == "circle":
             record["color"] = self.color if self.color in {"blue", "black", "white"} else "white"
+        elif self.kind == "square":
+            record["starting"] = self.starting
         return record
 
     def copy(self) -> "Marker":
@@ -84,6 +91,7 @@ class Marker:
             list(self.adjacent_squares),
             list(self.adjacent_circles),
             self.color,
+            self.starting,
         )
 
     @staticmethod
@@ -278,6 +286,7 @@ class MarkerEditDialog:
         self.color_var = tk.StringVar(
             value=marker.color if marker.color in {"white", "black", "blue"} else "white"
         )
+        self.starting_var = tk.BooleanVar(value=marker.starting)
         next_row = 4
         if marker.kind == "circle":
             ttk.Label(frame, text="Circle Color").grid(row=next_row, column=0, sticky="w", padx=(0, 8), pady=4)
@@ -289,9 +298,17 @@ class MarkerEditDialog:
                 width=25,
             )
             self.color_combo.grid(row=next_row, column=1, sticky="ew", pady=4)
+            self.starting_checkbutton = None
             next_row += 1
         else:
             self.color_combo = None
+            self.starting_checkbutton = ttk.Checkbutton(
+                frame,
+                text="Valid Starting Spot",
+                variable=self.starting_var,
+            )
+            self.starting_checkbutton.grid(row=next_row, column=0, columnspan=2, sticky="w", pady=4)
+            next_row += 1
 
         ttk.Label(frame, text="Adjacent Squares").grid(row=next_row, column=0, sticky="w", padx=(0, 8), pady=4)
         self.adjacent_squares_var = tk.StringVar(value=", ".join(str(value).upper() for value in marker.adjacent_squares))
@@ -332,6 +349,7 @@ class MarkerEditDialog:
             self.x_var,
             self.y_var,
             self.color_var,
+            self.starting_var,
             self.adjacent_squares_var,
             self.adjacent_circles_var,
         ):
@@ -576,6 +594,9 @@ class MarkerEditDialog:
                     )
                 return None
             updated.color = color
+            updated.starting = False
+        else:
+            updated.starting = self.starting_var.get()
         return updated
 
 
@@ -758,6 +779,7 @@ class WMHelperApp:
                     adjacent_squares=self._normalize_adjacent_squares(record.get("adjacentSquares")),
                     adjacent_circles=self._normalize_adjacent_circles(record.get("adjacentCircles")),
                     color=self._normalize_circle_color(record.get("color")) if kind == "circle" else None,
+                    starting=self._normalize_starting(record.get("starting")) if kind == "square" else False,
                 )
                 if kind == "circle":
                     marker.id = int(marker.id)
@@ -775,6 +797,10 @@ class WMHelperApp:
         color = str(raw_color).strip().lower()
         return color if color in {"blue", "black", "white"} else "white"
 
+    @staticmethod
+    def _normalize_starting(raw_starting: object) -> bool:
+        return raw_starting is True
+
     def _parse_record_line(self, line: str) -> dict[str, object]:
         try:
             parsed = json.loads(line)
@@ -787,6 +813,7 @@ class WMHelperApp:
                 "x": parsed["x"],
                 "y": parsed["y"],
                 "color": parsed.get("color"),
+                "starting": parsed.get("starting", False),
                 "adjacentSquares": parsed.get("adjacentSquares", []),
                 "adjacentCircles": parsed.get("adjacentCircles", []),
             }
@@ -808,6 +835,7 @@ class WMHelperApp:
                 "x": float(match.group("x")),
                 "y": float(match.group("y")),
                 "color": None,
+                "starting": False,
                 "adjacentSquares": [],
                 "adjacentCircles": [],
             }
@@ -1428,15 +1456,35 @@ class WMHelperApp:
                 )
                 self.overlay_item_ids.append(ring_id)
             elif marker.kind == "square":
-                box_id = self.canvas.create_rectangle(
-                    x - square_half,
-                    y - square_half,
-                    x + square_half,
-                    y + square_half,
-                    outline=(shape_color or SQUARE_OUTLINE_COLOR),
-                    width=1,
-                )
-                self.overlay_item_ids.append(box_id)
+                if marker.starting and shape_color is None:
+                    blue_box_id = self.canvas.create_rectangle(
+                        x - square_half,
+                        y - square_half,
+                        x + square_half,
+                        y + square_half,
+                        outline=STARTING_SQUARE_BLUE,
+                        width=STARTING_SQUARE_OUTLINE_WIDTH,
+                    )
+                    yellow_box_id = self.canvas.create_rectangle(
+                        x - square_half,
+                        y - square_half,
+                        x + square_half,
+                        y + square_half,
+                        outline=STARTING_SQUARE_YELLOW,
+                        width=STARTING_SQUARE_OUTLINE_WIDTH,
+                        dash=STARTING_SQUARE_DASH,
+                    )
+                    self.overlay_item_ids.extend((blue_box_id, yellow_box_id))
+                else:
+                    box_id = self.canvas.create_rectangle(
+                        x - square_half,
+                        y - square_half,
+                        x + square_half,
+                        y + square_half,
+                        outline=(shape_color or SQUARE_OUTLINE_COLOR),
+                        width=1,
+                    )
+                    self.overlay_item_ids.append(box_id)
 
             text_id = self.canvas.create_text(
                 x,
@@ -1476,7 +1524,7 @@ class WMHelperApp:
             if square_id in highlighted_square_ids:
                 draw_marker(marker, GREEN, shape_color=GREEN)
             else:
-                draw_marker(marker, MAGENTA, shape_color=SQUARE_OUTLINE_COLOR)
+                draw_marker(marker, MAGENTA)
 
         if self.edit_preview_marker is not None:
             draw_marker(self.edit_preview_marker, RED, shape_color=RED)
