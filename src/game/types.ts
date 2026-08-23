@@ -1,6 +1,6 @@
 export type CircleColor = 'white' | 'black' | 'blue'
 
-export type Quadrant = 'bA' | 'bB' | 'aA' | 'aB'
+export type Quadrant = 'NW' | 'NE' | 'SW' | 'SE'
 
 export type InvestigatorColor = 'yellow' | 'blue' | 'red'
 
@@ -114,4 +114,3 @@ export type GameAction =
   | { type: 'arrestCircle'; circleId: number }
   | { type: 'passInspectorAction' }
   | { type: 'newGame' }
-

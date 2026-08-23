@@ -17,6 +17,14 @@ import {
   startingCrossings,
   waterGroups,
 } from './mapData'
+import {
+  CROSSING_IDS_STORAGE_KEY,
+  GAME_STORAGE_KEY,
+  loadBooleanPreference,
+  loadStoredGame,
+  saveBooleanPreference,
+  saveStoredGame,
+} from './persistence'
 import type { GameAction, GameState, PublicRoundEvidence } from './types'
 
 const apply = (state: GameState, ...actions: GameAction[]) =>
@@ -49,6 +57,10 @@ describe('Whitehall map data', () => {
     expect(circles.filter((circle) => circle.color === 'black')).toHaveLength(64)
     expect(circles.filter((circle) => circle.color === 'blue')).toHaveLength(20)
     expect(waterGroups.flat().every((id) => circlesById.get(id)?.color === 'blue')).toBe(true)
+    expect(circlesById.get(33)?.quadrant).toBe('NW')
+    expect(circlesById.get(46)?.quadrant).toBe('NE')
+    expect(circlesById.get(159)?.quadrant).toBe('SW')
+    expect(circlesById.get(147)?.quadrant).toBe('SE')
   })
 
   test('derives the two movement graphs', () => {
@@ -57,6 +69,33 @@ describe('Whitehall map data', () => {
       [...investigatorNeighbors.values()].reduce((total, destinations) => total + destinations.size, 0) / 2
     expect(jackEdges).toBe(340)
     expect(investigatorEdges).toBe(365)
+  })
+})
+
+describe('local persistence', () => {
+  const createMemoryStorage = () => {
+    const values = new Map<string, string>()
+    return {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    }
+  }
+
+  test('round-trips a complete game snapshot and crossing-label preference', () => {
+    const storage = createMemoryStorage()
+    const state = setupGame()
+    saveStoredGame(storage, state)
+    saveBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY, true)
+    expect(loadStoredGame(storage)).toEqual(state)
+    expect(loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY)).toBe(true)
+  })
+
+  test('rejects corrupt or outdated game snapshots', () => {
+    const storage = createMemoryStorage()
+    storage.setItem(GAME_STORAGE_KEY, '{not-json')
+    expect(loadStoredGame(storage)).toBeNull()
+    storage.setItem(GAME_STORAGE_KEY, JSON.stringify({ version: 99, state: setupGame() }))
+    expect(loadStoredGame(storage)).toBeNull()
   })
 })
 

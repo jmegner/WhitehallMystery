@@ -36,7 +36,7 @@ export const createInitialGame = (): GameState => ({
   inspectorActionMode: 'choose',
   checkedThisAction: [],
   publicLog: ['Jack must secretly choose four Discovery Locations.'],
-  notice: 'Choose one white circle in each map quadrant.',
+  notice: 'Choose one white circle in each board region: NW, NE, SW, and SE.',
   result: null,
 })
 
@@ -245,14 +245,14 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       return {
         ...state,
         discoveryLocations: [...withoutQuadrant, circle.id].sort((a, b) => a - b),
-        notice: `Selected a secret Discovery Location in quadrant ${circle.quadrant}.`,
+        notice: `Selected a secret Discovery Location in the ${circle.quadrant} region.`,
       }
     }
     case 'confirmDiscoveries': {
       if (state.stage !== 'jackDiscoverySetup') return state
       const quadrants = new Set(state.discoveryLocations.map((id) => circlesById.get(id)?.quadrant))
       if (state.discoveryLocations.length !== 4 || quadrants.size !== 4) {
-        return withNotice(state, 'Choose exactly one white circle in each of the four quadrants.')
+        return withNotice(state, 'Choose exactly one white circle in each of the NW, NE, SW, and SE regions.')
       }
       return {
         ...state,

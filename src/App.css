@@ -5,6 +5,7 @@
   --red: #8c2d2b;
   --gold: #b98522;
   --blue: #245f81;
+  --action-green: #2ee66b;
   --panel-shadow: 0 20px 60px rgb(0 0 0 / 28%);
 }
 
@@ -254,7 +255,16 @@ button:disabled {
   font-weight: 700;
 }
 
-.possibility-toggle {
+.board-options {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px !important;
+  flex-wrap: wrap;
+}
+
+.possibility-toggle,
+.crossing-toggle {
   display: flex;
   gap: 7px;
   align-items: center;
@@ -269,6 +279,17 @@ button:disabled {
   height: 24px;
   border-radius: 50%;
   background: #5d3487;
+}
+
+.crossing-id-label {
+  fill: #191512;
+  stroke: rgb(255 250 235 / 92%);
+  stroke-width: 3px;
+  paint-order: stroke fill;
+  font: 800 11px 'Inter', sans-serif;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 40%));
 }
 
 .board-scroll {
@@ -304,16 +325,15 @@ button:disabled {
 
 .legal-circle,
 .legal-crossing {
-  fill: rgb(49 209 200 / 18%);
-  stroke: #16e3d7;
+  fill: rgb(46 230 107 / 24%);
+  stroke: var(--action-green);
   stroke-width: 3;
   vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 3px rgb(0 0 0 / 80%));
 }
 
 .legal-crossing {
-  stroke: #f3cf54;
-  fill: rgb(243 207 84 / 35%);
+  fill: rgb(46 230 107 / 32%);
 }
 
 .selected-circle {
@@ -432,8 +452,8 @@ button:disabled {
 }
 
 .legend-dot.legal {
-  background: rgb(49 209 200 / 20%);
-  border-color: #16e3d7;
+  background: rgb(46 230 107 / 28%);
+  border-color: var(--action-green);
 }
 
 .control-panel {

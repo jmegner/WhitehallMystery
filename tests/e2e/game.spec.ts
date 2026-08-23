@@ -41,12 +41,23 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
 
   await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
   await expect(page.getByText('Private route')).toHaveCount(0)
+
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await expect(page.getByText('Round 1 · Move 1 of 15')).toBeVisible()
 })
 
 test('keeps the mobile layout within the viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
   await expect(page.locator('.game-board')).toBeVisible()
+  await expect(page.locator('.crossing-id-label')).toHaveCount(0)
+  await page.getByLabel('Show crossing IDs').check()
+  await expect(page.locator('.crossing-id-label')).toHaveCount(174)
+  await page.reload()
+  await expect(page.getByLabel('Show crossing IDs')).toBeChecked()
+  await expect(page.locator('.crossing-id-label')).toHaveCount(174)
   const dimensions = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
     content: document.documentElement.scrollWidth,

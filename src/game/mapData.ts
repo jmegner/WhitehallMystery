@@ -33,7 +33,7 @@ const parseJsonLines = <T,>(raw: string, name: string): T[] =>
     })
 
 export const quadrantForPoint = (x: number, y: number): Quadrant =>
-  `${y < 600 ? 'b' : 'a'}${x < 600 ? 'A' : 'B'}` as Quadrant
+  `${y < 600 ? 'N' : 'S'}${x < 600 ? 'W' : 'E'}` as Quadrant
 
 const rawCircles = parseJsonLines<RawCircle>(circlesRaw, 'circles.jsonl')
 const rawCrossings = parseJsonLines<RawCrossing>(squaresRaw, 'squares.jsonl')
@@ -170,4 +170,3 @@ export const reachableCrossings = (start: string, maximumDistance = 2): Set<stri
   }
   return new Set(distances.keys())
 }
-

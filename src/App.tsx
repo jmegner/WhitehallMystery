@@ -13,6 +13,13 @@ import {
 import { movementLabel, possibleJackLocations } from './game/inference'
 import { circles, circlesById, crossings, crossingsById } from './game/mapData'
 import {
+  CROSSING_IDS_STORAGE_KEY,
+  loadBooleanPreference,
+  loadStoredGame,
+  saveBooleanPreference,
+  saveStoredGame,
+} from './game/persistence'
+import {
   INVESTIGATOR_ORDER,
   type GameAction,
   type GameState,
@@ -21,7 +28,7 @@ import {
 } from './game/types'
 
 const BOARD_SIZE = 1200
-const QUADRANTS: Quadrant[] = ['bA', 'bB', 'aA', 'aB']
+const QUADRANTS: Quadrant[] = ['NW', 'NE', 'SW', 'SE']
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
 
 const isHandoff = (stage: GameState['stage']) =>
@@ -37,6 +44,19 @@ const isPrivateJackView = (stage: GameState['stage']) =>
   stage === 'jackDiscoverySetup' || stage === 'jackChooseStart' || stage === 'jackMove'
 
 const displayColor = (color: string) => `${color.charAt(0).toUpperCase()}${color.slice(1)}`
+
+const browserStorage = () => {
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+const initializeGame = () => {
+  const storage = browserStorage()
+  return (storage && loadStoredGame(storage)) || createInitialGame()
+}
 
 const titleForStage = (state: GameState) => {
   const color = activeInvestigatorColor(state)
@@ -62,6 +82,7 @@ interface BoardProps {
   legalCrossingIds: Set<string>
   possibleIds: Set<number>
   showPossible: boolean
+  showCrossingIds: boolean
   onCircle: (circleId: number) => void
   onCrossing: (crossingId: string) => void
 }
@@ -72,6 +93,7 @@ function GameBoard({
   legalCrossingIds,
   possibleIds,
   showPossible,
+  showCrossingIds,
   onCircle,
   onCrossing,
 }: BoardProps) {
@@ -175,6 +197,19 @@ function GameBoard({
         )
       })}
 
+      {showCrossingIds &&
+        crossings.map((crossing) => (
+          <text
+            key={`crossing-label-${crossing.id}`}
+            className="crossing-id-label"
+            x={crossing.x}
+            y={crossing.y - 9}
+            textAnchor="middle"
+          >
+            {crossing.id}
+          </text>
+        ))}
+
       {INVESTIGATOR_ORDER.map((color) => {
         const crossingId = state.investigatorPositions[color]
         const crossing = crossingId ? crossingsById.get(crossingId) : undefined
@@ -276,7 +311,7 @@ function GameControls({ state, dispatch }: ControlsProps) {
     return (
       <>
         <p>
-          Select one white numbered circle in each grid quadrant. Selecting another location in the same quadrant replaces it.
+          Select one white numbered circle in each board region. Selecting another location in the same region replaces it.
         </p>
         <div className="quadrant-grid">
           {QUADRANTS.map((quadrant) => {
@@ -500,9 +535,19 @@ function HandoffScreen({ state, dispatch }: ControlsProps) {
 }
 
 function App() {
-  const [state, dispatch] = useReducer(gameReducer, undefined, createInitialGame)
+  const [state, reducerDispatch] = useReducer(gameReducer, undefined, initializeGame)
+  const dispatch = (action: GameAction) => {
+    const next = gameReducer(state, action)
+    reducerDispatch(action)
+    const storage = browserStorage()
+    if (storage) saveStoredGame(storage, next)
+  }
   const [zoom, setZoom] = useState(1)
   const [showPossible, setShowPossible] = useState(false)
+  const [showCrossingIds, setShowCrossingIds] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY) : false
+  })
 
   if (isHandoff(state.stage)) return <HandoffScreen state={state} dispatch={dispatch} />
 
@@ -590,17 +635,32 @@ function App() {
                 Reset
               </button>
             </div>
-            {isInspectorInteraction(state.stage) && state.publicRound && (
-              <label className="possibility-toggle">
+            <div className="board-options">
+              <label className="crossing-toggle">
                 <input
                   type="checkbox"
-                  checked={showPossible}
-                  onChange={(event) => setShowPossible(event.target.checked)}
+                  checked={showCrossingIds}
+                  onChange={(event) => {
+                    const checked = event.target.checked
+                    setShowCrossingIds(checked)
+                    const storage = browserStorage()
+                    if (storage) saveBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY, checked)
+                  }}
                 />
-                Show possible Jack locations
-                {showPossible && <strong>{possibleIds.size}</strong>}
+                Show crossing IDs
               </label>
-            )}
+              {isInspectorInteraction(state.stage) && state.publicRound && (
+                <label className="possibility-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showPossible}
+                    onChange={(event) => setShowPossible(event.target.checked)}
+                  />
+                  Show possible Jack locations
+                  {showPossible && <strong>{possibleIds.size}</strong>}
+                </label>
+              )}
+            </div>
           </div>
           <div className="board-scroll">
             <div className="board-zoom" style={{ width: `${zoom * 100}%` }}>
@@ -610,6 +670,7 @@ function App() {
                 legalCrossingIds={legalCrossingIds}
                 possibleIds={possibleIds}
                 showPossible={showPossible}
+                showCrossingIds={showCrossingIds}
                 onCircle={handleCircle}
                 onCrossing={handleCrossing}
               />

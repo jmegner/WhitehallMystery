@@ -20,7 +20,7 @@ The initial release implements the base rules. Optional variants such as Murdere
 - Model the game as a pure reducer/state machine with explicitly validated actions.
 - Keep Jack's Discovery Locations and trail private.
 - Maintain a separate public evidence record for the Investigator view and possibility calculation.
-- Enforce one white Discovery Location per board quadrant.
+- Enforce one white Discovery Location in each board region: NW, NE, SW, and SE.
 - Enforce three distinct Investigator starting crossings.
 - Run every Investigator phase in yellow, blue, red priority order.
 - Implement normal, Coach, Alley, and Boat movement, including move-track costs and Discovery Location restrictions.
