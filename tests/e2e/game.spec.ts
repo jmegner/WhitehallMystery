@@ -29,6 +29,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await expect(page.getByLabel('33, completed')).toHaveClass(/completed/)
   await expect(page.getByLabel('46, remaining')).toBeVisible()
   await expect(page.locator('.private-discovery-marker')).toHaveCount(3)
+  await expect(page.locator('.private-discovery-marker').first()).toHaveCSS('stroke', 'rgb(150, 25, 25)')
   const destinations = page.getByLabel('Legal Jack destinations')
   const firstDestination = Number(await destinations.getByRole('button').first().innerText())
   await destinations.getByRole('button').first().click()
@@ -87,8 +88,28 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   const pastPathToggle = page.getByRole('checkbox', { name: 'past path', exact: true })
   await pastPathToggle.check()
   await expect(page.locator('.past-path-line')).toBeVisible()
+  await expect(page.locator('.past-path-line')).toHaveCSS('stroke-dasharray', '5px, 3px')
   await expect(page.getByLabel(`Past path move 1, location ${firstDestination}`)).toBeVisible()
   await expect(page.locator('.past-path-step')).toHaveCount(1)
+  const pastPathClearances = await page.locator('.past-path-line').evaluate((line, destinationId) => {
+    const start = document.querySelector('[aria-label^="Location 33"]')
+    const destination = document.querySelector(`[aria-label^="Location ${destinationId}"]`)
+    if (!(line instanceof SVGLineElement) || !(start instanceof SVGCircleElement) || !(destination instanceof SVGCircleElement)) {
+      return [0, 0]
+    }
+    return [
+      Math.hypot(
+        Number(start.getAttribute('cx')) - Number(line.getAttribute('x1')),
+        Number(start.getAttribute('cy')) - Number(line.getAttribute('y1')),
+      ),
+      Math.hypot(
+        Number(destination.getAttribute('cx')) - Number(line.getAttribute('x2')),
+        Number(destination.getAttribute('cy')) - Number(line.getAttribute('y2')),
+      ),
+    ]
+  }, firstDestination)
+  expect(pastPathClearances[0]).toBeGreaterThanOrEqual(18.4)
+  expect(pastPathClearances[1]).toBeGreaterThanOrEqual(18.4)
   await page.reload()
   await expect(page.getByRole('checkbox', { name: 'past path', exact: true })).toBeChecked()
   await expect(page.locator('.past-path-line')).toBeVisible()

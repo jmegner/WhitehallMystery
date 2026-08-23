@@ -44,6 +44,19 @@ const ROUTE_CIRCLE_RADIUS = 18.5
 const QUADRANTS: Quadrant[] = ['NW', 'NE', 'SW', 'SE']
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
 
+const trimmedRouteSegments = (points: { x: number; y: number }[]) =>
+  points.slice(0, -1).flatMap((from, index) => {
+    const to = points[index + 1]
+    if (!to) return []
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    const length = Math.hypot(dx, dy)
+    if (length <= ROUTE_CIRCLE_RADIUS * 2) return []
+    const xInset = (dx / length) * ROUTE_CIRCLE_RADIUS
+    const yInset = (dy / length) * ROUTE_CIRCLE_RADIUS
+    return [{ x1: from.x + xInset, y1: from.y + yInset, x2: to.x - xInset, y2: to.y - yInset }]
+  })
+
 const isHandoff = (stage: GameState['stage']) =>
   stage === 'handoffInspectorsSetup' ||
   stage === 'handoffJackStart' ||
@@ -134,17 +147,7 @@ function GameBoard({
           .map((id) => circlesById.get(id))
           .filter((circle) => circle !== undefined)
       : []
-  const plannedRouteSegments = route.slice(0, -1).flatMap((from, index) => {
-    const to = route[index + 1]
-    if (!to) return []
-    const dx = to.x - from.x
-    const dy = to.y - from.y
-    const length = Math.hypot(dx, dy)
-    if (length <= ROUTE_CIRCLE_RADIUS * 2) return []
-    const xInset = (dx / length) * ROUTE_CIRCLE_RADIUS
-    const yInset = (dy / length) * ROUTE_CIRCLE_RADIUS
-    return [{ x1: from.x + xInset, y1: from.y + yInset, x2: to.x - xInset, y2: to.y - yInset }]
-  })
+  const plannedRouteSegments = trimmedRouteSegments(route)
   const activeInvestigator = isInspectorInteraction(state.stage)
     ? crossingsById.get(state.investigatorPositions[activeInvestigatorColor(state)] ?? '')
     : undefined
@@ -154,6 +157,7 @@ function GameBoard({
   const pastPath = showPastPath && isPrivateJackView(state.stage)
     ? state.roundTrail.map((id) => circlesById.get(id)).filter((circle) => circle !== undefined)
     : []
+  const pastPathSegments = trimmedRouteSegments(pastPath)
   const boardImage = `${import.meta.env.BASE_URL}map_pptx_simplified.jpg`
 
   return (
@@ -183,12 +187,16 @@ function GameBoard({
         />
       )}
 
-      {pastPath.length > 1 && (
-        <polyline
+      {pastPathSegments.map((segment, index) => (
+        <line
+          key={`past-path-${index}`}
           className="past-path-line"
-          points={pastPath.map((circle) => `${circle.x},${circle.y}`).join(' ')}
+          x1={segment.x1}
+          y1={segment.y1}
+          x2={segment.x2}
+          y2={segment.y2}
         />
-      )}
+      ))}
 
       {showPossible &&
         [...possibleIds].map((id) => {

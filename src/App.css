@@ -399,7 +399,7 @@ button:disabled {
   fill: none;
   stroke: #d31f26;
   stroke-width: 2;
-  stroke-dasharray: 7 6;
+  stroke-dasharray: 5 3;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
   filter: drop-shadow(0 0 2px rgb(255 250 235 / 90%));
@@ -467,8 +467,8 @@ button:disabled {
 }
 
 .private-discovery-marker {
-  fill: rgb(142 32 108 / 24%);
-  stroke: #7b1e63;
+  fill: rgb(150 25 25 / 24%);
+  stroke: #961919;
   stroke-width: 4;
   stroke-dasharray: 7 4;
   vector-effect: non-scaling-stroke;
@@ -577,8 +577,8 @@ button:disabled {
 }
 
 .legend-dot.private-discovery {
-  background: rgb(142 32 108 / 24%);
-  border-color: #7b1e63;
+  background: rgb(150 25 25 / 24%);
+  border-color: #961919;
   border-style: dashed;
 }
 
