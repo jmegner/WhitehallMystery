@@ -1,6 +1,6 @@
 When doing almost anything...
 
-- You should run `npm run build && npm run test` to make sure things compile and tests pass.
+- You should run `npm run lint && npm run build && npm run test` to make sure things compile and tests pass.
   - Exception, if you're working on some image-related utility rather than the web app, you don't have to run those things.
 - If your work affects the web app, you should probably use Playwright to test things out.
 
