@@ -248,6 +248,10 @@ button:disabled {
   background: rgb(255 255 255 / 88%);
 }
 
+.board-toolbar .zoom-reset-button {
+  font-size: 0.68rem;
+}
+
 .board-toolbar span {
   min-width: 46px;
   text-align: center;
@@ -261,6 +265,37 @@ button:disabled {
   justify-content: flex-end;
   gap: 14px !important;
   flex-wrap: wrap;
+}
+
+.history-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.history-controls button {
+  min-width: 54px;
+}
+
+.action-counter {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.handoff-card .history-controls {
+  justify-content: center;
+  margin-top: 22px;
+}
+
+.handoff-card .history-controls button {
+  padding: 8px 12px;
+}
+
+.handoff-card .action-counter {
+  min-width: auto;
+  color: #cfc4b4;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .possibility-toggle,
@@ -408,6 +443,15 @@ button:disabled {
 
 .investigator-piece.red circle {
   fill: #b02f2e;
+}
+
+.investigator-piece circle.active-investigator-ring {
+  fill: none;
+  stroke: #ff7a00;
+  stroke-width: 4;
+  opacity: 0.62;
+  pointer-events: none;
+  filter: drop-shadow(0 0 3px rgb(255 122 0 / 85%));
 }
 
 .jack-marker circle {

@@ -31,10 +31,11 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
 
   await page.getByLabel('Show possible Jack locations').check()
   await expect(page.locator('.possible-marker').first()).toBeVisible()
+  await expect(page.locator('.investigator-piece.yellow .active-investigator-ring')).toBeVisible()
 
-  for (const crossing of ['FP', 'HP', 'HZ']) {
-    await page.getByRole('button', { name: crossing, exact: true }).click()
-  }
+  await page.getByRole('button', { name: 'FP', exact: true }).click()
+  await expect(page.locator('.investigator-piece.blue .active-investigator-ring')).toBeVisible()
+  for (const crossing of ['HP', 'HZ']) await page.getByRole('button', { name: crossing, exact: true }).click()
   for (let index = 0; index < 3; index += 1) {
     await page.getByRole('button', { name: 'Pass', exact: true }).click()
   }
@@ -63,4 +64,39 @@ test('keeps the mobile layout within the viewport', async ({ page }) => {
     content: document.documentElement.scrollWidth,
   }))
   expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport)
+})
+
+test('undoes and redoes actions across private-view handoffs', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByLabel('0 player actions')).toHaveText('Actions 0')
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled()
+
+  for (const id of [33, 46, 147, 159]) {
+    await page.getByLabel(`Location ${id}, selectable`).click()
+  }
+  await expect(page.getByLabel('4 player actions')).toHaveText('Actions 4')
+
+  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(page.getByLabel('2 player actions')).toHaveText('Actions 2')
+  await page.getByLabel('Location 147, selectable').click()
+  await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Redo', exact: true }).click()
+  await expect(page.getByLabel('4 player actions')).toHaveText('Actions 4')
+
+  await page.getByRole('button', { name: 'Lock in four locations' }).click()
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await expect(page.getByRole('button', { name: 'Undo!', exact: true })).toBeEnabled()
+
+  await page.getByRole('button', { name: 'Undo!', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
+  await page.getByRole('button', { name: /reveal the restored view/i }).click()
+  await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
+  await expect(page.getByLabel('4 player actions')).toHaveText('Actions 4')
+
+  await page.getByRole('button', { name: 'Lock in four locations' }).click()
+  await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await expect(page.getByRole('heading', { name: /Deploy the Yellow Investigator/i })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeDisabled()
 })

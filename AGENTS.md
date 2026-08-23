@@ -8,3 +8,7 @@ When writing the TypeScript+React side...
 
 - Do not use useEffect; useEffect is synchronizing a React component with external systems (anything outside of React's state and props). We have no external systems. Everything is contained within our state and props.
 - Most of the time you do not need useMemo. Ask me before using useMemo.
+
+When manually testing the web app in a browser...
+
+- Use a fresh, previously unused dev-server port for each QA session instead of reusing port 4173. Close the QA tab and stop the server afterward; do not click "New game" merely to clean up test state, because that can surface reset confirmations and reuse persisted state from the shared origin.

@@ -4,20 +4,29 @@ import {
   activeInvestigatorColor,
   createInitialGame,
   deploymentChoices,
-  gameReducer,
   jackMoveReadyToConfirm,
   legalInspectorActionCircles,
   legalInvestigatorDestinations,
   legalJackDestinations,
 } from './game/gameEngine'
 import { movementLabel, possibleJackLocations } from './game/inference'
+import {
+  actionCount,
+  canRedo,
+  createGameHistory,
+  currentHistoryState,
+  gameHistoryReducer,
+  undoMode,
+  type GameHistory,
+  type PlayerView,
+} from './game/history'
 import { circles, circlesById, crossings, crossingsById } from './game/mapData'
 import {
   CROSSING_IDS_STORAGE_KEY,
   loadBooleanPreference,
-  loadStoredGame,
+  loadStoredHistory,
   saveBooleanPreference,
-  saveStoredGame,
+  saveStoredHistory,
 } from './game/persistence'
 import {
   INVESTIGATOR_ORDER,
@@ -53,9 +62,9 @@ const browserStorage = () => {
   }
 }
 
-const initializeGame = () => {
+const initializeHistory = () => {
   const storage = browserStorage()
-  return (storage && loadStoredGame(storage)) || createInitialGame()
+  return (storage && loadStoredHistory(storage)) || createGameHistory(createInitialGame())
 }
 
 const titleForStage = (state: GameState) => {
@@ -213,8 +222,10 @@ function GameBoard({
       {INVESTIGATOR_ORDER.map((color) => {
         const crossingId = state.investigatorPositions[color]
         const crossing = crossingId ? crossingsById.get(crossingId) : undefined
+        const active = isInspectorInteraction(state.stage) && activeInvestigatorColor(state) === color
         return crossing ? (
           <g key={`investigator-${color}`} className={`investigator-piece ${color}`}>
+            {active && <circle className="active-investigator-ring" cx={crossing.x} cy={crossing.y} r="15" />}
             <circle cx={crossing.x} cy={crossing.y} r="10" />
             <text x={crossing.x} y={crossing.y + 4} textAnchor="middle">
               {color[0]?.toUpperCase()}
@@ -295,6 +306,29 @@ function TargetButtons<T extends number | string>({
           {value}
         </button>
       ))}
+    </div>
+  )
+}
+
+interface HistoryControlsProps {
+  history: GameHistory
+  onUndo: () => void
+  onRedo: () => void
+}
+
+function HistoryControls({ history, onUndo, onRedo }: HistoryControlsProps) {
+  const mode = undoMode(history)
+  return (
+    <div className="history-controls" aria-label="Action history controls">
+      <button type="button" disabled={mode === 'disabled'} onClick={onUndo}>
+        {mode === 'cross-view' ? 'Undo!' : 'Undo'}
+      </button>
+      <button type="button" disabled={!canRedo(history)} onClick={onRedo}>
+        Redo
+      </button>
+      <span className="action-counter" aria-label={`${actionCount(history)} player actions`}>
+        Actions {actionCount(history)}
+      </span>
     </div>
   )
 }
@@ -509,7 +543,36 @@ function GameControls({ state, dispatch }: ControlsProps) {
   return null
 }
 
-function HandoffScreen({ state, dispatch }: ControlsProps) {
+interface HandoffProps extends ControlsProps, HistoryControlsProps {
+  undoRevealTarget?: PlayerView | null
+  onRevealUndo: () => void
+}
+
+function HandoffScreen({
+  state,
+  dispatch,
+  history,
+  onUndo,
+  onRedo,
+  undoRevealTarget,
+  onRevealUndo,
+}: HandoffProps) {
+  if (undoRevealTarget) {
+    const target = undoRevealTarget === 'jack' ? 'Jack' : 'Investigators'
+    return (
+      <main className="handoff-screen">
+        <div className="handoff-card">
+          <span className="eyebrow">Undo handoff</span>
+          <h1>Pass the device to {target}</h1>
+          <p>The previous player’s view has been restored just before their last confirmed action.</p>
+          <button className="reveal-button" type="button" onClick={onRevealUndo}>
+            I am the {target} player — reveal the restored view
+          </button>
+          <HistoryControls history={history} onUndo={onUndo} onRedo={onRedo} />
+        </div>
+      </main>
+    )
+  }
   const target =
     state.stage === 'handoffInspectorsSetup' || state.stage === 'handoffInspectorsTurn' ? 'Investigators' : 'Jack'
   const detail =
@@ -529,19 +592,27 @@ function HandoffScreen({ state, dispatch }: ControlsProps) {
         <button className="reveal-button" type="button" onClick={() => dispatch({ type: 'continueHandoff' })}>
           I am the {target} player — reveal my view
         </button>
+        <HistoryControls history={history} onUndo={onUndo} onRedo={onRedo} />
       </div>
     </main>
   )
 }
 
 function App() {
-  const [state, reducerDispatch] = useReducer(gameReducer, undefined, initializeGame)
-  const dispatch = (action: GameAction) => {
-    const next = gameReducer(state, action)
-    reducerDispatch(action)
+  const [history, historyDispatch] = useReducer(gameHistoryReducer, undefined, initializeHistory)
+  const state = currentHistoryState(history)
+  const applyHistoryCommand = (command: Parameters<typeof gameHistoryReducer>[1]) => {
+    const next = gameHistoryReducer(history, command)
+    historyDispatch(command)
     const storage = browserStorage()
-    if (storage) saveStoredGame(storage, next)
+    if (storage) saveStoredHistory(storage, next)
   }
+  const dispatch = (action: GameAction) => {
+    applyHistoryCommand({ type: 'apply', action })
+  }
+  const handleUndo = () => applyHistoryCommand({ type: 'undo' })
+  const handleRedo = () => applyHistoryCommand({ type: 'redo' })
+  const handleRevealUndo = () => applyHistoryCommand({ type: 'revealUndo' })
   const [zoom, setZoom] = useState(1)
   const [showPossible, setShowPossible] = useState(false)
   const [showCrossingIds, setShowCrossingIds] = useState(() => {
@@ -549,7 +620,19 @@ function App() {
     return storage ? loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY) : false
   })
 
-  if (isHandoff(state.stage)) return <HandoffScreen state={state} dispatch={dispatch} />
+  if (history.pendingReveal || isHandoff(state.stage)) {
+    return (
+      <HandoffScreen
+        state={state}
+        dispatch={dispatch}
+        history={history}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        undoRevealTarget={history.pendingReveal}
+        onRevealUndo={handleRevealUndo}
+      />
+    )
+  }
 
   const legalCircleIds = new Set<number>()
   const legalCrossingIds = new Set<string>()
@@ -631,11 +714,12 @@ function App() {
               <button type="button" onClick={() => setZoom(Math.min(2, zoom + 0.15))} aria-label="Zoom in">
                 +
               </button>
-              <button type="button" onClick={() => setZoom(1)}>
-                Reset
+              <button className="zoom-reset-button" type="button" onClick={() => setZoom(1)}>
+                Zoom Reset
               </button>
             </div>
             <div className="board-options">
+              <HistoryControls history={history} onUndo={handleUndo} onRedo={handleRedo} />
               <label className="crossing-toggle">
                 <input
                   type="checkbox"

@@ -1,9 +1,10 @@
 import type { GameState } from './types'
+import { createGameHistory, currentHistoryState, type GameHistory } from './history'
 
 export const GAME_STORAGE_KEY = 'whitehall-mystery.game.v1'
 export const CROSSING_IDS_STORAGE_KEY = 'whitehall-mystery.show-crossing-ids'
 
-const GAME_STORAGE_VERSION = 1
+const GAME_STORAGE_VERSION = 2
 
 interface StorageLike {
   getItem: (key: string) => string | null
@@ -68,23 +69,65 @@ export const isStoredGameState = (value: unknown): value is GameState => {
   return true
 }
 
-export const loadStoredGame = (storage: StorageLike): GameState | null => {
+const actionTypes = new Set([
+  'toggleDiscovery',
+  'confirmDiscoveries',
+  'continueHandoff',
+  'placeInvestigator',
+  'chooseJackStart',
+  'setJackMoveType',
+  'selectJackDestination',
+  'clearJackSelection',
+  'confirmJackMove',
+  'moveInvestigator',
+  'setInspectorActionMode',
+  'searchCircle',
+  'arrestCircle',
+  'passInspectorAction',
+  'newGame',
+])
+
+const isStoredGameHistory = (value: unknown): value is GameHistory => {
+  if (!isRecord(value) || !Array.isArray(value.entries) || value.entries.length === 0) return false
+  if (!Number.isInteger(value.cursor) || Number(value.cursor) < 0 || Number(value.cursor) >= value.entries.length) return false
+  if (value.pendingReveal !== null && value.pendingReveal !== 'jack' && value.pendingReveal !== 'investigators') return false
+  return value.entries.every(
+    (entry, index) =>
+      isRecord(entry) &&
+      isStoredGameState(entry.state) &&
+      typeof entry.counted === 'boolean' &&
+      (index === 0
+        ? entry.action === null
+        : isRecord(entry.action) && actionTypes.has(String(entry.action.type))),
+  )
+}
+
+export const loadStoredHistory = (storage: StorageLike): GameHistory | null => {
   try {
     const raw = storage.getItem(GAME_STORAGE_KEY)
     if (!raw) return null
     const envelope = JSON.parse(raw) as unknown
-    if (!isRecord(envelope) || envelope.version !== GAME_STORAGE_VERSION || !isStoredGameState(envelope.state)) {
-      return null
-    }
-    return envelope.state
+    if (!isRecord(envelope)) return null
+    if (envelope.version === GAME_STORAGE_VERSION && isStoredGameHistory(envelope.history)) return envelope.history
+    if (envelope.version === 1 && isStoredGameState(envelope.state)) return createGameHistory(envelope.state)
+    return null
   } catch {
     return null
   }
 }
 
+export const loadStoredGame = (storage: StorageLike): GameState | null => {
+  const history = loadStoredHistory(storage)
+  return history ? currentHistoryState(history) : null
+}
+
 export const saveStoredGame = (storage: StorageLike, state: GameState): void => {
+  saveStoredHistory(storage, createGameHistory(state))
+}
+
+export const saveStoredHistory = (storage: StorageLike, history: GameHistory): void => {
   try {
-    storage.setItem(GAME_STORAGE_KEY, JSON.stringify({ version: GAME_STORAGE_VERSION, state }))
+    storage.setItem(GAME_STORAGE_KEY, JSON.stringify({ version: GAME_STORAGE_VERSION, history }))
   } catch {
     // Storage can be unavailable in private or quota-restricted browser contexts.
   }
