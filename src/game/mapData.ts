@@ -81,19 +81,41 @@ for (const [first, second] of rawConnections) {
   }
 }
 
-export const jackTransitions = new Map<number, Map<number, string[]>>(
-  circles.map((circle) => [circle.id, new Map<number, string[]>()]),
+const directCrossingNeighbors = new Map<string, Set<string>>(
+  crossings.map((crossing) => [crossing.id, new Set<string>()]),
 )
 
-for (const [crossingId, adjacentCircles] of crossingToCircles) {
-  for (const from of adjacentCircles) {
-    for (const to of adjacentCircles) {
-      if (from === to) continue
-      const destinations = jackTransitions.get(from)
-      const via = destinations?.get(to) ?? []
-      if (!via.includes(crossingId)) via.push(crossingId)
-      destinations?.set(to, via)
-    }
+for (const [first, second] of directCrossingEdges) {
+  directCrossingNeighbors.get(first)?.add(second)
+  directCrossingNeighbors.get(second)?.add(first)
+}
+
+export const jackTransitions = new Map<number, Map<number, string[][]>>(
+  circles.map((circle) => [circle.id, new Map<number, string[][]>()]),
+)
+
+const addJackPath = (from: number, to: number, path: string[]) => {
+  const destinations = jackTransitions.get(from)
+  const paths = destinations?.get(to) ?? []
+  if (!paths.some((existing) => existing.length === path.length && existing.every((id, index) => id === path[index]))) {
+    paths.push(path)
+  }
+  destinations?.set(to, paths)
+}
+
+const traceJackPaths = (from: number, crossingId: string, path: string[], visited: Set<string>) => {
+  for (const to of crossingToCircles.get(crossingId) ?? []) {
+    if (to !== from) addJackPath(from, to, path)
+  }
+  for (const next of directCrossingNeighbors.get(crossingId) ?? []) {
+    if (visited.has(next)) continue
+    traceJackPaths(from, next, [...path, next], new Set([...visited, next]))
+  }
+}
+
+for (const circle of circles) {
+  for (const crossingId of circleToCrossings.get(circle.id) ?? []) {
+    traceJackPaths(circle.id, crossingId, [crossingId], new Set([crossingId]))
   }
 }
 

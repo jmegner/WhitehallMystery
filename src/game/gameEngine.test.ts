@@ -67,8 +67,19 @@ describe('Whitehall map data', () => {
     const jackEdges = [...jackTransitions.values()].reduce((total, destinations) => total + destinations.size, 0) / 2
     const investigatorEdges =
       [...investigatorNeighbors.values()].reduce((total, destinations) => total + destinations.size, 0) / 2
-    expect(jackEdges).toBe(340)
+    expect(jackEdges).toBe(673)
     expect(investigatorEdges).toBe(365)
+    expect([...jackTransitions.get(101)!.keys()].sort((a, b) => a - b)).toEqual([
+      70, 82, 83, 84, 85, 99, 100, 103, 118,
+    ])
+    expect(jackTransitions.get(101)?.get(84)).toContainEqual(['FF', 'FB'])
+    expect(jackTransitions.get(101)?.get(85)).toContainEqual(['FK', 'FG'])
+    expect(jackTransitions.get(101)?.get(118)).toContainEqual(['FJ', 'FM'])
+    for (const [from, destinations] of jackTransitions) {
+      for (const [to, paths] of destinations) {
+        for (const path of paths) expect(jackTransitions.get(to)?.get(from)).toContainEqual([...path].reverse())
+      }
+    }
   })
 })
 
@@ -148,15 +159,30 @@ describe('game reducer', () => {
 
   test('blocks an ordinary route through an occupied crossing', () => {
     const base = setupGame()
-    const transition = [...(jackTransitions.get(33)?.entries() ?? [])].find(([, via]) => via.length === 1)
+    const transition = [...(jackTransitions.get(33)?.entries() ?? [])].find(([, paths]) => paths.length === 1)
     expect(transition).toBeDefined()
-    const [destination, via] = transition as [number, string[]]
-    const otherCrossings = crossings.map((crossing) => crossing.id).filter((id) => id !== via[0])
+    const [destination, paths] = transition as [number, string[][]]
+    const blockedCrossing = paths[0]?.[0] as string
+    const otherCrossings = crossings.map((crossing) => crossing.id).filter((id) => id !== blockedCrossing)
     const blocked: GameState = {
       ...base,
-      investigatorPositions: { yellow: via[0] as string, blue: otherCrossings[0] as string, red: otherCrossings[1] as string },
+      investigatorPositions: {
+        yellow: blockedCrossing,
+        blue: otherCrossings[0] as string,
+        red: otherCrossings[1] as string,
+      },
     }
     expect(legalNormalDestinations(blocked)).not.toContain(destination)
+  })
+
+  test('Coach traverses consecutive crossings before reaching each numbered circle', () => {
+    const state: GameState = {
+      ...setupGame(),
+      currentJack: 100,
+      roundTrail: [100],
+      jackMoveSelection: { type: 'coach', path: [101] },
+    }
+    expect(legalJackDestinations(state)).toEqual([70, 82, 83, 84, 85, 99, 103, 118])
   })
 
   test('supports Alley and Boat destinations while excluding unreached discoveries', () => {

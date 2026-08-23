@@ -55,7 +55,7 @@ export const legalNormalDestinations = (state: GameState, from = state.currentJa
   if (from === null) return []
   const occupied = occupiedCrossings(state)
   return [...(jackTransitions.get(from)?.entries() ?? [])]
-    .filter(([, via]) => via.some((crossingId) => !occupied.has(crossingId)))
+    .filter(([, paths]) => paths.some((path) => path.every((crossingId) => !occupied.has(crossingId))))
     .map(([destination]) => destination)
     .sort((a, b) => a - b)
 }

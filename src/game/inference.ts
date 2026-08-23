@@ -14,7 +14,7 @@ const movementPaths = (from: number, move: PublicMoveEvidence): number[][] => {
   if (move.type === 'normal') {
     const blocked = occupied(move.investigatorPositions)
     return [...(jackTransitions.get(from)?.entries() ?? [])]
-      .filter(([, via]) => via.some((crossingId) => !blocked.has(crossingId)))
+      .filter(([, paths]) => paths.some((path) => path.every((crossingId) => !blocked.has(crossingId))))
       .map(([destination]) => [destination])
   }
   if (move.type === 'alley' || move.type === 'boat') {
@@ -89,4 +89,3 @@ export const possibleJackLocations = (evidence: PublicRoundEvidence | null): Set
 
 export const movementLabel = (type: JackMoveType) =>
   ({ normal: 'Street', coach: 'Coach', alley: 'Alley', boat: 'Boat' })[type]
-
