@@ -230,8 +230,8 @@ button:disabled {
   min-height: 42px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 4px;
   padding: 0 0 10px;
   color: white;
 }
@@ -239,7 +239,7 @@ button:disabled {
 .board-toolbar > div {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .board-toolbar button {
@@ -260,21 +260,24 @@ button:disabled {
 }
 
 .board-options {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 14px !important;
-  flex-wrap: wrap;
+  gap: 6px !important;
+  flex-wrap: nowrap;
 }
 
 .history-controls {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
 }
 
 .history-controls button {
-  min-width: 54px;
+  min-width: 50px;
+  padding-inline: 7px;
 }
 
 .action-counter {
@@ -301,10 +304,16 @@ button:disabled {
 .possibility-toggle,
 .crossing-toggle {
   display: flex;
-  gap: 7px;
+  gap: 4px;
   align-items: center;
-  font-size: 0.8rem;
+  white-space: nowrap;
+  font-size: 0.76rem;
   font-weight: 700;
+}
+
+.possibility-toggle input,
+.crossing-toggle input {
+  margin: 0;
 }
 
 .possibility-toggle strong {
@@ -334,6 +343,18 @@ button:disabled {
   border: 2px solid #49351f;
   background: #a98964;
   scrollbar-color: #62492f #d6c1a1;
+}
+
+.board-scroll.active-investigator-yellow {
+  border-color: #d8ad00;
+}
+
+.board-scroll.active-investigator-blue {
+  border-color: #1f68ab;
+}
+
+.board-scroll.active-investigator-red {
+  border-color: #b02f2e;
 }
 
 .board-zoom {
@@ -811,6 +832,11 @@ button:disabled {
   .board-toolbar {
     align-items: start;
     flex-direction: column;
+  }
+
+  .board-options {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .control-panel {

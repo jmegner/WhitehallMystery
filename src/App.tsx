@@ -731,7 +731,7 @@ function App() {
                     if (storage) saveBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY, checked)
                   }}
                 />
-                Show crossing IDs
+                crossing ids
               </label>
               {isInspectorInteraction(state.stage) && state.publicRound && (
                 <label className="possibility-toggle">
@@ -740,13 +740,19 @@ function App() {
                     checked={showPossible}
                     onChange={(event) => setShowPossible(event.target.checked)}
                   />
-                  Show possible Jack locations
+                  Jack possibilities
                   {showPossible && <strong>{possibleIds.size}</strong>}
                 </label>
               )}
             </div>
           </div>
-          <div className="board-scroll">
+          <div
+            className={
+              isInspectorInteraction(state.stage)
+                ? `board-scroll active-investigator-${activeInvestigatorColor(state)}`
+                : 'board-scroll'
+            }
+          >
             <div className="board-zoom" style={{ width: `${zoom * 100}%` }}>
               <GameBoard
                 state={state}

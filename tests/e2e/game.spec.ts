@@ -29,12 +29,14 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await expect(page.getByText('Private route')).toHaveCount(0)
   await page.getByRole('button', { name: /reveal my view/i }).click()
 
-  await page.getByLabel('Show possible Jack locations').check()
+  await page.getByLabel('Jack possibilities').check()
   await expect(page.locator('.possible-marker').first()).toBeVisible()
   await expect(page.locator('.investigator-piece.yellow .active-investigator-ring')).toBeVisible()
+  await expect(page.locator('.board-scroll')).toHaveClass(/active-investigator-yellow/)
 
   await page.getByRole('button', { name: 'FP', exact: true }).click()
   await expect(page.locator('.investigator-piece.blue .active-investigator-ring')).toBeVisible()
+  await expect(page.locator('.board-scroll')).toHaveClass(/active-investigator-blue/)
   for (const crossing of ['HP', 'HZ']) await page.getByRole('button', { name: crossing, exact: true }).click()
   for (let index = 0; index < 3; index += 1) {
     await page.getByRole('button', { name: 'Pass', exact: true }).click()
@@ -54,10 +56,10 @@ test('keeps the mobile layout within the viewport', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.game-board')).toBeVisible()
   await expect(page.locator('.crossing-id-label')).toHaveCount(0)
-  await page.getByLabel('Show crossing IDs').check()
+  await page.getByLabel('crossing ids').check()
   await expect(page.locator('.crossing-id-label')).toHaveCount(174)
   await page.reload()
-  await expect(page.getByLabel('Show crossing IDs')).toBeChecked()
+  await expect(page.getByLabel('crossing ids')).toBeChecked()
   await expect(page.locator('.crossing-id-label')).toHaveCount(174)
   const dimensions = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
