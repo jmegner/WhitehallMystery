@@ -55,6 +55,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await expect(page.getByRole('heading', { name: 'Pass the device to Investigators' })).toBeVisible()
   await expect(page.getByText('Private route')).toHaveCount(0)
   await page.getByRole('button', { name: /reveal my view/i }).click()
+  await expect(page.locator('.public-log').getByText('M1: Jack advanced to move 1.')).toBeVisible()
 
   await page.getByLabel('Jack possibilities').check()
   await expect(page.locator('.jack-location-edge-arrows')).toHaveCount(0)

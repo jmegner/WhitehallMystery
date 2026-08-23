@@ -217,6 +217,7 @@ describe('game reducer', () => {
     let state: GameState = {
       ...base,
       stage: 'investigatorAction',
+      moveSlot: 4,
       currentJack: target,
       roundTrail: [33, target],
       activeInvestigator: 0,
@@ -230,6 +231,7 @@ describe('game reducer', () => {
     )
     expect(state.clueLocations).toContain(target)
     expect(state.activeInvestigator).toBe(1)
+    expect(state.publicLog.at(-1)).toBe(`M4: yellow searched ${target}: clue found.`)
 
     state = {
       ...state,

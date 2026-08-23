@@ -131,6 +131,7 @@ export const legalInspectorActionCircles = (state: GameState): number[] => {
 }
 
 const withNotice = (state: GameState, notice: string): GameState => ({ ...state, notice })
+const moveLog = (moveSlot: number, message: string) => `M${moveSlot}: ${message}`
 
 const completedInvestigatorPositions = (
   positions: GameState['investigatorPositions'],
@@ -169,7 +170,7 @@ const resolveEndOfTurn = (state: GameState): GameState => {
   const current = state.currentJack
   if (current !== null && state.discoveryLocations.includes(current) && !state.reachedDiscoveries.includes(current)) {
     const reachedDiscoveries = [...state.reachedDiscoveries, current]
-    const publicLog = [...state.publicLog, `Jack reached Discovery Location ${current}.`]
+    const publicLog = [...state.publicLog, moveLog(state.moveSlot, `Jack reached Discovery Location ${current}.`)]
     if (reachedDiscoveries.length === 4) {
       return endGame(
         { ...state, reachedDiscoveries, publicLog },
@@ -189,7 +190,7 @@ const resolveEndOfTurn = (state: GameState): GameState => {
       activeInvestigator: 0,
       inspectorActionMode: 'choose',
       checkedThisAction: [],
-      publicLog: [...publicLog, `Round ${state.round + 1} begins from ${current}.`],
+      publicLog: [...publicLog, moveLog(0, `Round ${state.round + 1} begins from ${current}.`)],
       notice: `Round complete. Pass the device to Jack for round ${state.round + 1}.`,
     }
   }
@@ -322,7 +323,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         reachedDiscoveries: [action.circleId],
         roundTrail: [action.circleId],
         publicRound: { start: action.circleId, moves: [], observations: [] },
-        publicLog: [...state.publicLog, `Jack began the hunt at Discovery Location ${action.circleId}.`],
+        publicLog: [...state.publicLog, moveLog(0, `Jack began the hunt at Discovery Location ${action.circleId}.`)],
         jackMoveSelection: baseJackSelection,
         notice: 'The starting location is public. Make Jack’s first secret move.',
       }
@@ -405,9 +406,12 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       }
       const publicLog = [
         ...state.publicLog,
-        state.jackMoveSelection.type === 'normal'
-          ? `Jack advanced to move ${moveSlot}.`
-          : `Jack publicly used ${state.jackMoveSelection.type} on move ${publicMove.startSlot}${cost === 2 ? `-${moveSlot}` : ''}.`,
+        moveLog(
+          moveSlot,
+          state.jackMoveSelection.type === 'normal'
+            ? `Jack advanced to move ${moveSlot}.`
+            : `Jack publicly used ${state.jackMoveSelection.type} on move ${publicMove.startSlot}${cost === 2 ? `-${moveSlot}` : ''}.`,
+        ),
       ]
       const moved: GameState = {
         ...state,
@@ -500,7 +504,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         checkedThisAction,
         publicLog: [
           ...state.publicLog,
-          `${color} searched ${action.circleId}: ${found ? 'clue found' : 'no clue'}.`,
+          moveLog(state.moveSlot, `${color} searched ${action.circleId}: ${found ? 'clue found' : 'no clue'}.`),
         ],
         notice: found ? `A clue was found at ${action.circleId}.` : `No clue at ${action.circleId}.`,
       }
@@ -516,7 +520,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         return endGame(
           {
             ...state,
-            publicLog: [...state.publicLog, `${color} arrested Jack at ${action.circleId}.`],
+            publicLog: [...state.publicLog, moveLog(state.moveSlot, `${color} arrested Jack at ${action.circleId}.`)],
           },
           { winner: 'investigators', reason: `Jack was arrested at location ${action.circleId}.` },
         )
@@ -536,7 +540,10 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
             },
           ],
         },
-        publicLog: [...state.publicLog, `${color} attempted an arrest at ${action.circleId}: missed.`],
+        publicLog: [
+          ...state.publicLog,
+          moveLog(state.moveSlot, `${color} attempted an arrest at ${action.circleId}: missed.`),
+        ],
         notice: `No arrest at ${action.circleId}.`,
       }
       return advanceInspectorAction(miss)
@@ -549,7 +556,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       const color = activeInvestigatorColor(state)
       return advanceInspectorAction({
         ...state,
-        publicLog: [...state.publicLog, `${color} passed the action phase.`],
+        publicLog: [...state.publicLog, moveLog(state.moveSlot, `${color} passed the action phase.`)],
         notice: `${color} passed.`,
       })
     }
