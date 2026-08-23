@@ -21,6 +21,11 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await page.getByRole('button', { name: /reveal my view/i }).click()
 
   await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
+  const discoveryList = page.getByLabel('Jack discovery locations')
+  await expect(discoveryList.locator('li')).toHaveText(['33', '46', '147', '159'])
+  await expect(page.getByLabel('33, completed')).toHaveClass(/completed/)
+  await expect(page.getByLabel('46, remaining')).toBeVisible()
+  await expect(page.locator('.private-discovery-marker')).toHaveCount(3)
   const destinations = page.getByLabel('Legal Jack destinations')
   await destinations.getByRole('button').first().click()
   await page.getByRole('button', { name: 'Record move privately' }).click()

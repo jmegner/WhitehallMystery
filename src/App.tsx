@@ -108,7 +108,7 @@ function GameBoard({
 }: BoardProps) {
   const showJack = isPrivateJackView(state.stage) || state.stage === 'gameOver'
   const privateSelections =
-    state.stage === 'jackDiscoverySetup' || state.stage === 'jackChooseStart' || state.stage === 'gameOver'
+    isPrivateJackView(state.stage) || state.stage === 'gameOver'
       ? new Set(state.discoveryLocations)
       : new Set<number>()
   const route =
@@ -330,6 +330,31 @@ function HistoryControls({ history, onUndo, onRedo }: HistoryControlsProps) {
         Actions {actionCount(history)}
       </span>
     </div>
+  )
+}
+
+function DiscoveryChecklist({ state }: { state: GameState }) {
+  if (!isPrivateJackView(state.stage) || state.discoveryLocations.length === 0) return null
+  return (
+    <section className="discovery-checklist" aria-label="Jack discovery locations">
+      <span>Discovery locations</span>
+      <ol>
+        {[...state.discoveryLocations]
+          .sort((a, b) => a - b)
+          .map((id) => {
+            const completed = state.reachedDiscoveries.includes(id)
+            return (
+              <li
+                key={id}
+                className={completed ? 'completed' : ''}
+                aria-label={`${id}, ${completed ? 'completed' : 'remaining'}`}
+              >
+                {id}
+              </li>
+            )
+          })}
+      </ol>
+    </section>
   )
 }
 
@@ -779,6 +804,11 @@ function App() {
             <span>
               <i className="legend-dot legal" /> Legal target
             </span>
+            {isPrivateJackView(state.stage) && state.discoveryLocations.length > 0 && (
+              <span>
+                <i className="legend-dot private-discovery" /> Unreached discovery
+              </span>
+            )}
           </div>
         </section>
 
@@ -790,6 +820,7 @@ function App() {
           <div className="notice" role="status">
             {state.notice}
           </div>
+          <DiscoveryChecklist state={state} />
           <GameControls state={state} dispatch={dispatch} />
 
           <details className="public-log" open>

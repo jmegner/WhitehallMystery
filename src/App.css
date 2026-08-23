@@ -529,6 +529,12 @@ button:disabled {
   border-color: var(--action-green);
 }
 
+.legend-dot.private-discovery {
+  background: rgb(142 32 108 / 24%);
+  border-color: #7b1e63;
+  border-style: dashed;
+}
+
 .control-panel {
   padding: 24px;
   border-left: 1px solid #bfa783;
@@ -561,6 +567,52 @@ button:disabled {
   font-size: 0.8rem;
   line-height: 1.45;
   margin-bottom: 16px;
+}
+
+.discovery-checklist {
+  padding: 10px 12px;
+  margin: -4px 0 16px;
+  border: 1px solid #c7b391;
+  border-radius: 8px;
+  background: rgb(255 250 240 / 72%);
+}
+
+.discovery-checklist > span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.discovery-checklist ol {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.discovery-checklist li {
+  padding: 6px 8px;
+  border: 1px dashed #7b1e63;
+  border-radius: 6px;
+  background: rgb(142 32 108 / 10%);
+  color: #552044;
+  text-align: center;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.discovery-checklist li.completed {
+  border-color: #9d8f80;
+  background: #e2d8c8;
+  color: #71675d;
+  text-decoration: line-through;
+  opacity: 0.7;
 }
 
 .quadrant-grid {
