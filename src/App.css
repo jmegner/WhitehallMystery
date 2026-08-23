@@ -345,16 +345,20 @@ button:disabled {
   scrollbar-color: #62492f #d6c1a1;
 }
 
+.board-scroll[class*='active-investigator-'] {
+  border-width: 5px;
+}
+
 .board-scroll.active-investigator-yellow {
-  border-color: #d8ad00;
+  border-color: #ffe13b;
 }
 
 .board-scroll.active-investigator-blue {
-  border-color: #1f68ab;
+  border-color: #36a9ff;
 }
 
 .board-scroll.active-investigator-red {
-  border-color: #b02f2e;
+  border-color: #ff4545;
 }
 
 .board-zoom {
@@ -381,15 +385,15 @@ button:disabled {
 
 .legal-circle,
 .legal-crossing {
-  fill: rgb(46 230 107 / 24%);
+  fill: none;
   stroke: var(--action-green);
-  stroke-width: 3;
+  stroke-width: 2;
   vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 3px rgb(0 0 0 / 80%));
 }
 
 .legal-crossing {
-  fill: rgb(46 230 107 / 32%);
+  fill: none;
 }
 
 .selected-circle {
@@ -423,9 +427,9 @@ button:disabled {
 }
 
 .possible-marker {
-  fill: rgb(99 46 145 / 14%);
+  fill: rgb(99 46 145 / 24%);
   stroke: #7a3caf;
-  stroke-width: 3;
+  stroke-width: 4;
   stroke-dasharray: 3 3;
   vector-effect: non-scaling-stroke;
 }
@@ -445,6 +449,10 @@ button:disabled {
   stroke-width: 2;
   stroke: white;
   filter: drop-shadow(0 1px 3px rgb(0 0 0 / 90%));
+}
+
+.investigator-piece {
+  pointer-events: none;
 }
 
 .investigator-piece text,
@@ -512,12 +520,12 @@ button:disabled {
 }
 
 .legend-dot.possible {
-  background: rgb(99 46 145 / 20%);
+  background: rgb(99 46 145 / 28%);
   border-color: #7a3caf;
 }
 
 .legend-dot.legal {
-  background: rgb(46 230 107 / 28%);
+  background: transparent;
   border-color: var(--action-green);
 }
 

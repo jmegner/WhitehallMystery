@@ -34,7 +34,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await expect(page.locator('.investigator-piece.yellow .active-investigator-ring')).toBeVisible()
   await expect(page.locator('.board-scroll')).toHaveClass(/active-investigator-yellow/)
 
-  await page.getByRole('button', { name: 'FP', exact: true }).click()
+  await page.locator('[aria-label="Crossing FP, selectable"]').click()
   await expect(page.locator('.investigator-piece.blue .active-investigator-ring')).toBeVisible()
   await expect(page.locator('.board-scroll')).toHaveClass(/active-investigator-blue/)
   for (const crossing of ['HP', 'HZ']) await page.getByRole('button', { name: crossing, exact: true }).click()

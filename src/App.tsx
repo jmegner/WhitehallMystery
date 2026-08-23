@@ -132,7 +132,7 @@ function GameBoard({
         [...possibleIds].map((id) => {
           const circle = circlesById.get(id)
           return circle ? (
-            <circle key={`possible-${id}`} className="possible-marker" cx={circle.x} cy={circle.y} r="21" />
+            <circle key={`possible-${id}`} className="possible-marker" cx={circle.x} cy={circle.y} r="23" />
           ) : null
         })}
 
@@ -171,7 +171,7 @@ function GameBoard({
         const selected = state.jackMoveSelection.path.includes(circle.id)
         return (
           <g key={`circle-target-${circle.id}`}>
-            {legal && <circle className="legal-circle" cx={circle.x} cy={circle.y} r="20" />}
+            {legal && <circle className="legal-circle" cx={circle.x} cy={circle.y} r="18.5" />}
             {selected && <circle className="selected-circle" cx={circle.x} cy={circle.y} r="22" />}
             <circle
               className={legal ? 'map-hit-target selectable' : 'map-hit-target'}
@@ -191,7 +191,7 @@ function GameBoard({
         const legal = legalCrossingIds.has(crossing.id)
         return (
           <g key={`crossing-target-${crossing.id}`}>
-            {legal && <circle className="legal-crossing" cx={crossing.x} cy={crossing.y} r="14" />}
+            {legal && <circle className="legal-crossing" cx={crossing.x} cy={crossing.y} r="12.5" />}
             <circle
               className={legal ? 'map-hit-target selectable' : 'map-hit-target'}
               cx={crossing.x}
