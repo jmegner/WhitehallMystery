@@ -21,13 +21,34 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await page.getByRole('button', { name: /reveal my view/i }).click()
 
   await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
+  const jackPositionGuides = page.locator('.jack-location-edge-arrows')
+  await expect(jackPositionGuides.locator('polygon')).toHaveCount(4)
+  await expect(jackPositionGuides).toHaveCSS('fill', 'rgb(136, 255, 51)')
   const discoveryList = page.getByLabel('Jack discovery locations')
   await expect(discoveryList.locator('li')).toHaveText(['33', '46', '147', '159'])
   await expect(page.getByLabel('33, completed')).toHaveClass(/completed/)
   await expect(page.getByLabel('46, remaining')).toBeVisible()
   await expect(page.locator('.private-discovery-marker')).toHaveCount(3)
   const destinations = page.getByLabel('Legal Jack destinations')
+  const firstDestination = Number(await destinations.getByRole('button').first().innerText())
   await destinations.getByRole('button').first().click()
+  const selectedOutline = page.locator('.selected-circle')
+  await expect(selectedOutline).toHaveAttribute('r', '18.5')
+  await expect(selectedOutline).toHaveCSS('stroke-width', '2px')
+  await expect(selectedOutline).toHaveCSS('stroke', 'rgb(255, 3, 167)')
+  const plannedSegment = page.locator('.private-route')
+  await expect(plannedSegment).toHaveCount(1)
+  await expect(plannedSegment).toHaveCSS('stroke-width', '5px')
+  await expect(plannedSegment).toHaveCSS('stroke', 'rgb(255, 3, 167)')
+  const routeEndClearance = await plannedSegment.evaluate((line, destinationId) => {
+    const destination = document.querySelector(`[aria-label="Location ${destinationId}, selectable"]`)
+    if (!(line instanceof SVGLineElement) || !(destination instanceof SVGCircleElement)) return 0
+    return Math.hypot(
+      Number(destination.getAttribute('cx')) - Number(line.getAttribute('x2')),
+      Number(destination.getAttribute('cy')) - Number(line.getAttribute('y2')),
+    )
+  }, firstDestination)
+  expect(routeEndClearance).toBeGreaterThanOrEqual(18.4)
   await page.getByRole('button', { name: 'Record move privately' }).click()
 
   await expect(page.getByRole('heading', { name: 'Pass the device to Investigators' })).toBeVisible()
@@ -35,9 +56,16 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await page.getByRole('button', { name: /reveal my view/i }).click()
 
   await page.getByLabel('Jack possibilities').check()
+  await expect(page.locator('.jack-location-edge-arrows')).toHaveCount(0)
+  await expect(page.locator('.track-location')).toHaveCount(0)
+  await expect(page.getByRole('checkbox', { name: 'past path', exact: true })).toHaveCount(0)
   await expect(page.locator('.possible-marker').first()).toBeVisible()
   await expect(page.locator('.investigator-piece.yellow .active-investigator-ring')).toBeVisible()
   await expect(page.locator('.board-scroll')).toHaveClass(/active-investigator-yellow/)
+  const positionGuides = page.locator('.active-investigator-edge-arrows')
+  await expect(positionGuides.locator('polygon')).toHaveCount(4)
+  await expect(positionGuides).toHaveCSS('fill', 'rgb(136, 255, 51)')
+  await expect(positionGuides).toHaveCSS('opacity', '1')
 
   await page.locator('[aria-label="Crossing FP, selectable"]').click()
   await expect(page.locator('.investigator-piece.blue .active-investigator-ring')).toBeVisible()
@@ -54,6 +82,16 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
   await page.getByRole('button', { name: /reveal my view/i }).click()
   await expect(page.getByText('Round 1 · Move 1 of 15')).toBeVisible()
+  await expect(page.getByLabel('Move 0, location 33')).toContainText('33')
+  await expect(page.getByLabel(`Move 1, location ${firstDestination}`)).toContainText(String(firstDestination))
+  const pastPathToggle = page.getByRole('checkbox', { name: 'past path', exact: true })
+  await pastPathToggle.check()
+  await expect(page.locator('.past-path-line')).toBeVisible()
+  await expect(page.getByLabel(`Past path move 1, location ${firstDestination}`)).toBeVisible()
+  await expect(page.locator('.past-path-step')).toHaveCount(1)
+  await page.reload()
+  await expect(page.getByRole('checkbox', { name: 'past path', exact: true })).toBeChecked()
+  await expect(page.locator('.past-path-line')).toBeVisible()
 })
 
 test('keeps the mobile layout within the viewport', async ({ page }) => {
@@ -106,4 +144,29 @@ test('undoes and redoes actions across private-view handoffs', async ({ page }) 
   await page.getByRole('button', { name: /reveal my view/i }).click()
   await expect(page.getByRole('heading', { name: /Deploy the Yellow Investigator/i })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeDisabled()
+})
+
+test('bulk undo and redo cross sides without exposing private views', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Big Undo', exact: true })).toBeDisabled()
+
+  for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
+  await page.getByRole('button', { name: 'Lock in four locations' }).click()
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await page.getByLabel('Available deployment crossings').getByRole('button', { name: 'FP', exact: true }).click()
+  await expect(page.getByLabel('6 player actions')).toHaveText('Actions 6')
+
+  await page.getByRole('button', { name: 'Big Undo', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
+  await expect(page.getByText(/restored just before their last confirmed action/i)).toBeVisible()
+  await page.getByRole('button', { name: /reveal the restored view/i }).click()
+  await expect(page.getByLabel('4 player actions')).toHaveText('Actions 4')
+
+  await page.getByRole('button', { name: 'Redo All', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Pass the device to Investigators' })).toBeVisible()
+  await expect(page.getByText(/all remaining actions have been restored/i)).toBeVisible()
+  await page.getByRole('button', { name: /reveal the updated view/i }).click()
+  await expect(page.getByRole('heading', { name: /Deploy the Blue Investigator/i })).toBeVisible()
+  await expect(page.getByLabel('6 player actions')).toHaveText('Actions 6')
+  await expect(page.getByRole('button', { name: 'Redo All', exact: true })).toBeDisabled()
 })

@@ -170,6 +170,17 @@ button:disabled {
   font-size: 0.82rem;
 }
 
+.track-location {
+  color: #8d201c;
+  font-size: 0.65rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.track-slot.current .track-location {
+  color: #fff0c9;
+}
+
 .jack-track-token {
   position: absolute;
   top: -10px;
@@ -278,6 +289,8 @@ button:disabled {
 .history-controls button {
   min-width: 50px;
   padding-inline: 7px;
+  white-space: nowrap;
+  font-size: 0.72rem;
 }
 
 .action-counter {
@@ -302,7 +315,8 @@ button:disabled {
 }
 
 .possibility-toggle,
-.crossing-toggle {
+.crossing-toggle,
+.past-path-toggle {
   display: flex;
   gap: 4px;
   align-items: center;
@@ -312,7 +326,8 @@ button:disabled {
 }
 
 .possibility-toggle input,
-.crossing-toggle input {
+.crossing-toggle input,
+.past-path-toggle input {
   margin: 0;
 }
 
@@ -373,6 +388,39 @@ button:disabled {
   user-select: none;
 }
 
+.active-investigator-edge-arrows,
+.jack-location-edge-arrows {
+  fill: #88ff33;
+  pointer-events: none;
+  filter: drop-shadow(0 0 4px rgb(136 255 51 / 95%));
+}
+
+.past-path-line {
+  fill: none;
+  stroke: #d31f26;
+  stroke-width: 2;
+  stroke-dasharray: 7 6;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  filter: drop-shadow(0 0 2px rgb(255 250 235 / 90%));
+}
+
+.past-path-step {
+  pointer-events: none;
+}
+
+.past-path-step circle {
+  fill: #fff5e3;
+  stroke: #d31f26;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.past-path-step text {
+  fill: #a3131a;
+  font: 900 9px 'Inter', sans-serif;
+}
+
 .map-hit-target {
   fill: transparent;
   pointer-events: none;
@@ -398,8 +446,8 @@ button:disabled {
 
 .selected-circle {
   fill: none;
-  stroke: white;
-  stroke-width: 5;
+  stroke: #ff03a7;
+  stroke-width: 2;
   vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 4px #121212);
 }
@@ -435,8 +483,7 @@ button:disabled {
 }
 
 .private-route {
-  fill: none;
-  stroke: white;
+  stroke: #ff03a7;
   stroke-width: 5;
   stroke-dasharray: 9 7;
   vector-effect: non-scaling-stroke;
@@ -897,6 +944,7 @@ button:disabled {
   .board-options {
     width: 100%;
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
 
   .control-panel {

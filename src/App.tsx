@@ -12,7 +12,9 @@ import {
 import { movementLabel, possibleJackLocations } from './game/inference'
 import {
   actionCount,
+  canBigUndo,
   canRedo,
+  canRedoAll,
   createGameHistory,
   currentHistoryState,
   gameHistoryReducer,
@@ -23,6 +25,7 @@ import {
 import { circles, circlesById, crossings, crossingsById } from './game/mapData'
 import {
   CROSSING_IDS_STORAGE_KEY,
+  PAST_PATH_STORAGE_KEY,
   loadBooleanPreference,
   loadStoredHistory,
   saveBooleanPreference,
@@ -37,6 +40,7 @@ import {
 } from './game/types'
 
 const BOARD_SIZE = 1200
+const ROUTE_CIRCLE_RADIUS = 18.5
 const QUADRANTS: Quadrant[] = ['NW', 'NE', 'SW', 'SE']
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
 
@@ -92,8 +96,20 @@ interface BoardProps {
   possibleIds: Set<number>
   showPossible: boolean
   showCrossingIds: boolean
+  showPastPath: boolean
   onCircle: (circleId: number) => void
   onCrossing: (crossingId: string) => void
+}
+
+function BoardEdgeArrows({ x, y, className, label }: { x: number; y: number; className: string; label: string }) {
+  return (
+    <g className={className} aria-label={label}>
+      <polygon points={`${x - 15},4 ${x + 15},4 ${x},32`} />
+      <polygon points={`${x - 15},${BOARD_SIZE - 4} ${x + 15},${BOARD_SIZE - 4} ${x},${BOARD_SIZE - 32}`} />
+      <polygon points={`4,${y - 15} 4,${y + 15} 32,${y}`} />
+      <polygon points={`${BOARD_SIZE - 4},${y - 15} ${BOARD_SIZE - 4},${y + 15} ${BOARD_SIZE - 32},${y}`} />
+    </g>
+  )
 }
 
 function GameBoard({
@@ -103,6 +119,7 @@ function GameBoard({
   possibleIds,
   showPossible,
   showCrossingIds,
+  showPastPath,
   onCircle,
   onCrossing,
 }: BoardProps) {
@@ -117,6 +134,26 @@ function GameBoard({
           .map((id) => circlesById.get(id))
           .filter((circle) => circle !== undefined)
       : []
+  const plannedRouteSegments = route.slice(0, -1).flatMap((from, index) => {
+    const to = route[index + 1]
+    if (!to) return []
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    const length = Math.hypot(dx, dy)
+    if (length <= ROUTE_CIRCLE_RADIUS * 2) return []
+    const xInset = (dx / length) * ROUTE_CIRCLE_RADIUS
+    const yInset = (dy / length) * ROUTE_CIRCLE_RADIUS
+    return [{ x1: from.x + xInset, y1: from.y + yInset, x2: to.x - xInset, y2: to.y - yInset }]
+  })
+  const activeInvestigator = isInspectorInteraction(state.stage)
+    ? crossingsById.get(state.investigatorPositions[activeInvestigatorColor(state)] ?? '')
+    : undefined
+  const privateJackLocation = isPrivateJackView(state.stage) && state.currentJack !== null
+    ? circlesById.get(state.currentJack)
+    : undefined
+  const pastPath = showPastPath && isPrivateJackView(state.stage)
+    ? state.roundTrail.map((id) => circlesById.get(id)).filter((circle) => circle !== undefined)
+    : []
   const boardImage = `${import.meta.env.BASE_URL}map_pptx_simplified.jpg`
 
   return (
@@ -127,6 +164,31 @@ function GameBoard({
       aria-label="Whitehall game board"
     >
       <image href={boardImage} x="0" y="0" width={BOARD_SIZE} height={BOARD_SIZE} />
+
+      {activeInvestigator && (
+        <BoardEdgeArrows
+          x={activeInvestigator.x}
+          y={activeInvestigator.y}
+          className="active-investigator-edge-arrows"
+          label="Active investigator position guides"
+        />
+      )}
+
+      {privateJackLocation && (
+        <BoardEdgeArrows
+          x={privateJackLocation.x}
+          y={privateJackLocation.y}
+          className="jack-location-edge-arrows"
+          label="Jack position guides"
+        />
+      )}
+
+      {pastPath.length > 1 && (
+        <polyline
+          className="past-path-line"
+          points={pastPath.map((circle) => `${circle.x},${circle.y}`).join(' ')}
+        />
+      )}
 
       {showPossible &&
         [...possibleIds].map((id) => {
@@ -159,20 +221,24 @@ function GameBoard({
           ) : null
         })}
 
-      {route.length > 1 && (
-        <polyline
+      {plannedRouteSegments.map((segment, index) => (
+        <line
+          key={`private-route-${index}`}
           className="private-route"
-          points={route.map((circle) => `${circle.x},${circle.y}`).join(' ')}
+          x1={segment.x1}
+          y1={segment.y1}
+          x2={segment.x2}
+          y2={segment.y2}
         />
-      )}
+      ))}
 
       {circles.map((circle) => {
         const legal = legalCircleIds.has(circle.id)
         const selected = state.jackMoveSelection.path.includes(circle.id)
         return (
           <g key={`circle-target-${circle.id}`}>
-            {legal && <circle className="legal-circle" cx={circle.x} cy={circle.y} r="18.5" />}
-            {selected && <circle className="selected-circle" cx={circle.x} cy={circle.y} r="22" />}
+            {legal && <circle className="legal-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
+            {selected && <circle className="selected-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
             <circle
               className={legal ? 'map-hit-target selectable' : 'map-hit-target'}
               cx={circle.x}
@@ -219,6 +285,18 @@ function GameBoard({
           </text>
         ))}
 
+      {pastPath.slice(1).map((circle, index) => (
+        <g
+          key={`past-path-step-${index + 1}`}
+          className="past-path-step"
+          transform={`translate(${circle.x + 21} ${circle.y - 17})`}
+          aria-label={`Past path move ${index + 1}, location ${circle.id}`}
+        >
+          <circle r="8" />
+          <text y="3" textAnchor="middle">{index + 1}</text>
+        </g>
+      ))}
+
       {INVESTIGATOR_ORDER.map((color) => {
         const crossingId = state.investigatorPositions[color]
         const crossing = crossingId ? crossingsById.get(crossingId) : undefined
@@ -253,6 +331,7 @@ function GameBoard({
 
 function MoveTrack({ state }: { state: GameState }) {
   const moves = state.publicRound?.moves ?? []
+  const showPrivateLocations = isPrivateJackView(state.stage)
   return (
     <section className="move-track" aria-label="Public Jack move track">
       <div className="track-heading">
@@ -273,13 +352,15 @@ function MoveTrack({ state }: { state: GameState }) {
           const special = moves.find(
             (move) => move.type !== 'normal' && slot >= move.startSlot && slot <= move.endSlot,
           )
+          const location = showPrivateLocations ? state.roundTrail[slot] : undefined
           return (
             <div
               key={slot}
               className={`track-slot ${slot < state.moveSlot ? 'past' : ''} ${slot === state.moveSlot ? 'current' : ''}`}
-              aria-label={`Move ${slot}${special ? `, ${movementLabel(special.type)}` : ''}`}
+              aria-label={`Move ${slot}${special ? `, ${movementLabel(special.type)}` : ''}${location === undefined ? '' : `, location ${location}`}`}
             >
               <span className="track-number">{slot}</span>
+              {location !== undefined && <span className="track-location">{location}</span>}
               {special && <span className={`special-badge ${special.type}`}>{special.type[0]?.toUpperCase()}</span>}
               {slot === state.moveSlot && <span className="jack-track-token">J</span>}
             </div>
@@ -313,18 +394,26 @@ function TargetButtons<T extends number | string>({
 interface HistoryControlsProps {
   history: GameHistory
   onUndo: () => void
+  onBigUndo: () => void
   onRedo: () => void
+  onRedoAll: () => void
 }
 
-function HistoryControls({ history, onUndo, onRedo }: HistoryControlsProps) {
+function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll }: HistoryControlsProps) {
   const mode = undoMode(history)
   return (
     <div className="history-controls" aria-label="Action history controls">
+      <button type="button" disabled={!canBigUndo(history)} onClick={onBigUndo}>
+        Big Undo
+      </button>
       <button type="button" disabled={mode === 'disabled'} onClick={onUndo}>
         {mode === 'cross-view' ? 'Undo!' : 'Undo'}
       </button>
       <button type="button" disabled={!canRedo(history)} onClick={onRedo}>
         Redo
+      </button>
+      <button type="button" disabled={!canRedoAll(history)} onClick={onRedoAll}>
+        Redo All
       </button>
       <span className="action-counter" aria-label={`${actionCount(history)} player actions`}>
         Actions {actionCount(history)}
@@ -569,7 +658,7 @@ function GameControls({ state, dispatch }: ControlsProps) {
 }
 
 interface HandoffProps extends ControlsProps, HistoryControlsProps {
-  undoRevealTarget?: PlayerView | null
+  historyRevealTarget?: PlayerView | null
   onRevealUndo: () => void
 }
 
@@ -578,22 +667,35 @@ function HandoffScreen({
   dispatch,
   history,
   onUndo,
+  onBigUndo,
   onRedo,
-  undoRevealTarget,
+  onRedoAll,
+  historyRevealTarget,
   onRevealUndo,
 }: HandoffProps) {
-  if (undoRevealTarget) {
-    const target = undoRevealTarget === 'jack' ? 'Jack' : 'Investigators'
+  if (historyRevealTarget) {
+    const target = historyRevealTarget === 'jack' ? 'Jack' : 'Investigators'
+    const redidAll = history.cursor === history.entries.length - 1
     return (
       <main className="handoff-screen">
         <div className="handoff-card">
-          <span className="eyebrow">Undo handoff</span>
+          <span className="eyebrow">{redidAll ? 'Redo handoff' : 'Undo handoff'}</span>
           <h1>Pass the device to {target}</h1>
-          <p>The previous player’s view has been restored just before their last confirmed action.</p>
+          <p>
+            {redidAll
+              ? 'All remaining actions have been restored. The resulting private view is ready.'
+              : 'The previous player’s view has been restored just before their last confirmed action.'}
+          </p>
           <button className="reveal-button" type="button" onClick={onRevealUndo}>
-            I am the {target} player — reveal the restored view
+            I am the {target} player — reveal the {redidAll ? 'updated' : 'restored'} view
           </button>
-          <HistoryControls history={history} onUndo={onUndo} onRedo={onRedo} />
+          <HistoryControls
+            history={history}
+            onUndo={onUndo}
+            onBigUndo={onBigUndo}
+            onRedo={onRedo}
+            onRedoAll={onRedoAll}
+          />
         </div>
       </main>
     )
@@ -617,7 +719,13 @@ function HandoffScreen({
         <button className="reveal-button" type="button" onClick={() => dispatch({ type: 'continueHandoff' })}>
           I am the {target} player — reveal my view
         </button>
-        <HistoryControls history={history} onUndo={onUndo} onRedo={onRedo} />
+        <HistoryControls
+          history={history}
+          onUndo={onUndo}
+          onBigUndo={onBigUndo}
+          onRedo={onRedo}
+          onRedoAll={onRedoAll}
+        />
       </div>
     </main>
   )
@@ -636,13 +744,19 @@ function App() {
     applyHistoryCommand({ type: 'apply', action })
   }
   const handleUndo = () => applyHistoryCommand({ type: 'undo' })
+  const handleBigUndo = () => applyHistoryCommand({ type: 'bigUndo' })
   const handleRedo = () => applyHistoryCommand({ type: 'redo' })
+  const handleRedoAll = () => applyHistoryCommand({ type: 'redoAll' })
   const handleRevealUndo = () => applyHistoryCommand({ type: 'revealUndo' })
   const [zoom, setZoom] = useState(1)
   const [showPossible, setShowPossible] = useState(false)
   const [showCrossingIds, setShowCrossingIds] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY) : false
+  })
+  const [showPastPath, setShowPastPath] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, PAST_PATH_STORAGE_KEY) : false
   })
 
   if (history.pendingReveal || isHandoff(state.stage)) {
@@ -652,8 +766,10 @@ function App() {
         dispatch={dispatch}
         history={history}
         onUndo={handleUndo}
+        onBigUndo={handleBigUndo}
         onRedo={handleRedo}
-        undoRevealTarget={history.pendingReveal}
+        onRedoAll={handleRedoAll}
+        historyRevealTarget={history.pendingReveal}
         onRevealUndo={handleRevealUndo}
       />
     )
@@ -740,11 +856,17 @@ function App() {
                 +
               </button>
               <button className="zoom-reset-button" type="button" onClick={() => setZoom(1)}>
-                Zoom Reset
+                ZmRst
               </button>
             </div>
             <div className="board-options">
-              <HistoryControls history={history} onUndo={handleUndo} onRedo={handleRedo} />
+              <HistoryControls
+                history={history}
+                onUndo={handleUndo}
+                onBigUndo={handleBigUndo}
+                onRedo={handleRedo}
+                onRedoAll={handleRedoAll}
+              />
               <label className="crossing-toggle">
                 <input
                   type="checkbox"
@@ -758,6 +880,21 @@ function App() {
                 />
                 crossing ids
               </label>
+              {isPrivateJackView(state.stage) && (
+                <label className="past-path-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showPastPath}
+                    onChange={(event) => {
+                      const checked = event.target.checked
+                      setShowPastPath(checked)
+                      const storage = browserStorage()
+                      if (storage) saveBooleanPreference(storage, PAST_PATH_STORAGE_KEY, checked)
+                    }}
+                  />
+                  past path
+                </label>
+              )}
               {isInspectorInteraction(state.stage) && state.publicRound && (
                 <label className="possibility-toggle">
                   <input
@@ -786,6 +923,7 @@ function App() {
                 possibleIds={possibleIds}
                 showPossible={showPossible}
                 showCrossingIds={showCrossingIds}
+                showPastPath={showPastPath}
                 onCircle={handleCircle}
                 onCrossing={handleCrossing}
               />
