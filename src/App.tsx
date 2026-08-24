@@ -572,7 +572,12 @@ interface ControlsProps {
   dispatch: (action: GameAction) => void
 }
 
-function GameControls({ state, dispatch }: ControlsProps) {
+interface GameControlsProps extends ControlsProps {
+  onUndoRoute: () => void
+  onUndoSecondLocation: () => void
+}
+
+function GameControls({ state, dispatch, onUndoRoute, onUndoSecondLocation }: GameControlsProps) {
   const activeColor = activeInvestigatorColor(state)
 
   if (state.stage === 'jackDiscoverySetup') {
@@ -673,10 +678,19 @@ function GameControls({ state, dispatch }: ControlsProps) {
             type="button"
             className="secondary-button"
             disabled={route.length === 0}
-            onClick={() => dispatch({ type: 'clearJackSelection' })}
+            onClick={onUndoRoute}
           >
-            Clear route
+            Undo route
           </button>
+          {state.jackMoveSelection.type === 'coach' && route.length === 2 ? (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={onUndoSecondLocation}
+            >
+              Undo 2nd Loc.
+            </button>
+          ) : null}
           <button
             type="button"
             className="primary-button"
@@ -897,6 +911,9 @@ function App() {
     applyHistoryCommand({ type: 'apply', action })
   }
   const handleUndo = () => applyHistoryCommand({ type: 'undo' })
+  const handleUndoRoute = () => {
+    applyHistoryCommands(state.jackMoveSelection.path.map(() => ({ type: 'undo' as const })))
+  }
   const handleBigUndo = () => applyHistoryCommand({ type: 'bigUndo' })
   const handleRedo = () => applyHistoryCommand({ type: 'redo' })
   const handleRedoAll = () => applyHistoryCommand({ type: 'redoAll' })
@@ -1134,7 +1151,12 @@ function App() {
             {state.notice}
           </div>
           <DiscoveryChecklist state={state} />
-          <GameControls state={state} dispatch={dispatch} />
+          <GameControls
+            state={state}
+            dispatch={dispatch}
+            onUndoRoute={handleUndoRoute}
+            onUndoSecondLocation={handleUndo}
+          />
 
           <details className="public-log" open>
             <summary>Public hunt log</summary>

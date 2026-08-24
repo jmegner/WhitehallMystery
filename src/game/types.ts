@@ -107,7 +107,6 @@ export type GameAction =
   | { type: 'chooseJackStart'; circleId: number }
   | { type: 'setJackMoveType'; moveType: JackMoveType }
   | { type: 'selectJackDestination'; circleId: number }
-  | { type: 'clearJackSelection' }
   | { type: 'confirmJackMove' }
   | { type: 'moveInvestigator'; crossingId: string }
   | { type: 'setInspectorActionMode'; mode: Exclude<InspectorActionMode, 'choose'> }

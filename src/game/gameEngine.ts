@@ -378,14 +378,6 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
             : 'Review the private route, then confirm the move.',
       }
     }
-    case 'clearJackSelection': {
-      if (state.stage !== 'jackMove') return state
-      return {
-        ...state,
-        jackMoveSelection: { ...state.jackMoveSelection, path: [] },
-        notice: 'Movement selection cleared.',
-      }
-    }
     case 'confirmJackMove': {
       if (state.stage !== 'jackMove' || !selectedMoveIsComplete(state) || !state.publicRound) return state
       const selectedPath = state.jackMoveSelection.path
