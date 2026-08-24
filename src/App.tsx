@@ -24,11 +24,16 @@ import {
 } from './game/history'
 import { circles, circlesById, crossings, crossingsById } from './game/mapData'
 import {
+  BOARD_ZOOM_STORAGE_KEY,
   CROSSING_IDS_STORAGE_KEY,
+  JACK_PEEK_STORAGE_KEY,
   PAST_PATH_STORAGE_KEY,
+  POSSIBLE_LOCATIONS_STORAGE_KEY,
   loadBooleanPreference,
+  loadNumberPreference,
   loadStoredHistory,
   saveBooleanPreference,
+  saveNumberPreference,
   saveStoredHistory,
 } from './game/persistence'
 import {
@@ -41,6 +46,8 @@ import {
 
 const BOARD_SIZE = 1200
 const ROUTE_CIRCLE_RADIUS = 18.5
+const CLUE_CIRCLE_RADIUS = 18
+const OVERLAPPING_CLUE_CIRCLE_RADIUS = 23
 const QUADRANTS: Quadrant[] = ['NW', 'NE', 'SW', 'SE']
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
 
@@ -64,7 +71,10 @@ const isHandoff = (stage: GameState['stage']) =>
   stage === 'handoffJackTurn'
 
 const isInspectorInteraction = (stage: GameState['stage']) =>
-  stage === 'investigatorSetup' || stage === 'investigatorMove' || stage === 'investigatorAction'
+  stage === 'investigatorSetup' ||
+  stage === 'investigatorMove' ||
+  stage === 'investigatorAction' ||
+  stage === 'investigatorTurnResult'
 
 const isPrivateJackView = (stage: GameState['stage']) =>
   stage === 'jackDiscoverySetup' || stage === 'jackChooseStart' || stage === 'jackMove'
@@ -96,6 +106,7 @@ const titleForStage = (state: GameState) => {
     handoffInspectorsTurn: 'Pass to the Investigators',
     investigatorMove: `${displayColor(color)} Investigator: Move`,
     investigatorAction: `${displayColor(color)} Investigator: Clues and Suspicion`,
+    investigatorTurnResult: 'Investigator Results',
     handoffJackTurn: 'Pass to Jack',
     gameOver: state.result?.winner === 'jack' ? 'Jack Escaped' : 'Jack Was Stopped',
   }
@@ -113,6 +124,7 @@ interface BoardProps {
   showJackPeek: boolean
   onCircle: (circleId: number) => void
   onCrossing: (crossingId: string) => void
+  onMapClick: () => void
 }
 
 function BoardEdgeArrows({
@@ -153,6 +165,7 @@ function GameBoard({
   showJackPeek,
   onCircle,
   onCrossing,
+  onMapClick,
 }: BoardProps) {
   const peekAtJack = showJackPeek && isInspectorInteraction(state.stage)
   const showJack = isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
@@ -185,6 +198,7 @@ function GameBoard({
       viewBox={`0 0 ${BOARD_SIZE} ${BOARD_SIZE}`}
       role="img"
       aria-label="Whitehall game board"
+      onClick={onMapClick}
     >
       <image href={boardImage} x="0" y="0" width={BOARD_SIZE} height={BOARD_SIZE} />
 
@@ -229,8 +243,15 @@ function GameBoard({
 
       {state.clueLocations.map((id) => {
         const circle = circlesById.get(id)
+        const legal = legalCircleIds.has(id)
         return circle ? (
-          <circle key={`clue-${id}`} className="clue-marker" cx={circle.x} cy={circle.y} r="18" />
+          <circle
+            key={`clue-${id}`}
+            className={legal ? 'clue-marker encircling-legal' : 'clue-marker'}
+            cx={circle.x}
+            cy={circle.y}
+            r={legal ? OVERLAPPING_CLUE_CIRCLE_RADIUS : CLUE_CIRCLE_RADIUS}
+          />
         ) : null
       })}
 
@@ -763,23 +784,18 @@ function HandoffScreen({
 function App() {
   const [history, historyDispatch] = useReducer(gameHistoryReducer, undefined, initializeHistory)
   const state = currentHistoryState(history)
-  const applyHistoryCommand = (command: Parameters<typeof gameHistoryReducer>[1]) => {
-    const next = gameHistoryReducer(history, command)
-    historyDispatch(command)
+  const [zoom, setZoom] = useState(() => {
     const storage = browserStorage()
-    if (storage) saveStoredHistory(storage, next)
-  }
-  const dispatch = (action: GameAction) => {
-    applyHistoryCommand({ type: 'apply', action })
-  }
-  const handleUndo = () => applyHistoryCommand({ type: 'undo' })
-  const handleBigUndo = () => applyHistoryCommand({ type: 'bigUndo' })
-  const handleRedo = () => applyHistoryCommand({ type: 'redo' })
-  const handleRedoAll = () => applyHistoryCommand({ type: 'redoAll' })
-  const handleRevealUndo = () => applyHistoryCommand({ type: 'revealUndo' })
-  const [zoom, setZoom] = useState(1)
-  const [showPossible, setShowPossible] = useState(false)
-  const [showJackPeek, setShowJackPeek] = useState(false)
+    return storage ? loadNumberPreference(storage, BOARD_ZOOM_STORAGE_KEY, 1, 0.7, 2) : 1
+  })
+  const [showPossible, setShowPossible] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY) : false
+  })
+  const [showJackPeek, setShowJackPeek] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, JACK_PEEK_STORAGE_KEY) : false
+  })
   const [showCrossingIds, setShowCrossingIds] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY) : false
@@ -788,6 +804,42 @@ function App() {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, PAST_PATH_STORAGE_KEY) : false
   })
+  const [showInvestigatorTurnAnnouncement, setShowInvestigatorTurnAnnouncement] = useState(false)
+  const applyHistoryCommands = (commands: Parameters<typeof gameHistoryReducer>[1][]) => {
+    let next = history
+    for (const command of commands) {
+      next = gameHistoryReducer(next, command)
+      historyDispatch(command)
+    }
+    const storage = browserStorage()
+    if (storage) saveStoredHistory(storage, next)
+  }
+  const applyHistoryCommand = (command: Parameters<typeof gameHistoryReducer>[1]) => {
+    applyHistoryCommands([command])
+  }
+  const dispatch = (action: GameAction) => {
+    if (action.type === 'confirmJackMove') {
+      const confirmCommand = { type: 'apply' as const, action }
+      const confirmedHistory = gameHistoryReducer(history, confirmCommand)
+      if (currentHistoryState(confirmedHistory).stage === 'handoffInspectorsTurn') {
+        applyHistoryCommands([confirmCommand, { type: 'apply', action: { type: 'continueHandoff' } }])
+        setShowInvestigatorTurnAnnouncement(true)
+        window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1500)
+        return
+      }
+    }
+    applyHistoryCommand({ type: 'apply', action })
+  }
+  const handleUndo = () => applyHistoryCommand({ type: 'undo' })
+  const handleBigUndo = () => applyHistoryCommand({ type: 'bigUndo' })
+  const handleRedo = () => applyHistoryCommand({ type: 'redo' })
+  const handleRedoAll = () => applyHistoryCommand({ type: 'redoAll' })
+  const handleRevealUndo = () => applyHistoryCommand({ type: 'revealUndo' })
+  const updateZoom = (value: number) => {
+    setZoom(value)
+    const storage = browserStorage()
+    if (storage) saveNumberPreference(storage, BOARD_ZOOM_STORAGE_KEY, value)
+  }
 
   if (history.pendingReveal || isHandoff(state.stage)) {
     return (
@@ -843,7 +895,12 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell"
+      onClickCapture={() => {
+        if (showInvestigatorTurnAnnouncement) setShowInvestigatorTurnAnnouncement(false)
+      }}
+    >
       <header className="app-header">
         <div>
           <span className="brand-kicker">A hidden movement game</span>
@@ -863,8 +920,6 @@ function App() {
             onClick={() => {
               if (state.stage === 'jackDiscoverySetup' || window.confirm('Start a new game and lose the current progress?')) {
                 dispatch({ type: 'newGame' })
-                setShowPossible(false)
-                setShowJackPeek(false)
               }
             }}
           >
@@ -879,14 +934,14 @@ function App() {
         <section className="board-panel">
           <div className="board-toolbar">
             <div>
-              <button type="button" onClick={() => setZoom(Math.max(0.7, zoom - 0.15))} aria-label="Zoom out">
+              <button type="button" onClick={() => updateZoom(Math.max(0.7, zoom - 0.15))} aria-label="Zoom out">
                 −
               </button>
               <span>{Math.round(zoom * 100)}%</span>
-              <button type="button" onClick={() => setZoom(Math.min(2, zoom + 0.15))} aria-label="Zoom in">
+              <button type="button" onClick={() => updateZoom(Math.min(2, zoom + 0.15))} aria-label="Zoom in">
                 +
               </button>
-              <button className="zoom-reset-button" type="button" onClick={() => setZoom(1)}>
+              <button className="zoom-reset-button" type="button" onClick={() => updateZoom(1)}>
                 ZmRst
               </button>
             </div>
@@ -931,7 +986,12 @@ function App() {
                   <input
                     type="checkbox"
                     checked={showPossible}
-                    onChange={(event) => setShowPossible(event.target.checked)}
+                    onChange={(event) => {
+                      const checked = event.target.checked
+                      setShowPossible(checked)
+                      const storage = browserStorage()
+                      if (storage) saveBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY, checked)
+                    }}
                   />
                   Jack maybes
                   {showPossible && <strong>{possibleIds.size}</strong>}
@@ -942,34 +1002,52 @@ function App() {
                   <input
                     type="checkbox"
                     checked={showJackPeek}
-                    onChange={(event) => setShowJackPeek(event.target.checked)}
+                    onChange={(event) => {
+                      const checked = event.target.checked
+                      setShowJackPeek(checked)
+                      const storage = browserStorage()
+                      if (storage) saveBooleanPreference(storage, JACK_PEEK_STORAGE_KEY, checked)
+                    }}
                   />
                   Jack peek
                 </label>
               )}
             </div>
           </div>
-          <div
-            className={
-              isInspectorInteraction(state.stage)
-                ? `board-scroll active-investigator-${activeInvestigatorColor(state)}`
-                : 'board-scroll'
-            }
-          >
-            <div className="board-zoom" style={{ width: `${zoom * 100}%` }}>
-              <GameBoard
-                state={state}
-                legalCircleIds={legalCircleIds}
-                legalCrossingIds={legalCrossingIds}
-                possibleIds={possibleIds}
-                showPossible={showPossible}
-                showCrossingIds={showCrossingIds}
-                showPastPath={showPastPath}
-                showJackPeek={showJackPeek}
-                onCircle={handleCircle}
-                onCrossing={handleCrossing}
-              />
+          <div className="board-stage">
+            <div
+              className={
+                isInspectorInteraction(state.stage)
+                  ? `board-scroll active-investigator-${activeInvestigatorColor(state)}`
+                  : 'board-scroll'
+              }
+            >
+              <div className="board-zoom" style={{ width: `${zoom * 100}%` }}>
+                <GameBoard
+                  state={state}
+                  legalCircleIds={legalCircleIds}
+                  legalCrossingIds={legalCrossingIds}
+                  possibleIds={possibleIds}
+                  showPossible={showPossible}
+                  showCrossingIds={showCrossingIds}
+                  showPastPath={showPastPath}
+                  showJackPeek={showJackPeek}
+                  onCircle={handleCircle}
+                  onCrossing={handleCrossing}
+                  onMapClick={() => {
+                    if (state.stage === 'investigatorTurnResult') dispatch({ type: 'continueHandoff' })
+                  }}
+                />
+              </div>
             </div>
+            {showInvestigatorTurnAnnouncement && (
+              <div className="investigator-turn-announcement" role="status" aria-live="assertive">
+                Investigators’ Turn
+              </div>
+            )}
+            {state.stage === 'investigatorTurnResult' && (
+              <div className="map-continue-prompt">Results shown · Click anywhere on the map to continue</div>
+            )}
           </div>
           <div className="board-legend" aria-label="Board marker legend">
             <span>

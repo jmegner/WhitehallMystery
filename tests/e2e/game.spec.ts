@@ -65,12 +65,20 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   expect(routeEndClearance).toBeGreaterThanOrEqual(18.4)
   await page.getByRole('button', { name: 'Record move privately' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Pass the device to Investigators' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
+  const investigatorTurnAnnouncement = page.locator('.investigator-turn-announcement')
+  await expect(investigatorTurnAnnouncement).toBeVisible()
+  await expect(investigatorTurnAnnouncement).toHaveText('Investigators’ Turn')
+  await expect(investigatorTurnAnnouncement).toHaveCSS('background-color', 'rgba(0, 0, 0, 0.6)')
+  await expect(investigatorTurnAnnouncement).toHaveCSS('color', 'rgb(255, 255, 255)')
   await expect(page.getByText('Private route')).toHaveCount(0)
-  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await page.locator('.app-header').click()
+  await expect(investigatorTurnAnnouncement).toBeHidden()
   await expect(page.locator('.public-log').getByText('M1: Jack advanced to move 1.')).toBeVisible()
 
   await page.getByLabel('Jack maybes').check()
+  await page.reload()
+  await expect(page.getByLabel('Jack maybes')).toBeChecked()
   await expect(page.locator('.jack-location-edge-arrows')).toHaveCount(0)
   await expect(page.locator('.track-location')).toHaveCount(0)
   await expect(page.getByRole('checkbox', { name: 'past path', exact: true })).toHaveCount(0)
@@ -95,6 +103,8 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
 
   const jackPeek = page.getByRole('checkbox', { name: 'Jack peek', exact: true })
   await jackPeek.check()
+  await page.reload()
+  await expect(jackPeek).toBeChecked()
   await expect(page.locator('.jack-marker')).toBeVisible()
   await expect(page.locator('.jack-location-edge-arrows polygon')).toHaveCount(4)
   await expect(page.locator('.past-path-line')).toBeVisible()
@@ -107,6 +117,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await expect(page.locator('.past-path-line')).toHaveCount(0)
   await expect(page.locator('.private-discovery-marker')).toHaveCount(0)
   await expect(page.locator('.track-location')).toHaveCount(0)
+  await jackPeek.check()
 
   await page.locator('[aria-label="Crossing FP, selectable"]').click()
   await expect(page.locator('.investigator-piece.blue .active-investigator-ring')).toBeVisible()
@@ -153,6 +164,20 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await page.reload()
   await expect(page.getByRole('checkbox', { name: 'past path', exact: true })).toBeChecked()
   await expect(page.locator('.past-path-line')).toBeVisible()
+
+  await page.getByLabel('crossing ids').check()
+  await page.getByRole('button', { name: 'Zoom in' }).click()
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'New game' }).click()
+  await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
+  await expect(page.getByLabel('crossing ids')).toBeChecked()
+  await expect(page.getByText('115%', { exact: true })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => ({
+    maybes: localStorage.getItem('whitehall-mystery.show-possible-locations'),
+    peek: localStorage.getItem('whitehall-mystery.show-jack-peek'),
+    pastPath: localStorage.getItem('whitehall-mystery.show-past-path'),
+    zoom: localStorage.getItem('whitehall-mystery.board-zoom'),
+  }))).toEqual({ maybes: 'true', peek: 'true', pastPath: 'true', zoom: '1.15' })
 })
 
 test('keeps the mobile layout within the viewport', async ({ page }) => {
@@ -230,4 +255,49 @@ test('bulk undo and redo cross sides without exposing private views', async ({ p
   await expect(page.getByRole('heading', { name: /Deploy the Blue Investigator/i })).toBeVisible()
   await expect(page.getByLabel('6 player actions')).toHaveText('Actions 6')
   await expect(page.getByRole('button', { name: 'Redo All', exact: true })).toBeDisabled()
+})
+
+test('draws a clue ring outside a valid-choice ring at the same location', async ({ page }) => {
+  await page.goto('/')
+  for (const id of [33, 46, 121, 147]) await page.getByLabel(`Location ${id}, selectable`).click()
+  await page.getByRole('button', { name: 'Lock in four locations' }).click()
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+
+  const deployment = page.getByLabel('Available deployment crossings')
+  for (const crossing of ['FP', 'HP', 'HZ']) {
+    await deployment.getByRole('button', { name: crossing, exact: true }).click()
+  }
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '121', exact: true }).click()
+  await page.getByLabel('Legal Jack destinations').getByRole('button', { name: '104', exact: true }).click()
+  await page.getByRole('button', { name: 'Record move privately' }).click()
+  await page.locator('.app-header').click()
+
+  await page.getByLabel('Legal yellow Investigator destinations').getByRole('button', { name: 'FR', exact: true }).click()
+  await page.getByLabel('Legal blue Investigator destinations').getByRole('button', { name: 'FP', exact: true }).click()
+  await page.getByLabel('Legal red Investigator destinations').getByRole('button', { name: 'HZ', exact: true }).click()
+
+  await page.getByRole('button', { name: 'Search for clues' }).click()
+  await page.getByLabel('Locations adjacent to the yellow Investigator').getByRole('button', { name: '104', exact: true }).click()
+  await page.getByRole('button', { name: 'Search for clues' }).click()
+
+  const clue = page.locator('.clue-marker.encircling-legal')
+  await expect(clue).toHaveCount(1)
+  await expect(clue).toHaveAttribute('r', '23')
+  await expect(clue).toHaveCSS('stroke', 'rgb(225, 173, 0)')
+
+  const ringGeometry = await clue.evaluate((clueElement) => {
+    const cx = clueElement.getAttribute('cx')
+    const cy = clueElement.getAttribute('cy')
+    const legal = [...document.querySelectorAll('.legal-circle')].find(
+      (element) => element.getAttribute('cx') === cx && element.getAttribute('cy') === cy,
+    )
+    if (!(legal instanceof SVGCircleElement)) return null
+    return {
+      clueRadius: Number(clueElement.getAttribute('r')),
+      legalRadius: Number(legal.getAttribute('r')),
+      legalStroke: getComputedStyle(legal).stroke,
+    }
+  })
+  expect(ringGeometry).toEqual({ clueRadius: 23, legalRadius: 18.5, legalStroke: 'rgb(46, 230, 107)' })
 })

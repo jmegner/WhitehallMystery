@@ -62,6 +62,7 @@ export type GameStage =
   | 'handoffInspectorsTurn'
   | 'investigatorMove'
   | 'investigatorAction'
+  | 'investigatorTurnResult'
   | 'handoffJackTurn'
   | 'gameOver'
 

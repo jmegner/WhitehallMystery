@@ -29,7 +29,12 @@ export const playerViewForState = (state: GameState): PlayerView | null => {
   if (state.stage === 'jackDiscoverySetup' || state.stage === 'jackChooseStart' || state.stage === 'jackMove') {
     return 'jack'
   }
-  if (state.stage === 'investigatorSetup' || state.stage === 'investigatorMove' || state.stage === 'investigatorAction') {
+  if (
+    state.stage === 'investigatorSetup' ||
+    state.stage === 'investigatorMove' ||
+    state.stage === 'investigatorAction' ||
+    state.stage === 'investigatorTurnResult'
+  ) {
     return 'investigators'
   }
   return null
@@ -50,7 +55,8 @@ const sameAction = (left: GameAction | null, right: GameAction) =>
 const viewStartIndex = (history: GameHistory, owner: PlayerView, fromIndex = history.cursor): number => {
   for (let index = fromIndex; index > 0; index -= 1) {
     const entry = history.entries[index]
-    if (entry?.action?.type === 'continueHandoff' && playerViewForState(entry.state) === owner) return index
+    const previous = history.entries[index - 1]
+    if (entry && playerViewForState(entry.state) === owner && playerViewForState(previous!.state) !== owner) return index
   }
   return 0
 }

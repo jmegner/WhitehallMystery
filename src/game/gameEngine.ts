@@ -166,7 +166,14 @@ const enterJackTurn = (state: GameState): GameState => {
       })
 }
 
-const resolveEndOfTurn = (state: GameState): GameState => {
+const showEndOfTurnResult = (state: GameState): GameState => ({
+  ...state,
+  stage: 'investigatorTurnResult',
+  inspectorActionMode: 'choose',
+  checkedThisAction: [],
+})
+
+const finalizeEndOfTurn = (state: GameState): GameState => {
   const current = state.currentJack
   if (current !== null && state.discoveryLocations.includes(current) && !state.reachedDiscoveries.includes(current)) {
     const reachedDiscoveries = [...state.reachedDiscoveries, current]
@@ -215,7 +222,7 @@ const advanceInspectorAction = (state: GameState): GameState => {
       notice: `${INVESTIGATOR_ORDER[state.activeInvestigator + 1]} Investigator: search, arrest, or pass.`,
     }
   }
-  return resolveEndOfTurn(state)
+  return showEndOfTurnResult(state)
 }
 
 const moveCost = (type: JackMoveType) => (type === 'coach' ? 2 : 1)
@@ -285,6 +292,9 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
           activeInvestigator: 0,
           notice: 'Yellow Investigator: move zero, one, or two crossings.',
         }
+      }
+      if (state.stage === 'investigatorTurnResult') {
+        return finalizeEndOfTurn(state)
       }
       if (state.stage === 'handoffJackTurn') return enterJackTurn(state)
       return state
@@ -554,11 +564,14 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         return withNotice(state, 'Continue checking adjacent circles until a clue is found or all have been searched.')
       }
       const color = activeInvestigatorColor(state)
-      return advanceInspectorAction({
+      const passed = {
         ...state,
         publicLog: [...state.publicLog, moveLog(state.moveSlot, `${color} passed the action phase.`)],
         notice: `${color} passed.`,
-      })
+      }
+      return state.activeInvestigator === INVESTIGATOR_ORDER.length - 1
+        ? finalizeEndOfTurn(passed)
+        : advanceInspectorAction(passed)
     }
     default:
       return state

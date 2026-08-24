@@ -18,11 +18,16 @@ import {
   waterGroups,
 } from './mapData'
 import {
+  BOARD_ZOOM_STORAGE_KEY,
   CROSSING_IDS_STORAGE_KEY,
   GAME_STORAGE_KEY,
+  JACK_PEEK_STORAGE_KEY,
+  POSSIBLE_LOCATIONS_STORAGE_KEY,
   loadBooleanPreference,
+  loadNumberPreference,
   loadStoredGame,
   saveBooleanPreference,
+  saveNumberPreference,
   saveStoredGame,
 } from './persistence'
 import type { GameAction, GameState, PublicRoundEvidence } from './types'
@@ -92,13 +97,19 @@ describe('local persistence', () => {
     }
   }
 
-  test('round-trips a complete game snapshot and crossing-label preference', () => {
+  test('round-trips a complete game snapshot and display preferences', () => {
     const storage = createMemoryStorage()
     const state = setupGame()
     saveStoredGame(storage, state)
     saveBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY, true)
+    saveBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY, true)
+    saveBooleanPreference(storage, JACK_PEEK_STORAGE_KEY, true)
+    saveNumberPreference(storage, BOARD_ZOOM_STORAGE_KEY, 1.3)
     expect(loadStoredGame(storage)).toEqual(state)
     expect(loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY)).toBe(true)
+    expect(loadBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY)).toBe(true)
+    expect(loadBooleanPreference(storage, JACK_PEEK_STORAGE_KEY)).toBe(true)
+    expect(loadNumberPreference(storage, BOARD_ZOOM_STORAGE_KEY, 1, 0.7, 2)).toBe(1.3)
   })
 
   test('rejects corrupt or outdated game snapshots', () => {
@@ -266,6 +277,51 @@ describe('game reducer', () => {
     expect(state.inspectorActionMode).toBe('search')
     state = gameReducer(state, { type: 'passInspectorAction' })
     expect(state.activeInvestigator).toBe(activeBefore)
+  })
+
+  test('keeps the red Investigator’s final arrest result visible until the map is acknowledged', () => {
+    const base = setupGame()
+    const resultState: GameState = {
+      ...base,
+      stage: 'investigatorAction',
+      activeInvestigator: 2,
+      inspectorActionMode: 'arrest',
+      currentJack: 33,
+    }
+    const miss = legalInspectorActionCircles(resultState).find((id) => id !== resultState.currentJack) as number
+    let state = gameReducer(resultState, { type: 'arrestCircle', circleId: miss })
+
+    expect(state.stage).toBe('investigatorTurnResult')
+    expect(state.activeInvestigator).toBe(2)
+    expect(state.notice).toBe(`No arrest at ${miss}.`)
+
+    state = gameReducer(state, { type: 'continueHandoff' })
+    expect(state.stage).toBe('handoffJackTurn')
+    expect(state.activeInvestigator).toBe(0)
+  })
+
+  test('keeps the red Investigator’s final clue result on the board until the map is acknowledged', () => {
+    const base = setupGame()
+    const resultState: GameState = {
+      ...base,
+      stage: 'investigatorAction',
+      activeInvestigator: 2,
+      inspectorActionMode: 'search',
+    }
+    const target = legalInspectorActionCircles(resultState).find(
+      (id) => !resultState.discoveryLocations.includes(id),
+    ) as number
+    let state = gameReducer(
+      { ...resultState, currentJack: target, roundTrail: [33, target] },
+      { type: 'searchCircle', circleId: target },
+    )
+
+    expect(state.stage).toBe('investigatorTurnResult')
+    expect(state.clueLocations).toContain(target)
+    expect(state.notice).toBe(`A clue was found at ${target}.`)
+
+    state = gameReducer(state, { type: 'continueHandoff' })
+    expect(state.stage).toBe('handoffJackTurn')
   })
 
   test('reveals a reached Discovery Location only after all Investigator actions', () => {
