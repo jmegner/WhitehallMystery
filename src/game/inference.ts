@@ -4,6 +4,21 @@ import type { InvestigatorColor, JackMoveType, PublicMoveEvidence, PublicRoundEv
 interface Hypothesis {
   position: number
   positiveMask: bigint
+  visitedUnion: bigint
+  visitedIntersection: bigint
+}
+
+export interface SearchOutcome {
+  ifNo: Set<number>
+  ifYes: Set<number>
+  positiveMeansJackIsThereNow: boolean
+}
+
+interface InferenceContext {
+  evidence: PublicRoundEvidence
+  bitForCircle: Map<number, bigint>
+  negativeUntil: Map<number, number>
+  observationsByMove: Map<number, PublicRoundEvidence['observations']>
 }
 
 const isCoachCircle = (circleId: number) => circlesById.get(circleId)?.color !== 'blue'
@@ -33,9 +48,7 @@ const movementPaths = (from: number, move: PublicMoveEvidence): number[][] => {
   return routes
 }
 
-export const possibleJackLocations = (evidence: PublicRoundEvidence | null): Set<number> => {
-  if (!evidence) return new Set()
-
+const buildInferenceContext = (evidence: PublicRoundEvidence): InferenceContext => {
   const positiveIds = [
     ...new Set(
       evidence.observations
@@ -51,10 +64,31 @@ export const possibleJackLocations = (evidence: PublicRoundEvidence | null): Set
     }
   }
 
-  if ((negativeUntil.get(evidence.start) ?? -1) >= 0) return new Set()
+  const observationsByMove = new Map<number, PublicRoundEvidence['observations']>()
+  for (const observation of evidence.observations) {
+    const observations = observationsByMove.get(observation.afterMove) ?? []
+    observations.push(observation)
+    observationsByMove.set(observation.afterMove, observations)
+  }
+
+  return { evidence, bitForCircle, negativeUntil, observationsByMove }
+}
+
+const visitedBit = (circleId: number) => 1n << BigInt(circleId)
+
+const remainingHypotheses = (context: InferenceContext): Hypothesis[] => {
+  const { evidence, bitForCircle, negativeUntil, observationsByMove } = context
+
+  if ((negativeUntil.get(evidence.start) ?? -1) >= 0) return []
   let hypotheses = new Map<string, Hypothesis>()
   const startMask = bitForCircle.get(evidence.start) ?? 0n
-  hypotheses.set(`${evidence.start}:${startMask}`, { position: evidence.start, positiveMask: startMask })
+  const startVisited = visitedBit(evidence.start)
+  hypotheses.set(`${evidence.start}:${startMask}`, {
+    position: evidence.start,
+    positiveMask: startMask,
+    visitedUnion: startVisited,
+    visitedIntersection: startVisited,
+  })
 
   for (let moveIndex = 1; moveIndex <= evidence.moves.length; moveIndex += 1) {
     const move = evidence.moves[moveIndex - 1]
@@ -67,11 +101,25 @@ export const possibleJackLocations = (evidence: PublicRoundEvidence | null): Set
         for (const circleId of path) mask |= bitForCircle.get(circleId) ?? 0n
         const position = path[path.length - 1]
         if (position === undefined) continue
-        next.set(`${position}:${mask}`, { position, positiveMask: mask })
+        const pathVisited = path.reduce((visited, circleId) => visited | visitedBit(circleId), 0n)
+        const visitedUnion = hypothesis.visitedUnion | pathVisited
+        const visitedIntersection = hypothesis.visitedIntersection | pathVisited
+        const key = `${position}:${mask}`
+        const existing = next.get(key)
+        next.set(
+          key,
+          existing
+            ? {
+                ...existing,
+                visitedUnion: existing.visitedUnion | visitedUnion,
+                visitedIntersection: existing.visitedIntersection & visitedIntersection,
+              }
+            : { position, positiveMask: mask, visitedUnion, visitedIntersection },
+        )
       }
     }
 
-    const observations = evidence.observations.filter((observation) => observation.afterMove === moveIndex)
+    const observations = observationsByMove.get(moveIndex) ?? []
     hypotheses = new Map(
       [...next.entries()].filter(([, hypothesis]) =>
         observations.every((observation) => {
@@ -84,7 +132,38 @@ export const possibleJackLocations = (evidence: PublicRoundEvidence | null): Set
     )
   }
 
-  return new Set([...hypotheses.values()].map((hypothesis) => hypothesis.position))
+  return [...hypotheses.values()]
+}
+
+export const possibleJackLocations = (evidence: PublicRoundEvidence | null): Set<number> => {
+  if (!evidence) return new Set()
+  const hypotheses = remainingHypotheses(buildInferenceContext(evidence))
+  return new Set(hypotheses.map((hypothesis) => hypothesis.position))
+}
+
+export const possibleJackSearchOutcomes = (evidence: PublicRoundEvidence | null): Map<number, SearchOutcome> => {
+  const outcomes = new Map<number, SearchOutcome>()
+  if (!evidence) return outcomes
+
+  const context = buildInferenceContext(evidence)
+  const hypotheses = remainingHypotheses(context)
+  for (const circleId of circlesById.keys()) {
+    const bit = visitedBit(circleId)
+    const ifYes = new Set<number>()
+    const ifNo = new Set<number>()
+    for (const hypothesis of hypotheses) {
+      if ((hypothesis.visitedUnion & bit) !== 0n) ifYes.add(hypothesis.position)
+      if ((hypothesis.visitedIntersection & bit) === 0n) ifNo.add(hypothesis.position)
+    }
+    if (ifYes.size === 0) continue
+    outcomes.set(circleId, {
+      ifNo,
+      ifYes,
+      positiveMeansJackIsThereNow: ifYes.size === 1 && ifYes.has(circleId),
+    })
+  }
+
+  return outcomes
 }
 
 export const movementLabel = (type: JackMoveType) =>

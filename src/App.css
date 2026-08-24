@@ -259,10 +259,6 @@ button:disabled {
   background: rgb(255 255 255 / 88%);
 }
 
-.board-toolbar .zoom-reset-button {
-  font-size: 0.68rem;
-}
-
 .board-toolbar span {
   min-width: 46px;
   text-align: center;
@@ -382,11 +378,6 @@ button:disabled {
   border-color: #ff4545;
 }
 
-.board-zoom {
-  min-width: 100%;
-  line-height: 0;
-}
-
 .game-board {
   display: block;
   width: 100%;
@@ -495,6 +486,11 @@ button:disabled {
   cursor: pointer;
 }
 
+.map-hit-target.inference-hover-target {
+  pointer-events: auto;
+  cursor: help;
+}
+
 .legal-circle,
 .legal-crossing {
   fill: none;
@@ -544,6 +540,49 @@ button:disabled {
   stroke-width: 4;
   stroke-dasharray: 3 3;
   vector-effect: non-scaling-stroke;
+}
+
+.possible-certainty-marker {
+  fill: none;
+  stroke: #ff03a7;
+  stroke-width: 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.possible-outcome-marker {
+  fill: none;
+  stroke-width: 4;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 2px rgb(255 250 235 / 90%));
+}
+
+.possible-outcome-no {
+  stroke: #123f68;
+}
+
+.possible-outcome-yes {
+  stroke: #ff03a7;
+}
+
+.possible-outcome-count {
+  pointer-events: none;
+  stroke: rgb(255 250 235 / 95%);
+  stroke-width: 3px;
+  paint-order: stroke fill;
+  font: 900 11px 'Inter', sans-serif;
+  letter-spacing: -0.04em;
+}
+
+.outcome-count-no {
+  fill: #123f68;
+}
+
+.outcome-count-separator {
+  fill: #3f3933;
+}
+
+.outcome-count-yes {
+  fill: #ff03a7;
 }
 
 .private-route {
@@ -633,6 +672,20 @@ button:disabled {
 .legend-dot.possible {
   background: rgb(99 46 145 / 28%);
   border-color: #7a3caf;
+}
+
+.legend-dot.new-possible {
+  position: relative;
+  background: rgb(99 46 145 / 28%);
+  border-color: #ff03a7;
+}
+
+.legend-dot.new-possible::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 2px dashed #7a3caf;
+  border-radius: 50%;
 }
 
 .legend-dot.legal {

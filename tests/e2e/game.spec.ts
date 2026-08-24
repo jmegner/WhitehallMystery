@@ -166,24 +166,28 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await expect(page.locator('.past-path-line')).toBeVisible()
 
   await page.getByLabel('crossing ids').check()
-  await page.getByRole('button', { name: 'Zoom in' }).click()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'New game' }).click()
   await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
   await expect(page.getByLabel('crossing ids')).toBeChecked()
-  await expect(page.getByText('115%', { exact: true })).toBeVisible()
   await expect.poll(() => page.evaluate(() => ({
     maybes: localStorage.getItem('whitehall-mystery.show-possible-locations'),
     peek: localStorage.getItem('whitehall-mystery.show-jack-peek'),
     pastPath: localStorage.getItem('whitehall-mystery.show-past-path'),
-    zoom: localStorage.getItem('whitehall-mystery.board-zoom'),
-  }))).toEqual({ maybes: 'true', peek: 'true', pastPath: 'true', zoom: '1.15' })
+  }))).toEqual({ maybes: 'true', peek: 'true', pastPath: 'true' })
 })
 
 test('keeps the mobile layout within the viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
   await expect(page.locator('.game-board')).toBeVisible()
+  await expect(page.getByRole('button', { name: /zoom/i })).toHaveCount(0)
+  await expect(page.getByText('New possible Jack location', { exact: true })).toBeVisible()
+  const newPossibleLegend = page.locator('.legend-dot.new-possible')
+  await expect(newPossibleLegend).toHaveCSS('border-color', 'rgb(255, 3, 167)')
+  expect(await newPossibleLegend.evaluate((element) => getComputedStyle(element, '::after').borderColor)).toBe(
+    'rgb(122, 60, 175)',
+  )
   await expect(page.locator('.crossing-id-label')).toHaveCount(0)
   await page.getByLabel('crossing ids').check()
   await expect(page.locator('.crossing-id-label')).toHaveCount(174)
@@ -300,4 +304,84 @@ test('draws a clue ring outside a valid-choice ring at the same location', async
     }
   })
   expect(ringGeometry).toEqual({ clueRadius: 23, legalRadius: 18.5, legalStroke: 'rgb(46, 230, 107)' })
+})
+
+test('previews positive and negative search outcomes for Jack maybes', async ({ page }) => {
+  await page.goto('/')
+  for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
+  await page.getByRole('button', { name: 'Lock in four locations' }).click()
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+
+  const deployment = page.getByLabel('Available deployment crossings')
+  for (const crossing of ['FP', 'HP', 'HZ']) {
+    await deployment.getByRole('button', { name: crossing, exact: true }).click()
+  }
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
+  await page.getByLabel('Legal Jack destinations').getByRole('button').first().click()
+  await page.getByRole('button', { name: 'Record move privately' }).click()
+  await page.locator('.app-header').click()
+
+  await page.getByLabel('Legal yellow Investigator destinations').getByRole('button', { name: 'FP', exact: true }).click()
+  await page.getByLabel('Legal blue Investigator destinations').getByRole('button', { name: 'HP', exact: true }).click()
+  await page.getByLabel('Legal red Investigator destinations').getByRole('button', { name: 'HZ', exact: true }).click()
+  for (let index = 0; index < 3; index += 1) await page.getByRole('button', { name: 'Pass', exact: true }).click()
+
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await page.getByLabel('Legal Jack destinations').getByRole('button').first().click()
+  await page.getByRole('button', { name: 'Record move privately' }).click()
+  await page.locator('.app-header').click()
+  await page.getByLabel('Jack maybes').check()
+
+  const outcomeCount = page.locator('[aria-label^="Search outcome at 13:"]')
+  await expect(outcomeCount).toHaveText('40/12')
+  await expect(page.locator('[aria-label^="Search outcome at 33:"]')).toHaveCount(0)
+  await expect(outcomeCount.locator('.outcome-count-no')).toHaveCSS('fill', 'rgb(18, 63, 104)')
+  await expect(outcomeCount.locator('.outcome-count-yes')).toHaveCSS('fill', 'rgb(255, 3, 167)')
+  await expect(page.locator('.possible-marker').first()).toBeVisible()
+  const certaintyMarker = page.locator('.possible-certainty-marker').first()
+  await expect(certaintyMarker).toHaveCSS('stroke', 'rgb(255, 3, 167)')
+  const certaintyPresentation = await certaintyMarker.evaluate((pinkRing) => {
+    const purpleRing = pinkRing.nextElementSibling
+    return {
+      pinkRadius: pinkRing.getAttribute('r'),
+      purpleRadius: purpleRing?.getAttribute('r'),
+      purpleStroke: purpleRing ? getComputedStyle(purpleRing).stroke : null,
+      purpleDashes: purpleRing ? getComputedStyle(purpleRing).strokeDasharray : null,
+    }
+  })
+  expect(certaintyPresentation).toEqual({
+    pinkRadius: '23',
+    purpleRadius: '23',
+    purpleStroke: 'rgb(122, 60, 175)',
+    purpleDashes: '3px, 3px',
+  })
+
+  await page.getByLabel('Location 13', { exact: true }).hover()
+  await expect(page.locator('.possible-marker')).toHaveCount(0)
+  await expect(page.locator('.possible-outcome-no').first()).toBeVisible()
+  await expect(page.locator('.possible-outcome-yes').first()).toBeVisible()
+
+  const dualOutcomeRings = await page.getByLabel('Location 10', { exact: true }).evaluate((target) => {
+    const cx = target.getAttribute('cx')
+    const cy = target.getAttribute('cy')
+    const ring = (className: string) =>
+      [...document.querySelectorAll(className)].find(
+        (element) => element.getAttribute('cx') === cx && element.getAttribute('cy') === cy,
+      )
+    const noRing = ring('.possible-outcome-no')
+    const yesRing = ring('.possible-outcome-yes')
+    return {
+      noRadius: noRing?.getAttribute('r'),
+      noStroke: noRing ? getComputedStyle(noRing).stroke : null,
+      yesRadius: yesRing?.getAttribute('r'),
+      yesStroke: yesRing ? getComputedStyle(yesRing).stroke : null,
+    }
+  })
+  expect(dualOutcomeRings).toEqual({
+    noRadius: '20.5',
+    noStroke: 'rgb(18, 63, 104)',
+    yesRadius: '26',
+    yesStroke: 'rgb(255, 3, 167)',
+  })
 })

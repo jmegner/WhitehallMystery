@@ -6,7 +6,7 @@ import {
   legalJackDestinations,
   legalNormalDestinations,
 } from './gameEngine'
-import { possibleJackLocations } from './inference'
+import { possibleJackLocations, possibleJackSearchOutcomes } from './inference'
 import {
   alleyDestinations,
   circles,
@@ -18,16 +18,13 @@ import {
   waterGroups,
 } from './mapData'
 import {
-  BOARD_ZOOM_STORAGE_KEY,
   CROSSING_IDS_STORAGE_KEY,
   GAME_STORAGE_KEY,
   JACK_PEEK_STORAGE_KEY,
   POSSIBLE_LOCATIONS_STORAGE_KEY,
   loadBooleanPreference,
-  loadNumberPreference,
   loadStoredGame,
   saveBooleanPreference,
-  saveNumberPreference,
   saveStoredGame,
 } from './persistence'
 import type { GameAction, GameState, PublicRoundEvidence } from './types'
@@ -104,12 +101,10 @@ describe('local persistence', () => {
     saveBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY, true)
     saveBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY, true)
     saveBooleanPreference(storage, JACK_PEEK_STORAGE_KEY, true)
-    saveNumberPreference(storage, BOARD_ZOOM_STORAGE_KEY, 1.3)
     expect(loadStoredGame(storage)).toEqual(state)
     expect(loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY)).toBe(true)
     expect(loadBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY)).toBe(true)
     expect(loadBooleanPreference(storage, JACK_PEEK_STORAGE_KEY)).toBe(true)
-    expect(loadNumberPreference(storage, BOARD_ZOOM_STORAGE_KEY, 1, 0.7, 2)).toBe(1.3)
   })
 
   test('rejects corrupt or outdated game snapshots', () => {
@@ -359,6 +354,52 @@ describe('game reducer', () => {
 })
 
 describe('public inference', () => {
+  test('calculates remaining current locations after hypothetical positive and negative searches', () => {
+    const evidence: PublicRoundEvidence = {
+      start: 33,
+      moves: [
+        {
+          type: 'normal',
+          startSlot: 1,
+          endSlot: 1,
+          investigatorPositions: { yellow: 'FP', blue: 'HP', red: 'HZ' },
+        },
+      ],
+      observations: [],
+    }
+    const current = possibleJackLocations(evidence)
+    const outcomes = possibleJackSearchOutcomes(evidence)
+    const destination = [...current][0] as number
+
+    expect(outcomes.get(33)?.ifNo).toEqual(new Set())
+    expect(outcomes.get(33)?.ifYes).toEqual(current)
+    expect(outcomes.get(33)?.positiveMeansJackIsThereNow).toBe(false)
+    expect(outcomes.get(destination)?.ifYes).toEqual(new Set([destination]))
+    expect(outcomes.get(destination)?.ifNo).toEqual(new Set([...current].filter((id) => id !== destination)))
+    expect(outcomes.get(destination)?.positiveMeansJackIsThereNow).toBe(true)
+    expect(new Set(outcomes.keys())).toEqual(new Set([33, ...current]))
+  })
+
+  test('preserves current locations compatible with either hypothetical clue result', () => {
+    const move = {
+      type: 'normal' as const,
+      startSlot: 1,
+      endSlot: 1,
+      investigatorPositions: { yellow: 'FP', blue: 'HP', red: 'HZ' } as const,
+    }
+    const evidence: PublicRoundEvidence = {
+      start: 33,
+      moves: [move, { ...move, startSlot: 2, endSlot: 2 }],
+      observations: [],
+    }
+    const outcome = possibleJackSearchOutcomes(evidence).get(13)
+
+    expect(outcome?.ifNo.size).toBe(40)
+    expect(outcome?.ifYes.size).toBe(12)
+    expect(outcome?.ifNo).toContain(10)
+    expect(outcome?.ifYes).toContain(10)
+  })
+
   test('uses Coach intermediate clues, negative clues, and failed arrests', () => {
     const start = 33
     const first = [...(jackTransitions.get(start)?.keys() ?? [])].find(

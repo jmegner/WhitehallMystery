@@ -9,7 +9,7 @@ import {
   legalInvestigatorDestinations,
   legalJackDestinations,
 } from './game/gameEngine'
-import { movementLabel, possibleJackLocations } from './game/inference'
+import { movementLabel, possibleJackSearchOutcomes, type SearchOutcome } from './game/inference'
 import {
   actionCount,
   canBigUndo,
@@ -24,16 +24,13 @@ import {
 } from './game/history'
 import { circles, circlesById, crossings, crossingsById } from './game/mapData'
 import {
-  BOARD_ZOOM_STORAGE_KEY,
   CROSSING_IDS_STORAGE_KEY,
   JACK_PEEK_STORAGE_KEY,
   PAST_PATH_STORAGE_KEY,
   POSSIBLE_LOCATIONS_STORAGE_KEY,
   loadBooleanPreference,
-  loadNumberPreference,
   loadStoredHistory,
   saveBooleanPreference,
-  saveNumberPreference,
   saveStoredHistory,
 } from './game/persistence'
 import {
@@ -48,6 +45,10 @@ const BOARD_SIZE = 1200
 const ROUTE_CIRCLE_RADIUS = 18.5
 const CLUE_CIRCLE_RADIUS = 18
 const OVERLAPPING_CLUE_CIRCLE_RADIUS = 23
+const POSSIBLE_CIRCLE_RADIUS = 23
+const OUTCOME_CIRCLE_RADIUS = 23
+const INNER_OUTCOME_CIRCLE_RADIUS = 20.5
+const OUTER_OUTCOME_CIRCLE_RADIUS = 26
 const QUADRANTS: Quadrant[] = ['NW', 'NE', 'SW', 'SE']
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
 
@@ -118,6 +119,7 @@ interface BoardProps {
   legalCircleIds: Set<number>
   legalCrossingIds: Set<string>
   possibleIds: Set<number>
+  possibleOutcomes: Map<number, SearchOutcome>
   showPossible: boolean
   showCrossingIds: boolean
   showPastPath: boolean
@@ -159,6 +161,7 @@ function GameBoard({
   legalCircleIds,
   legalCrossingIds,
   possibleIds,
+  possibleOutcomes,
   showPossible,
   showCrossingIds,
   showPastPath,
@@ -167,6 +170,8 @@ function GameBoard({
   onCrossing,
   onMapClick,
 }: BoardProps) {
+  const [hoveredMaybeId, setHoveredMaybeId] = useState<number | null>(null)
+  const hoveredOutcome = hoveredMaybeId === null ? undefined : possibleOutcomes.get(hoveredMaybeId)
   const peekAtJack = showJackPeek && isInspectorInteraction(state.stage)
   const showJack = isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
   const privateSelections =
@@ -233,12 +238,51 @@ function GameBoard({
         />
       ))}
 
-      {showPossible &&
+      {showPossible && !hoveredOutcome &&
         [...possibleIds].map((id) => {
           const circle = circlesById.get(id)
+          const outcome = possibleOutcomes.get(id)
           return circle ? (
-            <circle key={`possible-${id}`} className="possible-marker" cx={circle.x} cy={circle.y} r="23" />
+            <g key={`possible-${id}`}>
+              {outcome?.positiveMeansJackIsThereNow && (
+                <circle
+                  className="possible-certainty-marker"
+                  cx={circle.x}
+                  cy={circle.y}
+                  r={POSSIBLE_CIRCLE_RADIUS}
+                />
+              )}
+              <circle className="possible-marker" cx={circle.x} cy={circle.y} r={POSSIBLE_CIRCLE_RADIUS} />
+            </g>
           ) : null
+        })}
+
+      {showPossible && hoveredOutcome &&
+        [...new Set([...hoveredOutcome.ifNo, ...hoveredOutcome.ifYes])].map((id) => {
+          const circle = circlesById.get(id)
+          if (!circle) return null
+          const remainsIfNo = hoveredOutcome.ifNo.has(id)
+          const remainsIfYes = hoveredOutcome.ifYes.has(id)
+          return (
+            <g key={`outcome-${id}`}>
+              {remainsIfNo && (
+                <circle
+                  className="possible-outcome-marker possible-outcome-no"
+                  cx={circle.x}
+                  cy={circle.y}
+                  r={remainsIfYes ? INNER_OUTCOME_CIRCLE_RADIUS : OUTCOME_CIRCLE_RADIUS}
+                />
+              )}
+              {remainsIfYes && (
+                <circle
+                  className="possible-outcome-marker possible-outcome-yes"
+                  cx={circle.x}
+                  cy={circle.y}
+                  r={remainsIfNo ? OUTER_OUTCOME_CIRCLE_RADIUS : OUTCOME_CIRCLE_RADIUS}
+                />
+              )}
+            </g>
+          )
         })}
 
       {state.clueLocations.map((id) => {
@@ -284,17 +328,20 @@ function GameBoard({
 
       {circles.map((circle) => {
         const legal = legalCircleIds.has(circle.id)
+        const inferenceHoverTarget = showPossible && possibleOutcomes.has(circle.id)
         const selected = state.jackMoveSelection.path.includes(circle.id)
         return (
           <g key={`circle-target-${circle.id}`}>
             {legal && <circle className="legal-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
             {selected && <circle className="selected-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
             <circle
-              className={legal ? 'map-hit-target selectable' : 'map-hit-target'}
+              className={`map-hit-target${legal ? ' selectable' : ''}${inferenceHoverTarget ? ' inference-hover-target' : ''}`}
               cx={circle.x}
               cy={circle.y}
               r="18"
               onClick={() => legal && onCircle(circle.id)}
+              onMouseEnter={() => inferenceHoverTarget && setHoveredMaybeId(circle.id)}
+              onMouseLeave={() => inferenceHoverTarget && setHoveredMaybeId(null)}
               aria-label={`Location ${circle.id}${legal ? ', selectable' : ''}`}
             >
               <title>Location {circle.id}</title>
@@ -302,6 +349,29 @@ function GameBoard({
           </g>
         )
       })}
+
+      {showPossible &&
+        [...possibleOutcomes].filter(([, outcome]) => outcome.ifNo.size > 0).map(([id, outcome]) => {
+          const circle = circlesById.get(id)
+          if (!circle) return null
+          const placeLeft = circle.x > BOARD_SIZE - 70
+          const x = circle.x + (placeLeft ? -24 : 24)
+          const y = circle.y < 40 ? circle.y + 30 : circle.y - 19
+          return (
+            <text
+              key={`possible-count-${id}`}
+              className="possible-outcome-count"
+              x={x}
+              y={y}
+              textAnchor={placeLeft ? 'end' : 'start'}
+              aria-label={`Search outcome at ${id}: ${outcome.ifNo.size} if no, ${outcome.ifYes.size} if yes`}
+            >
+              <tspan className="outcome-count-no">{outcome.ifNo.size}</tspan>
+              <tspan className="outcome-count-separator">/</tspan>
+              <tspan className="outcome-count-yes">{outcome.ifYes.size}</tspan>
+            </text>
+          )
+        })}
 
       {crossings.map((crossing) => {
         const legal = legalCrossingIds.has(crossing.id)
@@ -784,10 +854,6 @@ function HandoffScreen({
 function App() {
   const [history, historyDispatch] = useReducer(gameHistoryReducer, undefined, initializeHistory)
   const state = currentHistoryState(history)
-  const [zoom, setZoom] = useState(() => {
-    const storage = browserStorage()
-    return storage ? loadNumberPreference(storage, BOARD_ZOOM_STORAGE_KEY, 1, 0.7, 2) : 1
-  })
   const [showPossible, setShowPossible] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY) : false
@@ -835,12 +901,6 @@ function App() {
   const handleRedo = () => applyHistoryCommand({ type: 'redo' })
   const handleRedoAll = () => applyHistoryCommand({ type: 'redoAll' })
   const handleRevealUndo = () => applyHistoryCommand({ type: 'revealUndo' })
-  const updateZoom = (value: number) => {
-    setZoom(value)
-    const storage = browserStorage()
-    if (storage) saveNumberPreference(storage, BOARD_ZOOM_STORAGE_KEY, value)
-  }
-
   if (history.pendingReveal || isHandoff(state.stage)) {
     return (
       <HandoffScreen
@@ -875,10 +935,14 @@ function App() {
     }
   }
 
-  const possibleIds =
+  const possibleOutcomes =
     showPossible && isInspectorInteraction(state.stage)
-      ? possibleJackLocations(state.publicRound)
-      : new Set<number>()
+      ? possibleJackSearchOutcomes(state.publicRound)
+      : new Map<number, SearchOutcome>()
+  const possibleIds = new Set<number>()
+  for (const outcome of possibleOutcomes.values()) {
+    for (const id of outcome.ifYes) possibleIds.add(id)
+  }
   const handleCircle = (circleId: number) => {
     if (state.stage === 'jackDiscoverySetup') dispatch({ type: 'toggleDiscovery', circleId })
     else if (state.stage === 'jackChooseStart') dispatch({ type: 'chooseJackStart', circleId })
@@ -933,18 +997,6 @@ function App() {
       <main className="game-layout">
         <section className="board-panel">
           <div className="board-toolbar">
-            <div>
-              <button type="button" onClick={() => updateZoom(Math.max(0.7, zoom - 0.15))} aria-label="Zoom out">
-                −
-              </button>
-              <span>{Math.round(zoom * 100)}%</span>
-              <button type="button" onClick={() => updateZoom(Math.min(2, zoom + 0.15))} aria-label="Zoom in">
-                +
-              </button>
-              <button className="zoom-reset-button" type="button" onClick={() => updateZoom(1)}>
-                ZmRst
-              </button>
-            </div>
             <div className="board-options">
               <HistoryControls
                 history={history}
@@ -1022,23 +1074,22 @@ function App() {
                   : 'board-scroll'
               }
             >
-              <div className="board-zoom" style={{ width: `${zoom * 100}%` }}>
-                <GameBoard
-                  state={state}
-                  legalCircleIds={legalCircleIds}
-                  legalCrossingIds={legalCrossingIds}
-                  possibleIds={possibleIds}
-                  showPossible={showPossible}
-                  showCrossingIds={showCrossingIds}
-                  showPastPath={showPastPath}
-                  showJackPeek={showJackPeek}
-                  onCircle={handleCircle}
-                  onCrossing={handleCrossing}
-                  onMapClick={() => {
-                    if (state.stage === 'investigatorTurnResult') dispatch({ type: 'continueHandoff' })
-                  }}
-                />
-              </div>
+              <GameBoard
+                state={state}
+                legalCircleIds={legalCircleIds}
+                legalCrossingIds={legalCrossingIds}
+                possibleIds={possibleIds}
+                possibleOutcomes={possibleOutcomes}
+                showPossible={showPossible}
+                showCrossingIds={showCrossingIds}
+                showPastPath={showPastPath}
+                showJackPeek={showJackPeek}
+                onCircle={handleCircle}
+                onCrossing={handleCrossing}
+                onMapClick={() => {
+                  if (state.stage === 'investigatorTurnResult') dispatch({ type: 'continueHandoff' })
+                }}
+              />
             </div>
             {showInvestigatorTurnAnnouncement && (
               <div className="investigator-turn-announcement" role="status" aria-live="assertive">
@@ -1058,6 +1109,9 @@ function App() {
             </span>
             <span>
               <i className="legend-dot possible" /> Possible Jack location
+            </span>
+            <span>
+              <i className="legend-dot new-possible" /> New possible Jack location
             </span>
             <span>
               <i className="legend-dot legal" /> Legal target

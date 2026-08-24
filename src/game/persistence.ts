@@ -6,7 +6,6 @@ export const CROSSING_IDS_STORAGE_KEY = 'whitehall-mystery.show-crossing-ids'
 export const PAST_PATH_STORAGE_KEY = 'whitehall-mystery.show-past-path'
 export const POSSIBLE_LOCATIONS_STORAGE_KEY = 'whitehall-mystery.show-possible-locations'
 export const JACK_PEEK_STORAGE_KEY = 'whitehall-mystery.show-jack-peek'
-export const BOARD_ZOOM_STORAGE_KEY = 'whitehall-mystery.board-zoom'
 
 const GAME_STORAGE_VERSION = 2
 
@@ -148,29 +147,6 @@ export const loadBooleanPreference = (storage: StorageLike, key: string, fallbac
 }
 
 export const saveBooleanPreference = (storage: StorageLike, key: string, value: boolean): void => {
-  try {
-    storage.setItem(key, String(value))
-  } catch {
-    // A display preference is non-critical when browser storage is unavailable.
-  }
-}
-
-export const loadNumberPreference = (
-  storage: StorageLike,
-  key: string,
-  fallback: number,
-  minimum: number,
-  maximum: number,
-): number => {
-  try {
-    const value = Number(storage.getItem(key))
-    return Number.isFinite(value) && value >= minimum && value <= maximum ? value : fallback
-  } catch {
-    return fallback
-  }
-}
-
-export const saveNumberPreference = (storage: StorageLike, key: string, value: number): void => {
   try {
     storage.setItem(key, String(value))
   } catch {
