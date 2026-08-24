@@ -23,7 +23,20 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
   const jackPositionGuides = page.locator('.jack-location-edge-arrows')
   await expect(jackPositionGuides.locator('polygon')).toHaveCount(4)
-  await expect(jackPositionGuides).toHaveCSS('fill', 'rgb(255, 3, 167)')
+  await expect(jackPositionGuides).toHaveCSS('color', 'rgb(255, 3, 167)')
+  await expect(jackPositionGuides.locator('.edge-guide-line')).toHaveCount(4)
+  await expect(jackPositionGuides.locator('.edge-guide-line').first()).toHaveCSS('stroke-width', '0.6px')
+  await expect(jackPositionGuides.locator('.edge-guide-line').first()).toHaveCSS('opacity', '0.4')
+  const jackGuideClearances = await jackPositionGuides.locator('.edge-guide-line').evaluateAll((lines) => {
+    const marker = document.querySelector('.jack-marker circle')
+    if (!(marker instanceof SVGCircleElement)) return []
+    const x = Number(marker.getAttribute('cx'))
+    const y = Number(marker.getAttribute('cy'))
+    return lines.map((line) =>
+      Math.hypot(x - Number(line.getAttribute('x2')), y - Number(line.getAttribute('y2'))),
+    )
+  })
+  expect(jackGuideClearances).toEqual([13, 13, 13, 13])
   const discoveryList = page.getByLabel('Jack discovery locations')
   await expect(discoveryList.locator('li')).toHaveText(['33', '46', '147', '159'])
   await expect(page.getByLabel('33, completed')).toHaveClass(/completed/)
@@ -66,8 +79,19 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await expect(page.locator('.board-scroll')).toHaveClass(/active-investigator-yellow/)
   const positionGuides = page.locator('.active-investigator-edge-arrows')
   await expect(positionGuides.locator('polygon')).toHaveCount(4)
-  await expect(positionGuides).toHaveCSS('fill', 'rgb(136, 255, 51)')
+  await expect(positionGuides).toHaveCSS('color', 'rgb(136, 255, 51)')
   await expect(positionGuides).toHaveCSS('opacity', '1')
+  await expect(positionGuides.locator('.edge-guide-line')).toHaveCount(4)
+  const investigatorGuideClearances = await positionGuides.locator('.edge-guide-line').evaluateAll((lines) => {
+    const ring = document.querySelector('.investigator-piece.yellow .active-investigator-ring')
+    if (!(ring instanceof SVGCircleElement)) return []
+    const x = Number(ring.getAttribute('cx'))
+    const y = Number(ring.getAttribute('cy'))
+    return lines.map((line) =>
+      Math.hypot(x - Number(line.getAttribute('x2')), y - Number(line.getAttribute('y2'))),
+    )
+  })
+  expect(investigatorGuideClearances).toEqual([17, 17, 17, 17])
 
   const jackPeek = page.getByRole('checkbox', { name: 'Jack peek', exact: true })
   await jackPeek.check()

@@ -115,9 +115,25 @@ interface BoardProps {
   onCrossing: (crossingId: string) => void
 }
 
-function BoardEdgeArrows({ x, y, className, label }: { x: number; y: number; className: string; label: string }) {
+function BoardEdgeArrows({
+  x,
+  y,
+  targetRadius,
+  className,
+  label,
+}: {
+  x: number
+  y: number
+  targetRadius: number
+  className: string
+  label: string
+}) {
   return (
     <g className={className} aria-label={label}>
+      <line className="edge-guide-line" x1={x} y1="32" x2={x} y2={y - targetRadius} />
+      <line className="edge-guide-line" x1={x} y1={BOARD_SIZE - 32} x2={x} y2={y + targetRadius} />
+      <line className="edge-guide-line" x1="32" y1={y} x2={x - targetRadius} y2={y} />
+      <line className="edge-guide-line" x1={BOARD_SIZE - 32} y1={y} x2={x + targetRadius} y2={y} />
       <polygon points={`${x - 15},4 ${x + 15},4 ${x},32`} />
       <polygon points={`${x - 15},${BOARD_SIZE - 4} ${x + 15},${BOARD_SIZE - 4} ${x},${BOARD_SIZE - 32}`} />
       <polygon points={`4,${y - 15} 4,${y + 15} 32,${y}`} />
@@ -176,6 +192,7 @@ function GameBoard({
         <BoardEdgeArrows
           x={activeInvestigator.x}
           y={activeInvestigator.y}
+          targetRadius={17}
           className="active-investigator-edge-arrows"
           label="Active investigator position guides"
         />
@@ -185,6 +202,7 @@ function GameBoard({
         <BoardEdgeArrows
           x={privateJackLocation.x}
           y={privateJackLocation.y}
+          targetRadius={13}
           className="jack-location-edge-arrows"
           label="Jack position guides"
         />

@@ -396,13 +396,31 @@ button:disabled {
 }
 
 .active-investigator-edge-arrows {
-  fill: #88ff33;
-  filter: drop-shadow(0 0 4px rgb(136 255 51 / 95%));
+  color: #88ff33;
 }
 
 .jack-location-edge-arrows {
-  fill: #ff03a7;
+  color: #ff03a7;
+}
+
+.active-investigator-edge-arrows polygon,
+.jack-location-edge-arrows polygon {
+  fill: currentcolor;
+}
+
+.active-investigator-edge-arrows polygon {
+  filter: drop-shadow(0 0 4px rgb(136 255 51 / 95%));
+}
+
+.jack-location-edge-arrows polygon {
   filter: drop-shadow(0 0 4px rgb(255 3 167 / 95%));
+}
+
+.edge-guide-line {
+  stroke: currentcolor;
+  stroke-width: 0.6;
+  opacity: 0.4;
+  vector-effect: non-scaling-stroke;
 }
 
 .past-path-line {
