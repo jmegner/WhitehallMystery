@@ -316,7 +316,8 @@ button:disabled {
 
 .possibility-toggle,
 .crossing-toggle,
-.past-path-toggle {
+.past-path-toggle,
+.jack-peek-toggle {
   display: flex;
   gap: 4px;
   align-items: center;
@@ -327,7 +328,8 @@ button:disabled {
 
 .possibility-toggle input,
 .crossing-toggle input,
-.past-path-toggle input {
+.past-path-toggle input,
+.jack-peek-toggle input {
   margin: 0;
 }
 
@@ -390,9 +392,17 @@ button:disabled {
 
 .active-investigator-edge-arrows,
 .jack-location-edge-arrows {
-  fill: #88ff33;
   pointer-events: none;
+}
+
+.active-investigator-edge-arrows {
+  fill: #88ff33;
   filter: drop-shadow(0 0 4px rgb(136 255 51 / 95%));
+}
+
+.jack-location-edge-arrows {
+  fill: #ff03a7;
+  filter: drop-shadow(0 0 4px rgb(255 3 167 / 95%));
 }
 
 .past-path-line {

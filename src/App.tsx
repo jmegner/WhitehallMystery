@@ -110,6 +110,7 @@ interface BoardProps {
   showPossible: boolean
   showCrossingIds: boolean
   showPastPath: boolean
+  showJackPeek: boolean
   onCircle: (circleId: number) => void
   onCrossing: (crossingId: string) => void
 }
@@ -133,12 +134,14 @@ function GameBoard({
   showPossible,
   showCrossingIds,
   showPastPath,
+  showJackPeek,
   onCircle,
   onCrossing,
 }: BoardProps) {
-  const showJack = isPrivateJackView(state.stage) || state.stage === 'gameOver'
+  const peekAtJack = showJackPeek && isInspectorInteraction(state.stage)
+  const showJack = isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
   const privateSelections =
-    isPrivateJackView(state.stage) || state.stage === 'gameOver'
+    isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
       ? new Set(state.discoveryLocations)
       : new Set<number>()
   const route =
@@ -151,10 +154,10 @@ function GameBoard({
   const activeInvestigator = isInspectorInteraction(state.stage)
     ? crossingsById.get(state.investigatorPositions[activeInvestigatorColor(state)] ?? '')
     : undefined
-  const privateJackLocation = isPrivateJackView(state.stage) && state.currentJack !== null
+  const privateJackLocation = (isPrivateJackView(state.stage) || peekAtJack) && state.currentJack !== null
     ? circlesById.get(state.currentJack)
     : undefined
-  const pastPath = showPastPath && isPrivateJackView(state.stage)
+  const pastPath = (showPastPath && isPrivateJackView(state.stage)) || peekAtJack
     ? state.roundTrail.map((id) => circlesById.get(id)).filter((circle) => circle !== undefined)
     : []
   const pastPathSegments = trimmedRouteSegments(pastPath)
@@ -337,9 +340,9 @@ function GameBoard({
   )
 }
 
-function MoveTrack({ state }: { state: GameState }) {
+function MoveTrack({ state, showJackPeek }: { state: GameState; showJackPeek: boolean }) {
   const moves = state.publicRound?.moves ?? []
-  const showPrivateLocations = isPrivateJackView(state.stage)
+  const showPrivateLocations = isPrivateJackView(state.stage) || (showJackPeek && isInspectorInteraction(state.stage))
   return (
     <section className="move-track" aria-label="Public Jack move track">
       <div className="track-heading">
@@ -758,6 +761,7 @@ function App() {
   const handleRevealUndo = () => applyHistoryCommand({ type: 'revealUndo' })
   const [zoom, setZoom] = useState(1)
   const [showPossible, setShowPossible] = useState(false)
+  const [showJackPeek, setShowJackPeek] = useState(false)
   const [showCrossingIds, setShowCrossingIds] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY) : false
@@ -842,6 +846,7 @@ function App() {
               if (state.stage === 'jackDiscoverySetup' || window.confirm('Start a new game and lose the current progress?')) {
                 dispatch({ type: 'newGame' })
                 setShowPossible(false)
+                setShowJackPeek(false)
               }
             }}
           >
@@ -850,7 +855,7 @@ function App() {
         </div>
       </header>
 
-      <MoveTrack state={state} />
+      <MoveTrack state={state} showJackPeek={showJackPeek} />
 
       <main className="game-layout">
         <section className="board-panel">
@@ -910,8 +915,18 @@ function App() {
                     checked={showPossible}
                     onChange={(event) => setShowPossible(event.target.checked)}
                   />
-                  Jack possibilities
+                  Jack maybes
                   {showPossible && <strong>{possibleIds.size}</strong>}
+                </label>
+              )}
+              {isInspectorInteraction(state.stage) && state.publicRound && (
+                <label className="jack-peek-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showJackPeek}
+                    onChange={(event) => setShowJackPeek(event.target.checked)}
+                  />
+                  Jack peek
                 </label>
               )}
             </div>
@@ -932,6 +947,7 @@ function App() {
                 showPossible={showPossible}
                 showCrossingIds={showCrossingIds}
                 showPastPath={showPastPath}
+                showJackPeek={showJackPeek}
                 onCircle={handleCircle}
                 onCrossing={handleCrossing}
               />
@@ -950,7 +966,8 @@ function App() {
             <span>
               <i className="legend-dot legal" /> Legal target
             </span>
-            {isPrivateJackView(state.stage) && state.discoveryLocations.length > 0 && (
+            {(isPrivateJackView(state.stage) || (showJackPeek && isInspectorInteraction(state.stage))) &&
+              state.discoveryLocations.length > 0 && (
               <span>
                 <i className="legend-dot private-discovery" /> Unreached discovery
               </span>
