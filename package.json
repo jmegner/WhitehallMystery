@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:gh": "tsc -b && vite build --base=/whitehallmystery/",
+    "build:gh": "tsc -b && vite build --base=/WhitehallMystery/",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "vitest run src",
     "test:e2e": "playwright test",
