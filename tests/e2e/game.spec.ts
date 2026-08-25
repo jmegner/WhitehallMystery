@@ -74,6 +74,7 @@ test('undoes Coach route locations onto the redo stack', async ({ page }) => {
 test('plays a complete hot-seat turn without exposing Jack during handoffs', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Whitehall Mystery' })).toBeVisible()
+  await expect(page.locator('.game-board')).toHaveAttribute('viewBox', '70 10 1100 1090')
 
   for (const id of [33, 46, 147, 159]) {
     await page.getByLabel(`Location ${id}, selectable`).click()
@@ -95,6 +96,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
   const jackPositionGuides = page.locator('.jack-location-edge-arrows')
   await expect(jackPositionGuides.locator('polygon')).toHaveCount(4)
+  await expect(jackPositionGuides.locator('polygon').first()).toHaveAttribute('points', /,10 /)
   await expect(jackPositionGuides).toHaveCSS('color', 'rgb(255, 3, 167)')
   await expect(jackPositionGuides.locator('.edge-guide-line')).toHaveCount(4)
   await expect(jackPositionGuides.locator('.edge-guide-line').first()).toHaveCSS('stroke-width', '0.6px')
