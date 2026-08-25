@@ -262,6 +262,18 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   }))).toEqual({ maybes: 'true', peek: 'true', pastPath: 'true' })
 })
 
+test('remembers the investigator auto preference', async ({ page }) => {
+  await page.goto('/')
+  for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
+  await page.getByRole('button', { name: 'Lock in four locations' }).click()
+  await page.locator('.app-header').click()
+
+  const investigatorAuto = page.getByLabel('inv auto')
+  await investigatorAuto.check()
+  await page.reload()
+  await expect(page.getByLabel('inv auto')).toBeChecked()
+})
+
 test('keeps the mobile layout within the viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')

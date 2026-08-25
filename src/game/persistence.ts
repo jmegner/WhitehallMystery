@@ -6,6 +6,7 @@ export const CROSSING_IDS_STORAGE_KEY = 'whitehall-mystery.show-crossing-ids'
 export const PAST_PATH_STORAGE_KEY = 'whitehall-mystery.show-past-path'
 export const POSSIBLE_LOCATIONS_STORAGE_KEY = 'whitehall-mystery.show-possible-locations'
 export const JACK_PEEK_STORAGE_KEY = 'whitehall-mystery.show-jack-peek'
+export const INVESTIGATOR_AUTO_STORAGE_KEY = 'whitehall-mystery.investigator-auto'
 
 const GAME_STORAGE_VERSION = 2
 

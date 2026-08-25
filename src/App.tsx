@@ -27,6 +27,7 @@ import {
 import { circles, circlesById, crossings, crossingsById } from './game/mapData'
 import {
   CROSSING_IDS_STORAGE_KEY,
+  INVESTIGATOR_AUTO_STORAGE_KEY,
   JACK_PEEK_STORAGE_KEY,
   PAST_PATH_STORAGE_KEY,
   POSSIBLE_LOCATIONS_STORAGE_KEY,
@@ -915,7 +916,10 @@ function App() {
     return storage ? loadBooleanPreference(storage, PAST_PATH_STORAGE_KEY) : false
   })
   const [showInvestigatorTurnAnnouncement, setShowInvestigatorTurnAnnouncement] = useState(false)
-  const [investigatorAuto, setInvestigatorAuto] = useState(false)
+  const [investigatorAuto, setInvestigatorAuto] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY) : false
+  })
   const automaticInvestigatorActions = (initial: GameHistory) => {
     const commands: Parameters<typeof gameHistoryReducer>[1][] = []
     let next = initial
@@ -1278,6 +1282,8 @@ function App() {
                   onChange={(event) => {
                     const checked = event.target.checked
                     setInvestigatorAuto(checked)
+                    const storage = browserStorage()
+                    if (storage) saveBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY, checked)
                     if (checked) applyHistoryCommands([], true)
                   }}
                 />

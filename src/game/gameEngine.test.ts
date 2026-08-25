@@ -22,6 +22,7 @@ import {
 import {
   CROSSING_IDS_STORAGE_KEY,
   GAME_STORAGE_KEY,
+  INVESTIGATOR_AUTO_STORAGE_KEY,
   JACK_PEEK_STORAGE_KEY,
   POSSIBLE_LOCATIONS_STORAGE_KEY,
   loadBooleanPreference,
@@ -103,10 +104,12 @@ describe('local persistence', () => {
     saveBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY, true)
     saveBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY, true)
     saveBooleanPreference(storage, JACK_PEEK_STORAGE_KEY, true)
+    saveBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY, true)
     expect(loadStoredGame(storage)).toEqual(state)
     expect(loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY)).toBe(true)
     expect(loadBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY)).toBe(true)
     expect(loadBooleanPreference(storage, JACK_PEEK_STORAGE_KEY)).toBe(true)
+    expect(loadBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY)).toBe(true)
   })
 
   test('rejects corrupt or outdated game snapshots', () => {
