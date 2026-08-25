@@ -361,6 +361,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     }
     case 'setJackMoveType': {
       if (state.stage !== 'jackMove') return state
+      if (state.jackMoveSelection.type === action.moveType) return state
       if (action.moveType !== 'normal' && state.specialRemaining[action.moveType] < 1) {
         return withNotice(state, `No ${action.moveType} tiles remain.`)
       }
@@ -479,8 +480,9 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     }
     case 'setInspectorActionMode': {
       if (state.stage !== 'investigatorAction') return state
+      if (state.inspectorActionMode === action.mode) return state
       if (state.inspectorActionMode === 'search' && state.checkedThisAction.length > 0) {
-        return withNotice(state, 'Finish the current clue search before ending this Investigator’s action.')
+        return withNotice(state, 'End the current clue search before choosing another action.')
       }
       return {
         ...state,
@@ -567,18 +569,21 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     }
     case 'passInspectorAction': {
       if (state.stage !== 'investigatorAction') return state
-      if (state.inspectorActionMode === 'search' && state.checkedThisAction.length > 0) {
-        return withNotice(state, 'Continue checking adjacent circles until a clue is found or all have been searched.')
-      }
       const color = activeInvestigatorColor(state)
       const passed = {
         ...state,
-        publicLog: [...state.publicLog, moveLog(state.moveSlot, `${color} passed the action phase.`)],
-        notice: `${color} passed.`,
+        publicLog: [
+          ...state.publicLog,
+          moveLog(
+            state.moveSlot,
+            state.checkedThisAction.length > 0
+              ? `${color} ended the clue search.`
+              : `${color} passed the action phase.`,
+          ),
+        ],
+        notice: state.checkedThisAction.length > 0 ? `${color} ended the clue search.` : `${color} passed.`,
       }
-      return state.activeInvestigator === INVESTIGATOR_ORDER.length - 1
-        ? finalizeEndOfTurn(passed)
-        : advanceInspectorAction(passed)
+      return advanceInspectorAction(passed)
     }
     default:
       return state

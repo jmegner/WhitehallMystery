@@ -22,6 +22,7 @@ import {
 import {
   CROSSING_IDS_STORAGE_KEY,
   GAME_STORAGE_KEY,
+  INVESTIGATOR_AUTO_STORAGE_KEY,
   JACK_PEEK_STORAGE_KEY,
   POSSIBLE_LOCATIONS_STORAGE_KEY,
   loadBooleanPreference,
@@ -103,10 +104,12 @@ describe('local persistence', () => {
     saveBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY, true)
     saveBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY, true)
     saveBooleanPreference(storage, JACK_PEEK_STORAGE_KEY, true)
+    saveBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY, true)
     expect(loadStoredGame(storage)).toEqual(state)
     expect(loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY)).toBe(true)
     expect(loadBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY)).toBe(true)
     expect(loadBooleanPreference(storage, JACK_PEEK_STORAGE_KEY)).toBe(true)
+    expect(loadBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY)).toBe(true)
   })
 
   test('rejects corrupt or outdated game snapshots', () => {
@@ -149,6 +152,8 @@ describe('game reducer', () => {
       { type: 'passInspectorAction' },
       { type: 'passInspectorAction' },
     )
+    expect(state.stage).toBe('investigatorTurnResult')
+    state = gameReducer(state, { type: 'continueHandoff' })
     expect(state.stage).toBe('handoffJackTurn')
   })
 
@@ -287,7 +292,7 @@ describe('game reducer', () => {
     expect(state.result?.winner).toBe('investigators')
   })
 
-  test('does not allow an Investigator to abandon a clue search after the first query', () => {
+  test('allows an Investigator to end a clue search after the first query but not switch to arrest', () => {
     const base = setupGame()
     const adjacent = legalInspectorActionCircles({ ...base, stage: 'investigatorAction' })
     const miss = adjacent.find((id) => !base.roundTrail.includes(id)) as number
@@ -304,7 +309,8 @@ describe('game reducer', () => {
     state = gameReducer(state, { type: 'setInspectorActionMode', mode: 'arrest' })
     expect(state.inspectorActionMode).toBe('search')
     state = gameReducer(state, { type: 'passInspectorAction' })
-    expect(state.activeInvestigator).toBe(activeBefore)
+    expect(state.activeInvestigator).toBe(activeBefore + 1)
+    expect(state.publicLog.at(-1)).toContain('ended the clue search')
   })
 
   test('defaults each Investigator to searching during the action phase', () => {
@@ -373,7 +379,7 @@ describe('game reducer', () => {
 
   test('reveals a reached Discovery Location only after all Investigator actions', () => {
     const base = setupGame()
-    const state = gameReducer(
+    let state = gameReducer(
       {
         ...base,
         stage: 'investigatorAction',
@@ -384,6 +390,10 @@ describe('game reducer', () => {
       },
       { type: 'passInspectorAction' },
     )
+    expect(state.stage).toBe('investigatorTurnResult')
+    expect(state.reachedDiscoveries).toEqual([33])
+
+    state = gameReducer(state, { type: 'continueHandoff' })
     expect(state.stage).toBe('handoffJackTurn')
     expect(state.round).toBe(2)
     expect(state.moveSlot).toBe(0)

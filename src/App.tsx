@@ -27,6 +27,7 @@ import {
 import { circles, circlesById, crossings, crossingsById } from './game/mapData'
 import {
   CROSSING_IDS_STORAGE_KEY,
+  INVESTIGATOR_AUTO_STORAGE_KEY,
   JACK_PEEK_STORAGE_KEY,
   PAST_PATH_STORAGE_KEY,
   POSSIBLE_LOCATIONS_STORAGE_KEY,
@@ -102,12 +103,12 @@ const titleForStage = (state: GameState) => {
   const color = activeInvestigatorColor(state)
   const titles: Record<GameState['stage'], string> = {
     jackDiscoverySetup: 'Jack: Plan the Crime',
-    handoffInspectorsSetup: 'Pass to the Investigators',
+    handoffInspectorsSetup: 'Investigators’ Turn',
     investigatorSetup: `Deploy the ${displayColor(color)} Investigator`,
     handoffJackStart: 'Pass Back to Jack',
     jackChooseStart: 'Jack: Choose the Starting Location',
     jackMove: 'Jack: Escape in the Night',
-    handoffInspectorsTurn: 'Pass to the Investigators',
+    handoffInspectorsTurn: 'Investigators’ Turn',
     investigatorMove: `${displayColor(color)} Investigator: Move`,
     investigatorAction: `${displayColor(color)} Investigator: Clues and Suspicion`,
     investigatorTurnResult: 'Investigator Results',
@@ -769,6 +770,7 @@ function GameControls({ state, dispatch, onUndoRoute, onUndoSecondLocation }: Ga
           <button
             type="button"
             className={state.inspectorActionMode === 'arrest' ? 'danger-button' : 'secondary-button'}
+            disabled={state.checkedThisAction.length > 0}
             onClick={() => dispatch({ type: 'setInspectorActionMode', mode: 'arrest' })}
           >
             Execute arrest
@@ -776,10 +778,9 @@ function GameControls({ state, dispatch, onUndoRoute, onUndoSecondLocation }: Ga
           <button
             type="button"
             className="text-button"
-            disabled={state.inspectorActionMode === 'search' && state.checkedThisAction.length > 0}
             onClick={() => dispatch({ type: 'passInspectorAction' })}
           >
-            Pass
+            {state.checkedThisAction.length > 0 ? 'End search' : 'Pass'}
           </button>
         </div>
         {state.inspectorActionMode !== 'choose' && (
@@ -844,7 +845,7 @@ function HandoffScreen({
       <main className="handoff-screen">
         <div className="handoff-card">
           <span className="eyebrow">{redidAll ? 'Redo handoff' : 'Undo handoff'}</span>
-          <h1>Pass the device to {target}</h1>
+          <h1>{target === 'Investigators' ? 'Investigators’ Turn' : `Pass the device to ${target}`}</h1>
           <p>
             {redidAll
               ? 'All remaining actions have been restored. The resulting private view is ready.'
@@ -878,7 +879,7 @@ function HandoffScreen({
     <main className="handoff-screen">
       <div className="handoff-card">
         <span className="eyebrow">Hot-seat handoff</span>
-        <h1>Pass the device to {target}</h1>
+        <h1>{target === 'Investigators' ? 'Investigators’ Turn' : `Pass the device to ${target}`}</h1>
         <p>{detail} Private information is not shown on this screen.</p>
         <button className="reveal-button" type="button" onClick={() => dispatch({ type: 'continueHandoff' })}>
           I am the {target} player — reveal my view
@@ -915,11 +916,69 @@ function App() {
     return storage ? loadBooleanPreference(storage, PAST_PATH_STORAGE_KEY) : false
   })
   const [showInvestigatorTurnAnnouncement, setShowInvestigatorTurnAnnouncement] = useState(false)
-  const applyHistoryCommands = (commands: Parameters<typeof gameHistoryReducer>[1][]) => {
+  const [investigatorAuto, setInvestigatorAuto] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY) : false
+  })
+  const automaticInvestigatorActions = (initial: GameHistory) => {
+    const commands: Parameters<typeof gameHistoryReducer>[1][] = []
+    let next = initial
+    while (commands.length < 12) {
+      const nextState = currentHistoryState(next)
+      if (nextState.stage !== 'investigatorAction' || nextState.inspectorActionMode !== 'search') break
+      const adjacent = legalInspectorActionCircles(nextState)
+      const outcomes = possibleJackSearchOutcomes(nextState.publicRound)
+      const possibleAdjacent = adjacent.filter(
+        (id) => !nextState.checkedThisAction.includes(id) && outcomes.has(id),
+      )
+      let actions: GameAction[] = []
+      if (nextState.checkedThisAction.length > 0) {
+        if (possibleAdjacent.length === 0) actions = [{ type: 'passInspectorAction' }]
+        else if (possibleAdjacent.length === 1) {
+          actions = [{ type: 'searchCircle', circleId: possibleAdjacent[0]! }]
+        }
+      } else if (possibleAdjacent.length === 0) {
+        actions = [{ type: 'passInspectorAction' }]
+      } else if (
+        possibleAdjacent.length === 1 &&
+        outcomes.get(possibleAdjacent[0]!)?.positiveMeansJackIsThereNow
+      ) {
+        actions = [
+          { type: 'setInspectorActionMode', mode: 'arrest' },
+          { type: 'arrestCircle', circleId: possibleAdjacent[0]! },
+        ]
+      }
+      if (actions.length === 0) break
+      for (const action of actions) {
+        const command = { type: 'apply' as const, action }
+        const advanced = gameHistoryReducer(next, command)
+        if (advanced === next) return { next, commands }
+        next = advanced
+        commands.push(command)
+      }
+    }
+    return { next, commands }
+  }
+  const applyHistoryCommands = (
+    commands: Parameters<typeof gameHistoryReducer>[1][],
+    runInvestigatorAuto = false,
+  ) => {
     let next = history
     for (const command of commands) {
       next = gameHistoryReducer(next, command)
       historyDispatch(command)
+    }
+    if (runInvestigatorAuto) {
+      const automatic = automaticInvestigatorActions(next)
+      next = automatic.next
+      for (const command of automatic.commands) historyDispatch(command)
+    }
+    if (next.pendingReveal === 'investigators') {
+      const revealCommand = { type: 'revealUndo' as const }
+      next = gameHistoryReducer(next, revealCommand)
+      historyDispatch(revealCommand)
+      setShowInvestigatorTurnAnnouncement(true)
+      window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 6000)
     }
     const storage = browserStorage()
     if (storage) saveStoredHistory(storage, next)
@@ -935,11 +994,11 @@ function App() {
       if (confirmedStage === 'handoffInspectorsSetup' || confirmedStage === 'handoffInspectorsTurn') {
         applyHistoryCommands([confirmCommand, { type: 'apply', action: { type: 'continueHandoff' } }])
         setShowInvestigatorTurnAnnouncement(true)
-        window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1500)
+        window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 6000)
         return
       }
     }
-    applyHistoryCommand({ type: 'apply', action })
+    applyHistoryCommands([{ type: 'apply', action }], investigatorAuto)
   }
   const handleUndo = () => applyHistoryCommand({ type: 'undo' })
   const handleUndoRoute = () => {
@@ -1014,19 +1073,21 @@ function App() {
         if (afterConfirmation.stage === 'handoffInspectorsTurn') {
           commands.push({ type: 'apply', action: { type: 'continueHandoff' } })
           setShowInvestigatorTurnAnnouncement(true)
-          window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1500)
+          window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 6000)
         }
       }
       applyHistoryCommands(commands)
     } else if (
       state.stage === 'investigatorAction' &&
-      state.inspectorActionMode === 'search' &&
+      (state.inspectorActionMode === 'search' || state.inspectorActionMode === 'arrest') &&
       state.checkedThisAction.length === 0
     ) {
-      applyHistoryCommands([
-        { type: 'apply', action: { type: 'setInspectorActionMode', mode: 'arrest' } },
-        { type: 'apply', action: { type: 'arrestCircle', circleId } },
-      ])
+      const commands: Parameters<typeof gameHistoryReducer>[1][] = []
+      if (state.inspectorActionMode !== 'arrest') {
+        commands.push({ type: 'apply', action: { type: 'setInspectorActionMode', mode: 'arrest' } })
+      }
+      commands.push({ type: 'apply', action: { type: 'arrestCircle', circleId } })
+      applyHistoryCommands(commands, investigatorAuto)
     }
   }
   const handleCrossing = (crossingId: string) => {
@@ -1209,9 +1270,27 @@ function App() {
         </section>
 
         <aside className="control-panel">
-          <span className="eyebrow">
-            Round {state.round} · Move {state.moveSlot}
-          </span>
+          <div className="control-panel-heading">
+            <span className="eyebrow">
+              Round {state.round} · Move {state.moveSlot}
+            </span>
+            {isInspectorInteraction(state.stage) && (
+              <label className="investigator-auto-toggle">
+                <input
+                  type="checkbox"
+                  checked={investigatorAuto}
+                  onChange={(event) => {
+                    const checked = event.target.checked
+                    setInvestigatorAuto(checked)
+                    const storage = browserStorage()
+                    if (storage) saveBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY, checked)
+                    if (checked) applyHistoryCommands([], true)
+                  }}
+                />
+                inv auto
+              </label>
+            )}
+          </div>
           <h2>{titleForStage(state)}</h2>
           <div className="notice" role="status">
             {state.notice}

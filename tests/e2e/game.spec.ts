@@ -138,6 +138,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await page.getByLabel(`Location ${firstDestination}, selectable`).click({ button: 'middle' })
 
   await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
+  await expect(page.getByLabel('inv auto')).toBeVisible()
   const investigatorTurnAnnouncement = page.locator('.investigator-turn-announcement')
   await expect(investigatorTurnAnnouncement).toBeVisible()
   await expect(investigatorTurnAnnouncement).toHaveText('Investigators’ Turn')
@@ -203,9 +204,13 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
       .find((id) => id !== jackId), firstDestination)
   await page.getByLabel(`Location ${arrestTargetId}, selectable`).click({ button: 'middle' })
   await expect(page.locator('.investigator-piece.blue .active-investigator-ring')).toBeVisible()
-  for (let index = 0; index < 2; index += 1) {
-    await page.getByRole('button', { name: 'Pass', exact: true }).click()
-  }
+  await page.getByRole('button', { name: 'Execute arrest' }).click()
+  const arrestModeTarget = page.locator('.map-hit-target.selectable').first()
+  await arrestModeTarget.click({ button: 'middle' })
+  await expect(page.locator('.investigator-piece.red .active-investigator-ring')).toBeVisible()
+  await page.getByRole('button', { name: 'Pass', exact: true }).click()
+  await expect(page.getByText('Results shown · Click anywhere on the map to continue')).toBeVisible()
+  await page.getByRole('img', { name: 'Whitehall game board' }).click({ position: { x: 5, y: 5 } })
 
   await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
   await expect(page.getByText('Private route')).toHaveCount(0)
@@ -255,6 +260,18 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
     peek: localStorage.getItem('whitehall-mystery.show-jack-peek'),
     pastPath: localStorage.getItem('whitehall-mystery.show-past-path'),
   }))).toEqual({ maybes: 'true', peek: 'true', pastPath: 'true' })
+})
+
+test('remembers the investigator auto preference', async ({ page }) => {
+  await page.goto('/')
+  for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
+  await page.getByRole('button', { name: 'Lock in four locations' }).click()
+  await page.locator('.app-header').click()
+
+  const investigatorAuto = page.getByLabel('inv auto')
+  await investigatorAuto.check()
+  await page.reload()
+  await expect(page.getByLabel('inv auto')).toBeChecked()
 })
 
 test('keeps the mobile layout within the viewport', async ({ page }) => {
@@ -330,10 +347,9 @@ test('bulk undo and redo cross sides without exposing private views', async ({ p
   await expect(page.getByLabel('4 player actions')).toHaveText('Actions 4')
 
   await page.getByRole('button', { name: 'Redo All', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Pass the device to Investigators' })).toBeVisible()
-  await expect(page.getByText(/all remaining actions have been restored/i)).toBeVisible()
-  await page.getByRole('button', { name: /reveal the updated view/i }).click()
   await expect(page.getByRole('heading', { name: /Deploy the Blue Investigator/i })).toBeVisible()
+  await expect(page.locator('.investigator-turn-announcement')).toHaveText('Investigators’ Turn')
+  await expect(page.getByRole('heading', { name: /Pass the device to Investigators/i })).toHaveCount(0)
   await expect(page.getByLabel('6 player actions')).toHaveText('Actions 6')
   await expect(page.getByRole('button', { name: 'Redo All', exact: true })).toBeDisabled()
 })
@@ -401,6 +417,8 @@ test('previews positive and negative search outcomes for Jack maybes', async ({ 
   await page.getByLabel('Legal blue Investigator destinations').getByRole('button', { name: 'HP', exact: true }).click()
   await page.getByLabel('Legal red Investigator destinations').getByRole('button', { name: 'HZ', exact: true }).click()
   for (let index = 0; index < 3; index += 1) await page.getByRole('button', { name: 'Pass', exact: true }).click()
+  await expect(page.getByText('Results shown · Click anywhere on the map to continue')).toBeVisible()
+  await page.getByRole('img', { name: 'Whitehall game board' }).click({ position: { x: 5, y: 5 } })
 
   await page.getByRole('button', { name: /reveal my view/i }).click()
   await page.getByLabel('Legal Jack destinations').getByRole('button').first().click()
