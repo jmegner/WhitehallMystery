@@ -105,6 +105,21 @@ export const legalJackDestinations = (state: GameState): number[] => {
   return path.length === 0 ? legalCoachFirstDestinations(state) : legalCoachSecondDestinations(state, path[0] ?? -1)
 }
 
+export const coachReachableJackDestinations = (state: GameState): number[] => {
+  if (state.stage !== 'jackMove' || state.currentJack === null) return []
+  const { type, path } = state.jackMoveSelection
+  if (type === 'alley' || type === 'boat' || (type === 'coach' && path.length > 0)) return []
+
+  const normalDestinations = new Set([state.currentJack, ...legalNormalDestinations(state)])
+  const coachDestinations = new Set<number>()
+  for (const first of legalCoachFirstDestinations(state)) {
+    for (const destination of legalCoachSecondDestinations(state, first)) {
+      if (!normalDestinations.has(destination)) coachDestinations.add(destination)
+    }
+  }
+  return [...coachDestinations].sort((a, b) => a - b)
+}
+
 export const hasAnyLegalJackMove = (state: GameState): boolean =>
   legalNormalDestinations(state).length > 0 ||
   legalCoachFirstDestinations(state).length > 0 ||

@@ -5,6 +5,7 @@ import {
   legalInspectorActionCircles,
   legalJackDestinations,
   legalNormalDestinations,
+  coachReachableJackDestinations,
 } from './gameEngine'
 import { possibleJackLocations, possibleJackSearchOutcomes } from './inference'
 import {
@@ -161,6 +162,37 @@ describe('game reducer', () => {
     expect(state.roundTrail).toEqual([33, first, second])
     expect(state.specialRemaining.coach).toBe(1)
     expect(state.publicRound?.moves[0]?.type).toBe('coach')
+  })
+
+  test('shows Coach destinations that an ordinary street move cannot reach', () => {
+    const normal = setupGame()
+    const normalDestinations = new Set(legalJackDestinations(normal))
+    let coach = gameReducer(normal, { type: 'setJackMoveType', moveType: 'coach' })
+    const expected = new Set<number>()
+    for (const first of legalJackDestinations(coach)) {
+      const afterFirst = gameReducer(coach, { type: 'selectJackDestination', circleId: first })
+      for (const destination of legalJackDestinations(afterFirst)) {
+        if (!normalDestinations.has(destination) && destination !== normal.currentJack) expected.add(destination)
+      }
+    }
+    const coachReachable = coachReachableJackDestinations(normal)
+    expect(coachReachable).toEqual([...expected].sort((a, b) => a - b))
+    expect(coachReachable.length).toBeGreaterThan(0)
+    expect(coachReachable.every((id) => !normalDestinations.has(id))).toBe(true)
+    expect(coachReachableJackDestinations(coach)).toEqual(coachReachable)
+
+    coach = gameReducer(coach, {
+      type: 'selectJackDestination',
+      circleId: legalJackDestinations(coach)[0] as number,
+    })
+    expect(coachReachableJackDestinations(coach)).toEqual([])
+
+    expect(
+      coachReachableJackDestinations({ ...normal, jackMoveSelection: { type: 'alley', path: [] } }),
+    ).toEqual([])
+    expect(
+      coachReachableJackDestinations({ ...normal, jackMoveSelection: { type: 'boat', path: [] } }),
+    ).toEqual([])
   })
 
   test('blocks an ordinary route through an occupied crossing', () => {

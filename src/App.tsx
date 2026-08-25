@@ -8,6 +8,7 @@ import {
   legalInspectorActionCircles,
   legalInvestigatorDestinations,
   legalJackDestinations,
+  coachReachableJackDestinations,
 } from './game/gameEngine'
 import { movementLabel, possibleJackSearchOutcomes, type SearchOutcome } from './game/inference'
 import {
@@ -43,6 +44,7 @@ import {
 
 const BOARD_SIZE = 1200
 const ROUTE_CIRCLE_RADIUS = 18.5
+const COACH_REACHABLE_CIRCLE_RADIUS = 18.5
 const CLUE_CIRCLE_RADIUS = 18
 const OVERLAPPING_CLUE_CIRCLE_RADIUS = 23
 const POSSIBLE_CIRCLE_RADIUS = 23
@@ -117,6 +119,7 @@ const titleForStage = (state: GameState) => {
 interface BoardProps {
   state: GameState
   legalCircleIds: Set<number>
+  coachReachableCircleIds: Set<number>
   legalCrossingIds: Set<string>
   possibleIds: Set<number>
   possibleOutcomes: Map<number, SearchOutcome>
@@ -159,6 +162,7 @@ function BoardEdgeArrows({
 function GameBoard({
   state,
   legalCircleIds,
+  coachReachableCircleIds,
   legalCrossingIds,
   possibleIds,
   possibleOutcomes,
@@ -287,14 +291,14 @@ function GameBoard({
 
       {state.clueLocations.map((id) => {
         const circle = circlesById.get(id)
-        const legal = legalCircleIds.has(id)
+        const outlined = legalCircleIds.has(id) || coachReachableCircleIds.has(id)
         return circle ? (
           <circle
             key={`clue-${id}`}
-            className={legal ? 'clue-marker encircling-legal' : 'clue-marker'}
+            className={outlined ? 'clue-marker encircling-legal' : 'clue-marker'}
             cx={circle.x}
             cy={circle.y}
-            r={legal ? OVERLAPPING_CLUE_CIRCLE_RADIUS : CLUE_CIRCLE_RADIUS}
+            r={outlined ? OVERLAPPING_CLUE_CIRCLE_RADIUS : CLUE_CIRCLE_RADIUS}
           />
         ) : null
       })}
@@ -328,10 +332,27 @@ function GameBoard({
 
       {circles.map((circle) => {
         const legal = legalCircleIds.has(circle.id)
+        const coachReachable = coachReachableCircleIds.has(circle.id)
         const inferenceHoverTarget = showPossible && possibleOutcomes.has(circle.id)
         const selected = state.jackMoveSelection.path.includes(circle.id)
         return (
           <g key={`circle-target-${circle.id}`}>
+            {coachReachable && (
+              <>
+                <circle
+                  className="coach-reachable-circle-gap"
+                  cx={circle.x}
+                  cy={circle.y}
+                  r={COACH_REACHABLE_CIRCLE_RADIUS}
+                />
+                <circle
+                  className="coach-reachable-circle"
+                  cx={circle.x}
+                  cy={circle.y}
+                  r={COACH_REACHABLE_CIRCLE_RADIUS}
+                />
+              </>
+            )}
             {legal && <circle className="legal-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
             {selected && <circle className="selected-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
             <circle
@@ -935,6 +956,7 @@ function App() {
   }
 
   const legalCircleIds = new Set<number>()
+  const coachReachableCircleIds = new Set<number>()
   const legalCrossingIds = new Set<string>()
   if (state.stage === 'jackDiscoverySetup') {
     for (const circle of circles) if (circle.color === 'white') legalCircleIds.add(circle.id)
@@ -942,6 +964,7 @@ function App() {
     for (const id of state.discoveryLocations) legalCircleIds.add(id)
   } else if (state.stage === 'jackMove') {
     for (const id of legalJackDestinations(state)) legalCircleIds.add(id)
+    for (const id of coachReachableJackDestinations(state)) coachReachableCircleIds.add(id)
   } else if (state.stage === 'investigatorSetup') {
     for (const id of deploymentChoices(state)) legalCrossingIds.add(id)
   } else if (state.stage === 'investigatorMove') {
@@ -1094,6 +1117,7 @@ function App() {
               <GameBoard
                 state={state}
                 legalCircleIds={legalCircleIds}
+                coachReachableCircleIds={coachReachableCircleIds}
                 legalCrossingIds={legalCrossingIds}
                 possibleIds={possibleIds}
                 possibleOutcomes={possibleOutcomes}
@@ -1133,6 +1157,11 @@ function App() {
             <span>
               <i className="legend-dot legal" /> Legal target
             </span>
+            {isPrivateJackView(state.stage) && (
+              <span>
+                <i className="legend-dot coach-reachable" /> Reachable via Coach
+              </span>
+            )}
             {(isPrivateJackView(state.stage) || (showJackPeek && isInspectorInteraction(state.stage))) &&
               state.discoveryLocations.length > 0 && (
               <span>

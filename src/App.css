@@ -6,6 +6,7 @@
   --gold: #b98522;
   --blue: #245f81;
   --action-green: #2ee66b;
+  --coach-reachable-gap: #149cff;
   --panel-shadow: 0 20px 60px rgb(0 0 0 / 28%);
 }
 
@@ -504,6 +505,24 @@ button:disabled {
   fill: none;
 }
 
+.coach-reachable-circle-gap,
+.coach-reachable-circle {
+  fill: none;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  filter: drop-shadow(0 0 3px rgb(255 255 255 / 70%));
+}
+
+.coach-reachable-circle-gap {
+  stroke: var(--coach-reachable-gap);
+}
+
+.coach-reachable-circle {
+  stroke: var(--action-green);
+  stroke-dasharray: 5 3;
+}
+
 .selected-circle {
   fill: none;
   stroke: #ff03a7;
@@ -691,6 +710,20 @@ button:disabled {
 .legend-dot.legal {
   background: transparent;
   border-color: var(--action-green);
+}
+
+.legend-dot.coach-reachable {
+  position: relative;
+  background: transparent;
+  border-color: var(--coach-reachable-gap);
+}
+
+.legend-dot.coach-reachable::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 2px dashed var(--action-green);
+  border-radius: 50%;
 }
 
 .legend-dot.private-discovery {
