@@ -3,6 +3,7 @@ import {
   createInitialGame,
   gameReducer,
   legalInspectorActionCircles,
+  legalInvestigatorDestinations,
   legalJackDestinations,
   legalNormalDestinations,
   coachReachableJackDestinations,
@@ -304,6 +305,25 @@ describe('game reducer', () => {
     expect(state.inspectorActionMode).toBe('search')
     state = gameReducer(state, { type: 'passInspectorAction' })
     expect(state.activeInvestigator).toBe(activeBefore)
+  })
+
+  test('defaults each Investigator to searching during the action phase', () => {
+    const base = setupGame()
+    let state: GameState = {
+      ...base,
+      stage: 'investigatorMove',
+      activeInvestigator: 2,
+      inspectorActionMode: 'choose',
+    }
+    const destination = legalInvestigatorDestinations(state)[0] as string
+
+    state = gameReducer(state, { type: 'moveInvestigator', crossingId: destination })
+    expect(state.stage).toBe('investigatorAction')
+    expect(state.inspectorActionMode).toBe('search')
+
+    state = gameReducer(state, { type: 'passInspectorAction' })
+    expect(state.activeInvestigator).toBe(1)
+    expect(state.inspectorActionMode).toBe('search')
   })
 
   test('keeps the red Investigator’s final arrest result visible until the map is acknowledged', () => {

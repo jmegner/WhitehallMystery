@@ -4,6 +4,7 @@ import {
   activeInvestigatorColor,
   createInitialGame,
   deploymentChoices,
+  gameReducer,
   jackMoveReadyToConfirm,
   legalInspectorActionCircles,
   legalInvestigatorDestinations,
@@ -128,6 +129,7 @@ interface BoardProps {
   showPastPath: boolean
   showJackPeek: boolean
   onCircle: (circleId: number) => void
+  onCircleMiddleClick: (circleId: number) => void
   onCrossing: (crossingId: string) => void
   onMapClick: () => void
 }
@@ -171,6 +173,7 @@ function GameBoard({
   showPastPath,
   showJackPeek,
   onCircle,
+  onCircleMiddleClick,
   onCrossing,
   onMapClick,
 }: BoardProps) {
@@ -361,6 +364,12 @@ function GameBoard({
               cy={circle.y}
               r="18"
               onClick={() => legal && onCircle(circle.id)}
+              onAuxClick={(event) => {
+                if (event.button === 1 && legal) {
+                  event.preventDefault()
+                  onCircleMiddleClick(circle.id)
+                }
+              }}
               onMouseEnter={() => inferenceHoverTarget && setHoveredMaybeId(circle.id)}
               onMouseLeave={() => inferenceHoverTarget && setHoveredMaybeId(null)}
               aria-label={`Location ${circle.id}${legal ? ', selectable' : ''}`}
@@ -919,10 +928,11 @@ function App() {
     applyHistoryCommands([command])
   }
   const dispatch = (action: GameAction) => {
-    if (action.type === 'confirmJackMove') {
+    if (action.type === 'confirmDiscoveries' || action.type === 'confirmJackMove') {
       const confirmCommand = { type: 'apply' as const, action }
       const confirmedHistory = gameHistoryReducer(history, confirmCommand)
-      if (currentHistoryState(confirmedHistory).stage === 'handoffInspectorsTurn') {
+      const confirmedStage = currentHistoryState(confirmedHistory).stage
+      if (confirmedStage === 'handoffInspectorsSetup' || confirmedStage === 'handoffInspectorsTurn') {
         applyHistoryCommands([confirmCommand, { type: 'apply', action: { type: 'continueHandoff' } }])
         setShowInvestigatorTurnAnnouncement(true)
         window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1500)
@@ -991,6 +1001,32 @@ function App() {
       dispatch({ type: 'searchCircle', circleId })
     } else if (state.stage === 'investigatorAction' && state.inspectorActionMode === 'arrest') {
       dispatch({ type: 'arrestCircle', circleId })
+    }
+  }
+  const handleCircleMiddleClick = (circleId: number) => {
+    if (state.stage === 'jackMove') {
+      const select = { type: 'selectJackDestination' as const, circleId }
+      const afterSelection = gameReducer(state, select)
+      const commands: Parameters<typeof gameHistoryReducer>[1][] = [{ type: 'apply', action: select }]
+      if (jackMoveReadyToConfirm(afterSelection)) {
+        commands.push({ type: 'apply', action: { type: 'confirmJackMove' } })
+        const afterConfirmation = gameReducer(afterSelection, { type: 'confirmJackMove' })
+        if (afterConfirmation.stage === 'handoffInspectorsTurn') {
+          commands.push({ type: 'apply', action: { type: 'continueHandoff' } })
+          setShowInvestigatorTurnAnnouncement(true)
+          window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1500)
+        }
+      }
+      applyHistoryCommands(commands)
+    } else if (
+      state.stage === 'investigatorAction' &&
+      state.inspectorActionMode === 'search' &&
+      state.checkedThisAction.length === 0
+    ) {
+      applyHistoryCommands([
+        { type: 'apply', action: { type: 'setInspectorActionMode', mode: 'arrest' } },
+        { type: 'apply', action: { type: 'arrestCircle', circleId } },
+      ])
     }
   }
   const handleCrossing = (crossingId: string) => {
@@ -1126,6 +1162,7 @@ function App() {
                 showPastPath={showPastPath}
                 showJackPeek={showJackPeek}
                 onCircle={handleCircle}
+                onCircleMiddleClick={handleCircleMiddleClick}
                 onCrossing={handleCrossing}
                 onMapClick={() => {
                   if (state.stage === 'investigatorTurnResult') dispatch({ type: 'continueHandoff' })

@@ -4,7 +4,6 @@ test('undoes Coach route locations onto the redo stack', async ({ page }) => {
   await page.goto('/')
   for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
   await page.getByRole('button', { name: 'Lock in four locations' }).click()
-  await page.getByRole('button', { name: /reveal my view/i }).click()
 
   const deployment = page.getByLabel('Available deployment crossings')
   for (const crossing of ['FP', 'HP', 'HZ']) {
@@ -81,9 +80,10 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   }
   await page.getByRole('button', { name: 'Lock in four locations' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Pass the device to Investigators' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Deploy the Yellow Investigator/i })).toBeVisible()
+  await expect(page.locator('.investigator-turn-announcement')).toHaveText('Investigators’ Turn')
+  await expect(page.getByRole('heading', { name: 'Pass the device to Investigators' })).toHaveCount(0)
   await expect(page.getByText('Private route')).toHaveCount(0)
-  await page.getByRole('button', { name: /reveal my view/i }).click()
 
   const deployment = page.getByLabel('Available deployment crossings')
   for (const crossing of ['FP', 'HP', 'HZ']) {
@@ -135,7 +135,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
     )
   }, firstDestination)
   expect(routeEndClearance).toBeGreaterThanOrEqual(18.4)
-  await page.getByRole('button', { name: 'Record move privately' }).click()
+  await page.getByLabel(`Location ${firstDestination}, selectable`).click({ button: 'middle' })
 
   await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
   const investigatorTurnAnnouncement = page.locator('.investigator-turn-announcement')
@@ -196,7 +196,14 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await expect(page.locator('.investigator-piece.blue .active-investigator-ring')).toBeVisible()
   await expect(page.locator('.board-scroll')).toHaveClass(/active-investigator-blue/)
   for (const crossing of ['HP', 'HZ']) await page.getByRole('button', { name: crossing, exact: true }).click()
-  for (let index = 0; index < 3; index += 1) {
+  await expect(page.getByRole('button', { name: 'Search for clues' })).toHaveClass(/primary-button/)
+  const arrestTargetId = await page.locator('.map-hit-target.selectable').evaluateAll((targets, jackId) =>
+    targets
+      .map((target) => Number(target.getAttribute('aria-label')?.match(/Location (\d+)/)?.[1]))
+      .find((id) => id !== jackId), firstDestination)
+  await page.getByLabel(`Location ${arrestTargetId}, selectable`).click({ button: 'middle' })
+  await expect(page.locator('.investigator-piece.blue .active-investigator-ring')).toBeVisible()
+  for (let index = 0; index < 2; index += 1) {
     await page.getByRole('button', { name: 'Pass', exact: true }).click()
   }
 
@@ -293,7 +300,6 @@ test('undoes and redoes actions across private-view handoffs', async ({ page }) 
   await expect(page.getByLabel('4 player actions')).toHaveText('Actions 4')
 
   await page.getByRole('button', { name: 'Lock in four locations' }).click()
-  await page.getByRole('button', { name: /reveal my view/i }).click()
   await expect(page.getByRole('button', { name: 'Undo!', exact: true })).toBeEnabled()
 
   await page.getByRole('button', { name: 'Undo!', exact: true }).click()
@@ -304,7 +310,6 @@ test('undoes and redoes actions across private-view handoffs', async ({ page }) 
 
   await page.getByRole('button', { name: 'Lock in four locations' }).click()
   await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeDisabled()
-  await page.getByRole('button', { name: /reveal my view/i }).click()
   await expect(page.getByRole('heading', { name: /Deploy the Yellow Investigator/i })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeDisabled()
 })
@@ -315,7 +320,6 @@ test('bulk undo and redo cross sides without exposing private views', async ({ p
 
   for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
   await page.getByRole('button', { name: 'Lock in four locations' }).click()
-  await page.getByRole('button', { name: /reveal my view/i }).click()
   await page.getByLabel('Available deployment crossings').getByRole('button', { name: 'FP', exact: true }).click()
   await expect(page.getByLabel('6 player actions')).toHaveText('Actions 6')
 
@@ -338,7 +342,6 @@ test('draws a clue ring outside a valid-choice ring at the same location', async
   await page.goto('/')
   for (const id of [33, 46, 121, 147]) await page.getByLabel(`Location ${id}, selectable`).click()
   await page.getByRole('button', { name: 'Lock in four locations' }).click()
-  await page.getByRole('button', { name: /reveal my view/i }).click()
 
   const deployment = page.getByLabel('Available deployment crossings')
   for (const crossing of ['FP', 'HP', 'HZ']) {
@@ -383,7 +386,6 @@ test('previews positive and negative search outcomes for Jack maybes', async ({ 
   await page.goto('/')
   for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
   await page.getByRole('button', { name: 'Lock in four locations' }).click()
-  await page.getByRole('button', { name: /reveal my view/i }).click()
 
   const deployment = page.getByLabel('Available deployment crossings')
   for (const crossing of ['FP', 'HP', 'HZ']) {
