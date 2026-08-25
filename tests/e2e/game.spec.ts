@@ -335,10 +335,9 @@ test('bulk undo and redo cross sides without exposing private views', async ({ p
   await expect(page.getByLabel('4 player actions')).toHaveText('Actions 4')
 
   await page.getByRole('button', { name: 'Redo All', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Pass the device to Investigators' })).toBeVisible()
-  await expect(page.getByText(/all remaining actions have been restored/i)).toBeVisible()
-  await page.getByRole('button', { name: /reveal the updated view/i }).click()
   await expect(page.getByRole('heading', { name: /Deploy the Blue Investigator/i })).toBeVisible()
+  await expect(page.locator('.investigator-turn-announcement')).toHaveText('Investigators’ Turn')
+  await expect(page.getByRole('heading', { name: /Pass the device to Investigators/i })).toHaveCount(0)
   await expect(page.getByLabel('6 player actions')).toHaveText('Actions 6')
   await expect(page.getByRole('button', { name: 'Redo All', exact: true })).toBeDisabled()
 })

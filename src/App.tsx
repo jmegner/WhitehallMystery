@@ -102,12 +102,12 @@ const titleForStage = (state: GameState) => {
   const color = activeInvestigatorColor(state)
   const titles: Record<GameState['stage'], string> = {
     jackDiscoverySetup: 'Jack: Plan the Crime',
-    handoffInspectorsSetup: 'Pass to the Investigators',
+    handoffInspectorsSetup: 'Investigators’ Turn',
     investigatorSetup: `Deploy the ${displayColor(color)} Investigator`,
     handoffJackStart: 'Pass Back to Jack',
     jackChooseStart: 'Jack: Choose the Starting Location',
     jackMove: 'Jack: Escape in the Night',
-    handoffInspectorsTurn: 'Pass to the Investigators',
+    handoffInspectorsTurn: 'Investigators’ Turn',
     investigatorMove: `${displayColor(color)} Investigator: Move`,
     investigatorAction: `${displayColor(color)} Investigator: Clues and Suspicion`,
     investigatorTurnResult: 'Investigator Results',
@@ -844,7 +844,7 @@ function HandoffScreen({
       <main className="handoff-screen">
         <div className="handoff-card">
           <span className="eyebrow">{redidAll ? 'Redo handoff' : 'Undo handoff'}</span>
-          <h1>Pass the device to {target}</h1>
+          <h1>{target === 'Investigators' ? 'Investigators’ Turn' : `Pass the device to ${target}`}</h1>
           <p>
             {redidAll
               ? 'All remaining actions have been restored. The resulting private view is ready.'
@@ -878,7 +878,7 @@ function HandoffScreen({
     <main className="handoff-screen">
       <div className="handoff-card">
         <span className="eyebrow">Hot-seat handoff</span>
-        <h1>Pass the device to {target}</h1>
+        <h1>{target === 'Investigators' ? 'Investigators’ Turn' : `Pass the device to ${target}`}</h1>
         <p>{detail} Private information is not shown on this screen.</p>
         <button className="reveal-button" type="button" onClick={() => dispatch({ type: 'continueHandoff' })}>
           I am the {target} player — reveal my view
@@ -968,6 +968,13 @@ function App() {
       const automatic = automaticInvestigatorActions(next)
       next = automatic.next
       for (const command of automatic.commands) historyDispatch(command)
+    }
+    if (next.pendingReveal === 'investigators') {
+      const revealCommand = { type: 'revealUndo' as const }
+      next = gameHistoryReducer(next, revealCommand)
+      historyDispatch(revealCommand)
+      setShowInvestigatorTurnAnnouncement(true)
+      window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 6000)
     }
     const storage = browserStorage()
     if (storage) saveStoredHistory(storage, next)
