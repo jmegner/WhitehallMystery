@@ -232,7 +232,7 @@ const advanceInspectorAction = (state: GameState): GameState => {
     return {
       ...state,
       activeInvestigator: state.activeInvestigator + 1,
-      inspectorActionMode: 'choose',
+      inspectorActionMode: 'search',
       checkedThisAction: [],
       notice: `${INVESTIGATOR_ORDER[state.activeInvestigator + 1]} Investigator: search, arrest, or pass.`,
     }
@@ -464,7 +464,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
           investigatorPositions,
           stage: 'investigatorAction',
           activeInvestigator: 0,
-          inspectorActionMode: 'choose',
+          inspectorActionMode: 'search',
           checkedThisAction: [],
           notice: 'Yellow Investigator: search for clues, execute an arrest, or pass.',
         }
