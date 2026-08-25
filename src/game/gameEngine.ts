@@ -583,9 +583,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         ],
         notice: state.checkedThisAction.length > 0 ? `${color} ended the clue search.` : `${color} passed.`,
       }
-      return state.activeInvestigator === INVESTIGATOR_ORDER.length - 1
-        ? finalizeEndOfTurn(passed)
-        : advanceInspectorAction(passed)
+      return advanceInspectorAction(passed)
     }
     default:
       return state

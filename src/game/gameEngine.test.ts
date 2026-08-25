@@ -149,6 +149,8 @@ describe('game reducer', () => {
       { type: 'passInspectorAction' },
       { type: 'passInspectorAction' },
     )
+    expect(state.stage).toBe('investigatorTurnResult')
+    state = gameReducer(state, { type: 'continueHandoff' })
     expect(state.stage).toBe('handoffJackTurn')
   })
 
@@ -374,7 +376,7 @@ describe('game reducer', () => {
 
   test('reveals a reached Discovery Location only after all Investigator actions', () => {
     const base = setupGame()
-    const state = gameReducer(
+    let state = gameReducer(
       {
         ...base,
         stage: 'investigatorAction',
@@ -385,6 +387,10 @@ describe('game reducer', () => {
       },
       { type: 'passInspectorAction' },
     )
+    expect(state.stage).toBe('investigatorTurnResult')
+    expect(state.reachedDiscoveries).toEqual([33])
+
+    state = gameReducer(state, { type: 'continueHandoff' })
     expect(state.stage).toBe('handoffJackTurn')
     expect(state.round).toBe(2)
     expect(state.moveSlot).toBe(0)
