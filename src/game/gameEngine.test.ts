@@ -287,7 +287,7 @@ describe('game reducer', () => {
     expect(state.result?.winner).toBe('investigators')
   })
 
-  test('does not allow an Investigator to abandon a clue search after the first query', () => {
+  test('allows an Investigator to end a clue search after the first query but not switch to arrest', () => {
     const base = setupGame()
     const adjacent = legalInspectorActionCircles({ ...base, stage: 'investigatorAction' })
     const miss = adjacent.find((id) => !base.roundTrail.includes(id)) as number
@@ -304,7 +304,8 @@ describe('game reducer', () => {
     state = gameReducer(state, { type: 'setInspectorActionMode', mode: 'arrest' })
     expect(state.inspectorActionMode).toBe('search')
     state = gameReducer(state, { type: 'passInspectorAction' })
-    expect(state.activeInvestigator).toBe(activeBefore)
+    expect(state.activeInvestigator).toBe(activeBefore + 1)
+    expect(state.publicLog.at(-1)).toContain('ended the clue search')
   })
 
   test('defaults each Investigator to searching during the action phase', () => {

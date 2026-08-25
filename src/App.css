@@ -742,6 +742,21 @@ button:disabled {
   max-height: calc(100vh - 185px);
 }
 
+.control-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.investigator-auto-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
 .control-panel .eyebrow {
   color: var(--red);
   margin-bottom: 7px;

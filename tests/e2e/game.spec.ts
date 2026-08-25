@@ -138,6 +138,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await page.getByLabel(`Location ${firstDestination}, selectable`).click({ button: 'middle' })
 
   await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
+  await expect(page.getByLabel('inv auto')).toBeVisible()
   const investigatorTurnAnnouncement = page.locator('.investigator-turn-announcement')
   await expect(investigatorTurnAnnouncement).toBeVisible()
   await expect(investigatorTurnAnnouncement).toHaveText('Investigators’ Turn')
@@ -203,9 +204,11 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
       .find((id) => id !== jackId), firstDestination)
   await page.getByLabel(`Location ${arrestTargetId}, selectable`).click({ button: 'middle' })
   await expect(page.locator('.investigator-piece.blue .active-investigator-ring')).toBeVisible()
-  for (let index = 0; index < 2; index += 1) {
-    await page.getByRole('button', { name: 'Pass', exact: true }).click()
-  }
+  await page.getByRole('button', { name: 'Execute arrest' }).click()
+  const arrestModeTarget = page.locator('.map-hit-target.selectable').first()
+  await arrestModeTarget.click({ button: 'middle' })
+  await expect(page.locator('.investigator-piece.red .active-investigator-ring')).toBeVisible()
+  await page.getByRole('button', { name: 'Pass', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
   await expect(page.getByText('Private route')).toHaveCount(0)
