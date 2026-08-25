@@ -361,6 +361,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     }
     case 'setJackMoveType': {
       if (state.stage !== 'jackMove') return state
+      if (state.jackMoveSelection.type === action.moveType) return state
       if (action.moveType !== 'normal' && state.specialRemaining[action.moveType] < 1) {
         return withNotice(state, `No ${action.moveType} tiles remain.`)
       }
@@ -479,6 +480,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     }
     case 'setInspectorActionMode': {
       if (state.stage !== 'investigatorAction') return state
+      if (state.inspectorActionMode === action.mode) return state
       if (state.inspectorActionMode === 'search' && state.checkedThisAction.length > 0) {
         return withNotice(state, 'End the current clue search before choosing another action.')
       }

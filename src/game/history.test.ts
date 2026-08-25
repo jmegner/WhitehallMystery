@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { createInitialGame } from './gameEngine'
+import { createInitialGame, gameReducer } from './gameEngine'
 import {
   actionCount,
   canBigUndo,
@@ -32,6 +32,37 @@ const readyForInvestigatorView = () =>
   )
 
 describe('game action history', () => {
+  test('does not record reselecting an active movement or investigator action mode', () => {
+    const initial = createInitialGame()
+    const jackState = {
+      ...initial,
+      stage: 'jackMove' as const,
+      currentJack: 33,
+    }
+    for (const moveType of ['normal', 'coach', 'alley', 'boat'] as const) {
+      const selected =
+        moveType === 'normal'
+          ? jackState
+          : gameReducer(jackState, { type: 'setJackMoveType', moveType })
+      const history = createGameHistory(selected)
+      const afterReselect = gameHistoryReducer(history, action({ type: 'setJackMoveType', moveType }))
+      expect(afterReselect).toBe(history)
+      expect(actionCount(afterReselect)).toBe(0)
+    }
+
+    for (const mode of ['search', 'arrest'] as const) {
+      const state = {
+        ...initial,
+        stage: 'investigatorAction' as const,
+        inspectorActionMode: mode,
+      }
+      const history = createGameHistory(state)
+      const afterReselect = gameHistoryReducer(history, action({ type: 'setInspectorActionMode', mode }))
+      expect(afterReselect).toBe(history)
+      expect(actionCount(afterReselect)).toBe(0)
+    }
+  })
+
   test('undoes within a view, then uses Undo! to restore the prior private view', () => {
     let history = readyForInvestigatorView()
     expect(currentHistoryState(history).stage).toBe('investigatorSetup')
