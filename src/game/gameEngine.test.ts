@@ -137,6 +137,18 @@ describe('game reducer', () => {
     expect(randomProgressActions(selected, () => 0)).toEqual([{ type: 'confirmJackMove' }])
   })
 
+  test('random progress switches away from a manually selected movement with no destinations', () => {
+    const boatSelected = gameReducer(setupGame(), { type: 'setJackMoveType', moveType: 'boat' })
+    expect(legalJackDestinations(boatSelected)).toEqual([])
+
+    const actions = randomProgressActions(boatSelected, () => 0)
+    expect(actions[0]).toEqual({ type: 'setJackMoveType', moveType: 'normal' })
+    expect(actions[1]?.type).toBe('selectJackDestination')
+    const progressed = apply(boatSelected, ...actions)
+    expect(progressed.jackMoveSelection.type).toBe('normal')
+    expect(progressed.jackMoveSelection.path).toHaveLength(1)
+  })
+
   test('random progress uses the requested investigator action probabilities', () => {
     const base = setupGame()
     const state: GameState = { ...base, stage: 'investigatorAction', inspectorActionMode: 'search' }

@@ -18,6 +18,7 @@ import {
 } from './types'
 
 const baseJackSelection = { type: 'normal' as const, path: [] as number[] }
+const JACK_MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
 
 export const createInitialGame = (): GameState => ({
   stage: 'jackDiscoverySetup',
@@ -645,25 +646,26 @@ export const randomProgressActions = (state: GameState, random: () => number = M
       return circleId === undefined ? [] : [{ type: 'selectJackDestination', circleId }]
     }
 
-    const boat = legalGroupedDestinations(state, 'boat')
-    const fromBlue = state.currentJack !== null && circlesById.get(state.currentJack)?.color === 'blue'
-    let moveType: JackMoveType = 'normal'
-    if (fromBlue && boat.length > 0 && random() < 0.5) {
+    const validMoveTypes = JACK_MOVE_TYPES.filter((type) => {
+      if (type === 'normal') return legalNormalDestinations(state).length > 0
+      if (type === 'coach') return legalCoachFirstDestinations(state).length > 0
+      return legalGroupedDestinations(state, type).length > 0
+    })
+    const boatIsValid = validMoveTypes.includes('boat')
+    const streetIsValid = validMoveTypes.includes('normal')
+    const otherSpecials = (['alley', 'coach'] as const).filter((type) => validMoveTypes.includes(type))
+    let moveType: JackMoveType | undefined
+    if (boatIsValid && random() < 0.5) {
       moveType = 'boat'
-    } else if (random() >= 0.8) {
-      const specials = (['alley', 'coach'] as const).filter((type) =>
-        type === 'alley' ? legalGroupedDestinations(state, type).length > 0 : legalCoachFirstDestinations(state).length > 0,
-      )
-      moveType = randomChoice(specials, random) ?? 'normal'
+    } else if (streetIsValid && (otherSpecials.length === 0 || random() < 0.8)) {
+      moveType = 'normal'
+    } else {
+      moveType = randomChoice(otherSpecials, random)
+        ?? (streetIsValid ? 'normal' : randomChoice(validMoveTypes, random))
     }
-    if (moveType === 'normal' && legalNormalDestinations(state).length === 0) {
-      const alternatives = (['alley', 'coach', 'boat'] as const).filter((type) =>
-        type === 'coach' ? legalCoachFirstDestinations(state).length > 0 : legalGroupedDestinations(state, type).length > 0,
-      )
-      moveType = randomChoice(alternatives, random) ?? 'normal'
-    }
+    if (moveType === undefined) return []
 
-    const typedState = moveType === 'normal'
+    const typedState = moveType === state.jackMoveSelection.type
       ? state
       : gameReducer(state, { type: 'setJackMoveType', moveType })
     const first = randomChoice(legalJackDestinations(typedState), random)
