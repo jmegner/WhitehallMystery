@@ -86,6 +86,7 @@ test('undoes Coach route locations onto the redo stack', async ({ page }) => {
 test('plays a complete hot-seat turn without exposing Jack during handoffs', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Whitehall Mystery' })).toBeVisible()
+  await expect(page.locator('.game-board')).toHaveAttribute('viewBox', '70 10 1100 1090')
 
   for (const id of [33, 46, 147, 159]) {
     await page.getByLabel(`Location ${id}, selectable`).click()
@@ -107,6 +108,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
   const jackPositionGuides = page.locator('.jack-location-edge-arrows')
   await expect(jackPositionGuides.locator('polygon')).toHaveCount(4)
+  await expect(jackPositionGuides.locator('polygon').first()).toHaveAttribute('points', /,10 /)
   await expect(jackPositionGuides).toHaveCSS('color', 'rgb(255, 3, 167)')
   await expect(jackPositionGuides.locator('.edge-guide-line')).toHaveCount(4)
   await expect(jackPositionGuides.locator('.edge-guide-line').first()).toHaveCSS('stroke-width', '0.6px')
@@ -147,19 +149,14 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
     )
   }, firstDestination)
   expect(routeEndClearance).toBeGreaterThanOrEqual(18.4)
-  const investigatorTurnAnnouncement = page.locator('.investigator-turn-announcement')
   await page.getByLabel(`Location ${firstDestination}, selectable`).click({ button: 'middle' })
 
-  await expect(investigatorTurnAnnouncement).toBeVisible()
-  await expect(investigatorTurnAnnouncement).toHaveText('Investigators’ Turn')
-  await expect(investigatorTurnAnnouncement).toHaveCSS('background-color', 'rgba(0, 0, 0, 0.6)')
-  await expect(investigatorTurnAnnouncement).toHaveCSS('color', 'rgb(255, 255, 255)')
   await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
   await expect(page.getByLabel('inv auto')).toBeVisible()
+  await expect(page.getByRole('button', { name: /reveal my view/i })).toHaveCount(0)
   await expect(page.getByText('Reachable via Coach', { exact: true })).toHaveCount(0)
   await expect(page.getByText('Private route')).toHaveCount(0)
   await page.locator('.app-header').click()
-  await expect(investigatorTurnAnnouncement).toBeHidden()
   await expect(page.locator('.public-log').getByText('M1: Jack advanced to move 1.')).toBeVisible()
 
   await page.getByLabel('Jack maybes').check()

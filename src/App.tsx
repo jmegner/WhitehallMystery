@@ -46,6 +46,9 @@ import {
 } from './game/types'
 
 const BOARD_SIZE = 1200
+const BOARD_VIEWPORT = { x: 70, y: 10, width: 1100, height: 1090 } as const
+const EDGE_ARROW_LENGTH = 12
+const EDGE_ARROW_HALF_WIDTH = 10
 const ROUTE_CIRCLE_RADIUS = 18.5
 const COACH_REACHABLE_CIRCLE_RADIUS = 18.5
 const CLUE_CIRCLE_RADIUS = 18
@@ -155,16 +158,21 @@ function BoardEdgeArrows({
   className: string
   label: string
 }) {
+  const left = BOARD_VIEWPORT.x
+  const top = BOARD_VIEWPORT.y
+  const right = left + BOARD_VIEWPORT.width
+  const bottom = top + BOARD_VIEWPORT.height
+
   return (
     <g className={className} aria-label={label}>
-      <line className="edge-guide-line" x1={x} y1="32" x2={x} y2={y - targetRadius} />
-      <line className="edge-guide-line" x1={x} y1={BOARD_SIZE - 32} x2={x} y2={y + targetRadius} />
-      <line className="edge-guide-line" x1="32" y1={y} x2={x - targetRadius} y2={y} />
-      <line className="edge-guide-line" x1={BOARD_SIZE - 32} y1={y} x2={x + targetRadius} y2={y} />
-      <polygon points={`${x - 15},4 ${x + 15},4 ${x},32`} />
-      <polygon points={`${x - 15},${BOARD_SIZE - 4} ${x + 15},${BOARD_SIZE - 4} ${x},${BOARD_SIZE - 32}`} />
-      <polygon points={`4,${y - 15} 4,${y + 15} 32,${y}`} />
-      <polygon points={`${BOARD_SIZE - 4},${y - 15} ${BOARD_SIZE - 4},${y + 15} ${BOARD_SIZE - 32},${y}`} />
+      <line className="edge-guide-line" x1={x} y1={top + EDGE_ARROW_LENGTH} x2={x} y2={y - targetRadius} />
+      <line className="edge-guide-line" x1={x} y1={bottom - EDGE_ARROW_LENGTH} x2={x} y2={y + targetRadius} />
+      <line className="edge-guide-line" x1={left + EDGE_ARROW_LENGTH} y1={y} x2={x - targetRadius} y2={y} />
+      <line className="edge-guide-line" x1={right - EDGE_ARROW_LENGTH} y1={y} x2={x + targetRadius} y2={y} />
+      <polygon points={`${x - EDGE_ARROW_HALF_WIDTH},${top} ${x + EDGE_ARROW_HALF_WIDTH},${top} ${x},${top + EDGE_ARROW_LENGTH}`} />
+      <polygon points={`${x - EDGE_ARROW_HALF_WIDTH},${bottom} ${x + EDGE_ARROW_HALF_WIDTH},${bottom} ${x},${bottom - EDGE_ARROW_LENGTH}`} />
+      <polygon points={`${left},${y - EDGE_ARROW_HALF_WIDTH} ${left},${y + EDGE_ARROW_HALF_WIDTH} ${left + EDGE_ARROW_LENGTH},${y}`} />
+      <polygon points={`${right},${y - EDGE_ARROW_HALF_WIDTH} ${right},${y + EDGE_ARROW_HALF_WIDTH} ${right - EDGE_ARROW_LENGTH},${y}`} />
     </g>
   )
 }
@@ -215,7 +223,7 @@ function GameBoard({
   return (
     <svg
       className="game-board"
-      viewBox={`0 0 ${BOARD_SIZE} ${BOARD_SIZE}`}
+      viewBox={`${BOARD_VIEWPORT.x} ${BOARD_VIEWPORT.y} ${BOARD_VIEWPORT.width} ${BOARD_VIEWPORT.height}`}
       role="img"
       aria-label="Whitehall game board"
       onClick={onMapClick}
