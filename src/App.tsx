@@ -97,7 +97,13 @@ const browserStorage = () => {
 
 const initializeHistory = () => {
   const storage = browserStorage()
-  return (storage && loadStoredHistory(storage)) || createGameHistory(createInitialGame())
+  let history = (storage && loadStoredHistory(storage)) || createGameHistory(createInitialGame())
+  if (history.pendingReveal === 'investigators') history = gameHistoryReducer(history, { type: 'revealUndo' })
+  const stage = currentHistoryState(history).stage
+  if (stage === 'handoffInspectorsSetup' || stage === 'handoffInspectorsTurn') {
+    history = gameHistoryReducer(history, { type: 'apply', action: { type: 'continueHandoff' } })
+  }
+  return history
 }
 
 const titleForStage = (state: GameState) => {
@@ -985,7 +991,15 @@ function App() {
       next = gameHistoryReducer(next, revealCommand)
       historyDispatch(revealCommand)
       setShowInvestigatorTurnAnnouncement(true)
-      window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 6000)
+      window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1500)
+    }
+    const nextStage = currentHistoryState(next).stage
+    if (nextStage === 'handoffInspectorsSetup' || nextStage === 'handoffInspectorsTurn') {
+      const continueCommand = { type: 'apply' as const, action: { type: 'continueHandoff' as const } }
+      next = gameHistoryReducer(next, continueCommand)
+      historyDispatch(continueCommand)
+      setShowInvestigatorTurnAnnouncement(true)
+      window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1500)
     }
     const storage = browserStorage()
     if (storage) saveStoredHistory(storage, next)
@@ -994,17 +1008,6 @@ function App() {
     applyHistoryCommands([command])
   }
   const dispatch = (action: GameAction) => {
-    if (action.type === 'confirmDiscoveries' || action.type === 'confirmJackMove') {
-      const confirmCommand = { type: 'apply' as const, action }
-      const confirmedHistory = gameHistoryReducer(history, confirmCommand)
-      const confirmedStage = currentHistoryState(confirmedHistory).stage
-      if (confirmedStage === 'handoffInspectorsSetup' || confirmedStage === 'handoffInspectorsTurn') {
-        applyHistoryCommands([confirmCommand, { type: 'apply', action: { type: 'continueHandoff' } }])
-        setShowInvestigatorTurnAnnouncement(true)
-        window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 6000)
-        return
-      }
-    }
     applyHistoryCommands([{ type: 'apply', action }], investigatorAuto)
   }
   const handleUndo = () => applyHistoryCommand({ type: 'undo' })
@@ -1081,12 +1084,6 @@ function App() {
       const commands: Parameters<typeof gameHistoryReducer>[1][] = [{ type: 'apply', action: select }]
       if (jackMoveReadyToConfirm(afterSelection)) {
         commands.push({ type: 'apply', action: { type: 'confirmJackMove' } })
-        const afterConfirmation = gameReducer(afterSelection, { type: 'confirmJackMove' })
-        if (afterConfirmation.stage === 'handoffInspectorsTurn') {
-          commands.push({ type: 'apply', action: { type: 'continueHandoff' } })
-          setShowInvestigatorTurnAnnouncement(true)
-          window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 6000)
-        }
       }
       applyHistoryCommands(commands)
     } else if (
