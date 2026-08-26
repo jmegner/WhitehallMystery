@@ -10,6 +10,7 @@ import {
   legalInvestigatorDestinations,
   legalJackDestinations,
   coachReachableJackDestinations,
+  randomProgressActions,
 } from './game/gameEngine'
 import { movementLabel, possibleJackSearchOutcomes, type SearchOutcome } from './game/inference'
 import {
@@ -548,9 +549,10 @@ interface HistoryControlsProps {
   onBigUndo: () => void
   onRedo: () => void
   onRedoAll: () => void
+  onRand: () => void
 }
 
-function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll }: HistoryControlsProps) {
+function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand }: HistoryControlsProps) {
   const mode = undoMode(history)
   return (
     <div className="history-controls" aria-label="Action history controls">
@@ -565,6 +567,9 @@ function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll }: Hist
       </button>
       <button type="button" disabled={!canRedoAll(history)} onClick={onRedoAll}>
         Redo All
+      </button>
+      <button type="button" onClick={onRand}>
+        Rand
       </button>
       <span className="action-counter" aria-label={`${actionCount(history)} player actions`}>
         Actions {actionCount(history)}
@@ -860,6 +865,7 @@ function HandoffScreen({
             onBigUndo={onBigUndo}
             onRedo={onRedo}
             onRedoAll={onRedoAll}
+            onRand={onRevealUndo}
           />
         </div>
       </main>
@@ -890,6 +896,7 @@ function HandoffScreen({
           onBigUndo={onBigUndo}
           onRedo={onRedo}
           onRedoAll={onRedoAll}
+          onRand={() => dispatch({ type: 'continueHandoff' })}
         />
       </div>
     </main>
@@ -1007,6 +1014,10 @@ function App() {
   const handleBigUndo = () => applyHistoryCommand({ type: 'bigUndo' })
   const handleRedo = () => applyHistoryCommand({ type: 'redo' })
   const handleRedoAll = () => applyHistoryCommand({ type: 'redoAll' })
+  const handleRand = () => {
+    const actions = randomProgressActions(state)
+    if (actions.length > 0) applyHistoryCommands(actions.map((action) => ({ type: 'apply' as const, action })))
+  }
   const handleRevealUndo = () => applyHistoryCommand({ type: 'revealUndo' })
   if (history.pendingReveal || isHandoff(state.stage)) {
     return (
@@ -1018,6 +1029,7 @@ function App() {
         onBigUndo={handleBigUndo}
         onRedo={handleRedo}
         onRedoAll={handleRedoAll}
+        onRand={history.pendingReveal ? handleRevealUndo : handleRand}
         historyRevealTarget={history.pendingReveal}
         onRevealUndo={handleRevealUndo}
       />
@@ -1141,6 +1153,7 @@ function App() {
                 onBigUndo={handleBigUndo}
                 onRedo={handleRedo}
                 onRedoAll={handleRedoAll}
+                onRand={handleRand}
               />
               <label className="crossing-toggle">
                 <input

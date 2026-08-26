@@ -596,3 +596,118 @@ export const deploymentChoices = (state: GameState): string[] => {
 }
 
 export const jackMoveReadyToConfirm = selectedMoveIsComplete
+
+const randomChoice = <T>(values: T[], random: () => number): T | undefined =>
+  values[Math.min(values.length - 1, Math.floor(random() * values.length))]
+
+/**
+ * Returns one button press worth of legal, random progress. Keeping this in the
+ * engine makes the probability rules testable and lets the UI record each
+ * generated action in normal game history.
+ */
+export const randomProgressActions = (state: GameState, random: () => number = Math.random): GameAction[] => {
+  if (state.stage === 'jackDiscoverySetup') {
+    if (state.discoveryLocations.length === 4) return [{ type: 'confirmDiscoveries' }]
+    const selectedQuadrants = new Set(state.discoveryLocations.map((id) => circlesById.get(id)?.quadrant))
+    const choice = randomChoice(
+      [...circlesById.values()].filter(
+        (circle) => circle.color === 'white' && !selectedQuadrants.has(circle.quadrant),
+      ),
+      random,
+    )
+    return choice ? [{ type: 'toggleDiscovery', circleId: choice.id }] : []
+  }
+
+  if (
+    state.stage === 'handoffInspectorsSetup' ||
+    state.stage === 'handoffJackStart' ||
+    state.stage === 'handoffInspectorsTurn' ||
+    state.stage === 'investigatorTurnResult' ||
+    state.stage === 'handoffJackTurn'
+  ) {
+    return [{ type: 'continueHandoff' }]
+  }
+
+  if (state.stage === 'investigatorSetup') {
+    const crossingId = randomChoice(deploymentChoices(state), random)
+    return crossingId ? [{ type: 'placeInvestigator', crossingId }] : []
+  }
+
+  if (state.stage === 'jackChooseStart') {
+    const circleId = randomChoice(state.discoveryLocations, random)
+    return circleId === undefined ? [] : [{ type: 'chooseJackStart', circleId }]
+  }
+
+  if (state.stage === 'jackMove') {
+    if (selectedMoveIsComplete(state)) return [{ type: 'confirmJackMove' }]
+    if (state.jackMoveSelection.path.length > 0) {
+      const circleId = randomChoice(legalJackDestinations(state), random)
+      return circleId === undefined ? [] : [{ type: 'selectJackDestination', circleId }]
+    }
+
+    const boat = legalGroupedDestinations(state, 'boat')
+    const fromBlue = state.currentJack !== null && circlesById.get(state.currentJack)?.color === 'blue'
+    let moveType: JackMoveType = 'normal'
+    if (fromBlue && boat.length > 0 && random() < 0.5) {
+      moveType = 'boat'
+    } else if (random() >= 0.8) {
+      const specials = (['alley', 'coach'] as const).filter((type) =>
+        type === 'alley' ? legalGroupedDestinations(state, type).length > 0 : legalCoachFirstDestinations(state).length > 0,
+      )
+      moveType = randomChoice(specials, random) ?? 'normal'
+    }
+    if (moveType === 'normal' && legalNormalDestinations(state).length === 0) {
+      const alternatives = (['alley', 'coach', 'boat'] as const).filter((type) =>
+        type === 'coach' ? legalCoachFirstDestinations(state).length > 0 : legalGroupedDestinations(state, type).length > 0,
+      )
+      moveType = randomChoice(alternatives, random) ?? 'normal'
+    }
+
+    const typedState = moveType === 'normal'
+      ? state
+      : gameReducer(state, { type: 'setJackMoveType', moveType })
+    const first = randomChoice(legalJackDestinations(typedState), random)
+    if (first === undefined) return []
+    const actions: GameAction[] = []
+    if (moveType !== state.jackMoveSelection.type) actions.push({ type: 'setJackMoveType', moveType })
+    actions.push({ type: 'selectJackDestination', circleId: first })
+    if (moveType === 'coach') {
+      const afterFirst = gameReducer(typedState, { type: 'selectJackDestination', circleId: first })
+      const second = randomChoice(legalJackDestinations(afterFirst), random)
+      if (second !== undefined) actions.push({ type: 'selectJackDestination', circleId: second })
+    }
+    return actions
+  }
+
+  if (state.stage === 'investigatorMove') {
+    const crossingId = randomChoice(legalInvestigatorDestinations(state), random)
+    return crossingId ? [{ type: 'moveInvestigator', crossingId }] : []
+  }
+
+  if (state.stage === 'investigatorAction') {
+    const adjacent = legalInspectorActionCircles(state)
+    const available = adjacent.filter((id) => !state.checkedThisAction.includes(id))
+    if (state.checkedThisAction.length > 0) {
+      const circleId = randomChoice(available, random)
+      return circleId === undefined
+        ? [{ type: 'passInspectorAction' }]
+        : [{ type: 'searchCircle', circleId }]
+    }
+    const roll = random()
+    if (roll >= 0.9 || adjacent.length === 0) return [{ type: 'passInspectorAction' }]
+    const circleId = randomChoice(adjacent, random)
+    if (circleId === undefined) return [{ type: 'passInspectorAction' }]
+    if (roll < 0.3) {
+      return [
+        { type: 'setInspectorActionMode', mode: 'arrest' },
+        { type: 'arrestCircle', circleId },
+      ]
+    }
+    const actions: GameAction[] = []
+    if (state.inspectorActionMode !== 'search') actions.push({ type: 'setInspectorActionMode', mode: 'search' })
+    actions.push({ type: 'searchCircle', circleId })
+    return actions
+  }
+
+  return []
+}
