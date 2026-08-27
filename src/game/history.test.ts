@@ -108,7 +108,7 @@ describe('game action history', () => {
     expect(actionCount(history)).toBe(3)
   })
 
-  test('Big Undo removes the current side and Redo All restores the entire stack behind a privacy gate', () => {
+  test('Undo Side removes the current side and Redo All restores the entire stack behind a privacy gate', () => {
     let history = gameHistoryReducer(
       readyForInvestigatorView(),
       action({ type: 'placeInvestigator', crossingId: 'FP' }),

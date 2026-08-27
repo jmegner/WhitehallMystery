@@ -301,6 +301,13 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
           notice: 'Choose one of your four Discovery Locations as Jack’s public starting point.',
         }
       }
+      if (state.stage === 'investigatorSetupResult') {
+        return {
+          ...state,
+          stage: 'handoffJackStart',
+          notice: 'Deployment complete. Pass the device back to Jack.',
+        }
+      }
       if (state.stage === 'handoffInspectorsTurn') {
         return {
           ...state,
@@ -326,7 +333,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
         return {
           ...state,
           investigatorPositions,
-          stage: 'handoffJackStart',
+          stage: action.review ? 'investigatorSetupResult' : 'handoffJackStart',
           activeInvestigator: 0,
           publicLog: [...state.publicLog, 'All three Investigators have deployed.'],
           notice: 'Deployment complete. Pass the device back to Jack.',
@@ -623,6 +630,7 @@ export const randomProgressActions = (state: GameState, random: () => number = M
     state.stage === 'handoffInspectorsSetup' ||
     state.stage === 'handoffJackStart' ||
     state.stage === 'handoffInspectorsTurn' ||
+    state.stage === 'investigatorSetupResult' ||
     state.stage === 'investigatorTurnResult' ||
     state.stage === 'handoffJackTurn'
   ) {
@@ -631,7 +639,9 @@ export const randomProgressActions = (state: GameState, random: () => number = M
 
   if (state.stage === 'investigatorSetup') {
     const crossingId = randomChoice(deploymentChoices(state), random)
-    return crossingId ? [{ type: 'placeInvestigator', crossingId }] : []
+    return crossingId
+      ? [{ type: 'placeInvestigator', crossingId, review: state.activeInvestigator === INVESTIGATOR_ORDER.length - 1 }]
+      : []
   }
 
   if (state.stage === 'jackChooseStart') {

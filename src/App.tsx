@@ -81,6 +81,7 @@ const isHandoff = (stage: GameState['stage']) =>
 
 const isInspectorInteraction = (stage: GameState['stage']) =>
   stage === 'investigatorSetup' ||
+  stage === 'investigatorSetupResult' ||
   stage === 'investigatorMove' ||
   stage === 'investigatorAction' ||
   stage === 'investigatorTurnResult'
@@ -115,6 +116,7 @@ const titleForStage = (state: GameState) => {
     jackDiscoverySetup: 'Jack: Plan the Crime',
     handoffInspectorsSetup: 'Investigators’ Turn',
     investigatorSetup: `Deploy the ${displayColor(color)} Investigator`,
+    investigatorSetupResult: 'Investigator Deployment Results',
     handoffJackStart: 'Pass Back to Jack',
     jackChooseStart: 'Jack: Choose the Starting Location',
     jackMove: 'Jack: Escape in the Night',
@@ -351,6 +353,7 @@ function GameBoard({
 
       {circles.map((circle) => {
         const legal = legalCircleIds.has(circle.id)
+        const selectable = legal || (state.stage === 'jackDiscoverySetup' && state.discoveryLocations.includes(circle.id))
         const coachReachable = coachReachableCircleIds.has(circle.id)
         const inferenceHoverTarget = showPossible && possibleOutcomes.has(circle.id)
         const selected = state.jackMoveSelection.path.includes(circle.id)
@@ -375,11 +378,11 @@ function GameBoard({
             {legal && <circle className="legal-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
             {selected && <circle className="selected-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
             <circle
-              className={`map-hit-target${legal ? ' selectable' : ''}${inferenceHoverTarget ? ' inference-hover-target' : ''}`}
+              className={`map-hit-target${selectable ? ' selectable' : ''}${inferenceHoverTarget ? ' inference-hover-target' : ''}`}
               cx={circle.x}
               cy={circle.y}
               r="18"
-              onClick={() => legal && onCircle(circle.id)}
+              onClick={() => selectable && onCircle(circle.id)}
               onAuxClick={(event) => {
                 if (event.button === 1 && legal) {
                   event.preventDefault()
@@ -388,7 +391,7 @@ function GameBoard({
               }}
               onMouseEnter={() => inferenceHoverTarget && setHoveredMaybeId(circle.id)}
               onMouseLeave={() => inferenceHoverTarget && setHoveredMaybeId(null)}
-              aria-label={`Location ${circle.id}${legal ? ', selectable' : ''}`}
+              aria-label={`Location ${circle.id}${selectable ? ', selectable' : ''}`}
             >
               <title>Location {circle.id}</title>
             </circle>
@@ -564,14 +567,15 @@ interface HistoryControlsProps {
   onRedo: () => void
   onRedoAll: () => void
   onRand: () => void
+  onRandSide: () => void
 }
 
-function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand }: HistoryControlsProps) {
+function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand, onRandSide }: HistoryControlsProps) {
   const mode = undoMode(history)
   return (
     <div className="history-controls" aria-label="Action history controls">
       <button type="button" disabled={!canBigUndo(history)} onClick={onBigUndo}>
-        Big Undo
+        Undo Side
       </button>
       <button type="button" disabled={mode === 'disabled'} onClick={onUndo}>
         {mode === 'cross-view' ? 'Undo!' : 'Undo'}
@@ -584,6 +588,9 @@ function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand
       </button>
       <button type="button" onClick={onRand}>
         Rand
+      </button>
+      <button type="button" onClick={onRandSide}>
+        Rand Side
       </button>
       <span className="action-counter" aria-label={`${actionCount(history)} player actions`}>
         Actions {actionCount(history)}
@@ -854,6 +861,8 @@ function HandoffScreen({
   onBigUndo,
   onRedo,
   onRedoAll,
+  onRand,
+  onRandSide,
   historyRevealTarget,
   onRevealUndo,
 }: HandoffProps) {
@@ -880,6 +889,7 @@ function HandoffScreen({
             onRedo={onRedo}
             onRedoAll={onRedoAll}
             onRand={onRevealUndo}
+            onRandSide={onRevealUndo}
           />
         </div>
       </main>
@@ -910,7 +920,8 @@ function HandoffScreen({
           onBigUndo={onBigUndo}
           onRedo={onRedo}
           onRedoAll={onRedoAll}
-          onRand={() => dispatch({ type: 'continueHandoff' })}
+          onRand={onRand}
+          onRandSide={onRandSide}
         />
       </div>
     </main>
@@ -999,7 +1010,7 @@ function App() {
       next = gameHistoryReducer(next, revealCommand)
       historyDispatch(revealCommand)
       setShowInvestigatorTurnAnnouncement(true)
-      window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1500)
+      window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1000)
     }
     const nextStage = currentHistoryState(next).stage
     if (nextStage === 'handoffInspectorsSetup' || nextStage === 'handoffInspectorsTurn') {
@@ -1007,7 +1018,7 @@ function App() {
       next = gameHistoryReducer(next, continueCommand)
       historyDispatch(continueCommand)
       setShowInvestigatorTurnAnnouncement(true)
-      window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1500)
+      window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1000)
     }
     const storage = browserStorage()
     if (storage) saveStoredHistory(storage, next)
@@ -1029,6 +1040,49 @@ function App() {
     const actions = randomProgressActions(state)
     if (actions.length > 0) applyHistoryCommands(actions.map((action) => ({ type: 'apply' as const, action })))
   }
+  const handleRandSide = () => {
+    const startingStage = state.stage
+    const side =
+      startingStage === 'jackDiscoverySetup' ||
+      startingStage === 'handoffJackStart' ||
+      startingStage === 'jackChooseStart' ||
+      startingStage === 'handoffJackTurn' ||
+      startingStage === 'jackMove'
+        ? 'jack'
+        : 'investigators'
+    let next = history
+    const commands: Parameters<typeof gameHistoryReducer>[1][] = []
+
+    // A side contains only a handful of actions, but cap the loop so malformed
+    // or future game states cannot lock up the UI.
+    for (let actionCount = 0; actionCount < 100; actionCount += 1) {
+      const nextState = currentHistoryState(next)
+      if (
+        side === 'jack' &&
+        (nextState.stage === 'handoffInspectorsSetup' || nextState.stage === 'handoffInspectorsTurn')
+      ) break
+      if (
+        side === 'investigators' &&
+        (nextState.stage === 'handoffJackStart' || nextState.stage === 'handoffJackTurn')
+      ) break
+
+      const actions = randomProgressActions(nextState)
+      if (actions.length === 0) break
+      let progressed = false
+      for (const action of actions) {
+        const command = { type: 'apply' as const, action }
+        const advanced = gameHistoryReducer(next, command)
+        if (advanced !== next) {
+          next = advanced
+          commands.push(command)
+          progressed = true
+        }
+      }
+      if (!progressed) break
+    }
+
+    if (commands.length > 0) applyHistoryCommands(commands)
+  }
   const handleRevealUndo = () => applyHistoryCommand({ type: 'revealUndo' })
   if (history.pendingReveal || isHandoff(state.stage)) {
     return (
@@ -1041,6 +1095,7 @@ function App() {
         onRedo={handleRedo}
         onRedoAll={handleRedoAll}
         onRand={history.pendingReveal ? handleRevealUndo : handleRand}
+        onRandSide={history.pendingReveal ? handleRevealUndo : handleRandSide}
         historyRevealTarget={history.pendingReveal}
         onRevealUndo={handleRevealUndo}
       />
@@ -1051,7 +1106,10 @@ function App() {
   const coachReachableCircleIds = new Set<number>()
   const legalCrossingIds = new Set<string>()
   if (state.stage === 'jackDiscoverySetup') {
-    for (const circle of circles) if (circle.color === 'white') legalCircleIds.add(circle.id)
+    const selectedQuadrants = new Set(state.discoveryLocations.map((id) => circlesById.get(id)?.quadrant))
+    for (const circle of circles) {
+      if (circle.color === 'white' && !selectedQuadrants.has(circle.quadrant)) legalCircleIds.add(circle.id)
+    }
   } else if (state.stage === 'jackChooseStart') {
     for (const id of state.discoveryLocations) legalCircleIds.add(id)
   } else if (state.stage === 'jackMove') {
@@ -1115,7 +1173,7 @@ function App() {
   return (
     <div
       className="app-shell"
-      onClickCapture={() => {
+      onClick={() => {
         if (showInvestigatorTurnAnnouncement) setShowInvestigatorTurnAnnouncement(false)
       }}
     >
@@ -1159,6 +1217,7 @@ function App() {
                 onRedo={handleRedo}
                 onRedoAll={handleRedoAll}
                 onRand={handleRand}
+                onRandSide={handleRandSide}
               />
               <label className="crossing-toggle">
                 <input
@@ -1204,7 +1263,7 @@ function App() {
                   {showPossible && <strong>{possibleIds.size}</strong>}
                 </label>
               )}
-              {isInspectorInteraction(state.stage) && state.publicRound && (
+              {isInspectorInteraction(state.stage) && (
                 <label className="jack-peek-toggle">
                   <input
                     type="checkbox"
@@ -1244,7 +1303,9 @@ function App() {
                 onCircleMiddleClick={handleCircleMiddleClick}
                 onCrossing={handleCrossing}
                 onMapClick={() => {
-                  if (state.stage === 'investigatorTurnResult') dispatch({ type: 'continueHandoff' })
+                  if (state.stage === 'investigatorTurnResult' || state.stage === 'investigatorSetupResult') {
+                    dispatch({ type: 'continueHandoff' })
+                  }
                 }}
               />
             </div>
@@ -1253,7 +1314,7 @@ function App() {
                 Investigators’ Turn
               </div>
             )}
-            {state.stage === 'investigatorTurnResult' && (
+            {(state.stage === 'investigatorTurnResult' || state.stage === 'investigatorSetupResult') && (
               <div className="map-continue-prompt">Results shown · Click anywhere on the map to continue</div>
             )}
           </div>
