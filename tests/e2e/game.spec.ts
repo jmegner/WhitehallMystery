@@ -1,5 +1,31 @@
 import { expect, test } from '@playwright/test'
 
+test('Jack can preview investigator reach and reveal a handoff by clicking the card', async ({ page }) => {
+  await page.goto('/')
+  const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })
+  await randSide.click()
+  await randSide.click()
+
+  const handoffCard = page.locator('.handoff-card')
+  await expect(handoffCard).toContainText('Pass the device to Jack')
+  await handoffCard.click({ position: { x: 20, y: 20 } })
+  await expect(page.getByRole('heading', { name: 'Jack: Choose the Starting Location' })).toBeVisible()
+
+  await page.getByLabel('Secret Discovery Locations').getByRole('button').first().click()
+  await expect(page.getByText('inv maybes', { exact: true })).toBeVisible()
+  await expect(page.locator('.investigator-maybe-crossing')).toHaveCount(0)
+
+  await page.locator('.investigator-piece').first().hover()
+  expect(await page.locator('.investigator-maybe-crossing').count()).toBeGreaterThan(0)
+  expect(await page.locator('.investigator-maybe-circle').count()).toBeGreaterThan(0)
+
+  await page.getByText('inv maybes', { exact: true }).click()
+  await page.mouse.move(0, 0)
+  expect(await page.locator('.investigator-maybe-crossing').count()).toBeGreaterThan(0)
+  await page.reload()
+  await expect(page.getByLabel('inv maybes')).toBeChecked()
+})
+
 test('Rand enters the public investigator view without a reveal handoff', async ({ page }) => {
   await page.goto('/')
   const rand = page.getByRole('button', { name: 'Rand', exact: true })

@@ -314,6 +314,7 @@ button:disabled {
 .possibility-toggle,
 .crossing-toggle,
 .past-path-toggle,
+.investigator-maybes-toggle,
 .jack-peek-toggle {
   display: flex;
   gap: 4px;
@@ -326,6 +327,7 @@ button:disabled {
 .possibility-toggle input,
 .crossing-toggle input,
 .past-path-toggle input,
+.investigator-maybes-toggle input,
 .jack-peek-toggle input {
   margin: 0;
 }
@@ -622,6 +624,21 @@ button:disabled {
 
 .investigator-piece {
   pointer-events: none;
+}
+
+.investigator-piece.hoverable {
+  pointer-events: auto;
+  cursor: help;
+}
+
+.investigator-maybe-circle,
+.investigator-maybe-crossing {
+  fill: none;
+  stroke: #ff7a00;
+  stroke-width: 1.25;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  filter: drop-shadow(0 0 2px rgb(255 245 225 / 85%));
 }
 
 .investigator-piece text,
@@ -1015,6 +1032,14 @@ button:disabled {
   border: 1px solid #7f6b4d;
   background: linear-gradient(145deg, #292927, #1d1e1e);
   box-shadow: 0 30px 90px rgb(0 0 0 / 50%);
+}
+
+.handoff-card.revealable {
+  cursor: pointer;
+}
+
+.handoff-card.revealable .history-controls {
+  cursor: default;
 }
 
 .handoff-card .eyebrow {

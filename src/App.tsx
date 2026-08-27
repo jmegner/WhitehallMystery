@@ -25,10 +25,18 @@ import {
   type GameHistory,
   type PlayerView,
 } from './game/history'
-import { circles, circlesById, crossings, crossingsById } from './game/mapData'
+import {
+  adjacentCirclesForCrossing,
+  circles,
+  circlesById,
+  crossings,
+  crossingsById,
+  reachableCrossings,
+} from './game/mapData'
 import {
   CROSSING_IDS_STORAGE_KEY,
   INVESTIGATOR_AUTO_STORAGE_KEY,
+  INVESTIGATOR_MAYBES_STORAGE_KEY,
   JACK_PEEK_STORAGE_KEY,
   PAST_PATH_STORAGE_KEY,
   POSSIBLE_LOCATIONS_STORAGE_KEY,
@@ -41,6 +49,7 @@ import {
   INVESTIGATOR_ORDER,
   type GameAction,
   type GameState,
+  type InvestigatorColor,
   type JackMoveType,
   type Quadrant,
 } from './game/types'
@@ -140,6 +149,7 @@ interface BoardProps {
   showPossible: boolean
   showCrossingIds: boolean
   showPastPath: boolean
+  showInvestigatorMaybes: boolean
   showJackPeek: boolean
   onCircle: (circleId: number) => void
   onCircleMiddleClick: (circleId: number) => void
@@ -189,6 +199,7 @@ function GameBoard({
   showPossible,
   showCrossingIds,
   showPastPath,
+  showInvestigatorMaybes,
   showJackPeek,
   onCircle,
   onCircleMiddleClick,
@@ -196,6 +207,7 @@ function GameBoard({
   onMapClick,
 }: BoardProps) {
   const [hoveredMaybeId, setHoveredMaybeId] = useState<number | null>(null)
+  const [hoveredInvestigator, setHoveredInvestigator] = useState<InvestigatorColor | null>(null)
   const hoveredOutcome = hoveredMaybeId === null ? undefined : possibleOutcomes.get(hoveredMaybeId)
   const peekAtJack = showJackPeek && isInspectorInteraction(state.stage)
   const showJack = isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
@@ -220,6 +232,18 @@ function GameBoard({
     ? state.roundTrail.map((id) => circlesById.get(id)).filter((circle) => circle !== undefined)
     : []
   const pastPathSegments = trimmedRouteSegments(pastPath)
+  const displayedInvestigatorColors = state.stage === 'jackMove'
+    ? INVESTIGATOR_ORDER.filter((color) => showInvestigatorMaybes || hoveredInvestigator === color)
+    : []
+  const investigatorMaybeCrossings = new Set<string>()
+  for (const color of displayedInvestigatorColors) {
+    const start = state.investigatorPositions[color]
+    if (start) for (const crossingId of reachableCrossings(start, 2)) investigatorMaybeCrossings.add(crossingId)
+  }
+  const investigatorMaybeCircles = new Set<number>()
+  for (const crossingId of investigatorMaybeCrossings) {
+    for (const circleId of adjacentCirclesForCrossing(crossingId)) investigatorMaybeCircles.add(circleId)
+  }
   const boardImage = `${import.meta.env.BASE_URL}map_pptx_simplified.jpg`
 
   return (
@@ -262,6 +286,32 @@ function GameBoard({
           y2={segment.y2}
         />
       ))}
+
+      {[...investigatorMaybeCircles].map((id) => {
+        const circle = circlesById.get(id)
+        return circle ? (
+          <circle
+            key={`investigator-maybe-circle-${id}`}
+            className="investigator-maybe-circle"
+            cx={circle.x}
+            cy={circle.y}
+            r="27"
+          />
+        ) : null
+      })}
+
+      {[...investigatorMaybeCrossings].map((id) => {
+        const crossing = crossingsById.get(id)
+        return crossing ? (
+          <circle
+            key={`investigator-maybe-crossing-${id}`}
+            className="investigator-maybe-crossing"
+            cx={crossing.x}
+            cy={crossing.y}
+            r="14.5"
+          />
+        ) : null
+      })}
 
       {showPossible && !hoveredOutcome &&
         [...possibleIds].map((id) => {
@@ -471,7 +521,12 @@ function GameBoard({
         const crossing = crossingId ? crossingsById.get(crossingId) : undefined
         const active = isInspectorInteraction(state.stage) && activeInvestigatorColor(state) === color
         return crossing ? (
-          <g key={`investigator-${color}`} className={`investigator-piece ${color}`}>
+          <g
+            key={`investigator-${color}`}
+            className={`investigator-piece ${color}${state.stage === 'jackMove' ? ' hoverable' : ''}`}
+            onMouseEnter={() => state.stage === 'jackMove' && setHoveredInvestigator(color)}
+            onMouseLeave={() => state.stage === 'jackMove' && setHoveredInvestigator(null)}
+          >
             {active && <circle className="active-investigator-ring" cx={crossing.x} cy={crossing.y} r="15" />}
             <circle cx={crossing.x} cy={crossing.y} r="10" />
             <text x={crossing.x} y={crossing.y + 4} textAnchor="middle">
@@ -871,7 +926,7 @@ function HandoffScreen({
     const redidAll = history.cursor === history.entries.length - 1
     return (
       <main className="handoff-screen">
-        <div className="handoff-card">
+        <div className="handoff-card revealable" onClick={onRevealUndo}>
           <span className="eyebrow">{redidAll ? 'Redo handoff' : 'Undo handoff'}</span>
           <h1>{target === 'Investigators' ? 'Investigators’ Turn' : `Pass the device to ${target}`}</h1>
           <p>
@@ -879,18 +934,27 @@ function HandoffScreen({
               ? 'All remaining actions have been restored. The resulting private view is ready.'
               : 'The previous player’s view has been restored just before their last confirmed action.'}
           </p>
-          <button className="reveal-button" type="button" onClick={onRevealUndo}>
+          <button
+            className="reveal-button"
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onRevealUndo()
+            }}
+          >
             I am the {target} player — reveal the {redidAll ? 'updated' : 'restored'} view
           </button>
-          <HistoryControls
-            history={history}
-            onUndo={onUndo}
-            onBigUndo={onBigUndo}
-            onRedo={onRedo}
-            onRedoAll={onRedoAll}
-            onRand={onRevealUndo}
-            onRandSide={onRevealUndo}
-          />
+          <div onClick={(event) => event.stopPropagation()}>
+            <HistoryControls
+              history={history}
+              onUndo={onUndo}
+              onBigUndo={onBigUndo}
+              onRedo={onRedo}
+              onRedoAll={onRedoAll}
+              onRand={onRevealUndo}
+              onRandSide={onRevealUndo}
+            />
+          </div>
         </div>
       </main>
     )
@@ -907,22 +971,31 @@ function HandoffScreen({
           : 'The Investigator turn is complete.'
   return (
     <main className="handoff-screen">
-      <div className="handoff-card">
+      <div className="handoff-card revealable" onClick={() => dispatch({ type: 'continueHandoff' })}>
         <span className="eyebrow">Hot-seat handoff</span>
         <h1>{target === 'Investigators' ? 'Investigators’ Turn' : `Pass the device to ${target}`}</h1>
         <p>{detail} Private information is not shown on this screen.</p>
-        <button className="reveal-button" type="button" onClick={() => dispatch({ type: 'continueHandoff' })}>
+        <button
+          className="reveal-button"
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            dispatch({ type: 'continueHandoff' })
+          }}
+        >
           I am the {target} player — reveal my view
         </button>
-        <HistoryControls
-          history={history}
-          onUndo={onUndo}
-          onBigUndo={onBigUndo}
-          onRedo={onRedo}
-          onRedoAll={onRedoAll}
-          onRand={onRand}
-          onRandSide={onRandSide}
-        />
+        <div onClick={(event) => event.stopPropagation()}>
+          <HistoryControls
+            history={history}
+            onUndo={onUndo}
+            onBigUndo={onBigUndo}
+            onRedo={onRedo}
+            onRedoAll={onRedoAll}
+            onRand={onRand}
+            onRandSide={onRandSide}
+          />
+        </div>
       </div>
     </main>
   )
@@ -946,6 +1019,10 @@ function App() {
   const [showPastPath, setShowPastPath] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, PAST_PATH_STORAGE_KEY) : false
+  })
+  const [showInvestigatorMaybes, setShowInvestigatorMaybes] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, INVESTIGATOR_MAYBES_STORAGE_KEY) : false
   })
   const [showInvestigatorTurnAnnouncement, setShowInvestigatorTurnAnnouncement] = useState(false)
   const [investigatorAuto, setInvestigatorAuto] = useState(() => {
@@ -1247,6 +1324,21 @@ function App() {
                   past path
                 </label>
               )}
+              {state.stage === 'jackMove' && (
+                <label className="investigator-maybes-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showInvestigatorMaybes}
+                    onChange={(event) => {
+                      const checked = event.target.checked
+                      setShowInvestigatorMaybes(checked)
+                      const storage = browserStorage()
+                      if (storage) saveBooleanPreference(storage, INVESTIGATOR_MAYBES_STORAGE_KEY, checked)
+                    }}
+                  />
+                  inv maybes
+                </label>
+              )}
               {isInspectorInteraction(state.stage) && state.publicRound && (
                 <label className="possibility-toggle">
                   <input
@@ -1298,6 +1390,7 @@ function App() {
                 showPossible={showPossible}
                 showCrossingIds={showCrossingIds}
                 showPastPath={showPastPath}
+                showInvestigatorMaybes={showInvestigatorMaybes}
                 showJackPeek={showJackPeek}
                 onCircle={handleCircle}
                 onCircleMiddleClick={handleCircleMiddleClick}
