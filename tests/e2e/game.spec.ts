@@ -34,8 +34,11 @@ test('Jack can preview investigator reach and reveal a handoff by clicking the c
   const investigatorColor = (await hoveredPiece.getAttribute('class'))?.split(' ')[1]
   await hoveredPiece.hover()
   const coloredCrossingMaybe = page.locator('.hovered-investigator-maybe-crossing').first()
+  const coloredCircleMaybe = page.locator('.hovered-investigator-maybe-circle').first()
   expect(await page.locator('.hovered-investigator-maybe-circle').count()).toBeGreaterThan(0)
-  await expect(coloredCrossingMaybe).toHaveAttribute('width', '20')
+  await expect(coloredCircleMaybe).toHaveAttribute('r', '26')
+  await expect(coloredCrossingMaybe).toHaveAttribute('width', '24')
+  await expect(coloredCrossingMaybe).toHaveAttribute('height', '24')
   await expect(coloredCrossingMaybe).toHaveClass(new RegExp(`\\b${investigatorColor}\\b`))
   await expect(coloredCrossingMaybe).toHaveCSS('stroke', 'rgb(255, 255, 0)')
   await expect(hoveredPiece.locator('circle').last()).toHaveCSS('fill', 'rgb(255, 255, 0)')
