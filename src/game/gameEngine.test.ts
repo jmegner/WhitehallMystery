@@ -6,6 +6,7 @@ import {
   legalInvestigatorDestinations,
   legalJackDestinations,
   legalNormalDestinations,
+  investigatorPreviewDestinations,
   coachReachableJackDestinations,
   randomProgressActions,
 } from './gameEngine'
@@ -86,6 +87,49 @@ describe('Whitehall map data', () => {
         for (const path of paths) expect(jackTransitions.get(to)?.get(from)).toContainEqual([...path].reverse())
       }
     }
+  })
+})
+
+describe('investigator movement previews', () => {
+  const start = crossings[0]!.id
+  const nearby = [...investigatorNeighbors.get(start)!]
+  const firstBlocker = nearby[0]!
+  const secondBlocker = nearby[1]!
+
+  test('yellow treats both later investigators as occupied destinations', () => {
+    const state = {
+      ...createInitialGame(),
+      investigatorPositions: { yellow: start, blue: firstBlocker, red: secondBlocker },
+    }
+
+    const destinations = investigatorPreviewDestinations(state, 'yellow')
+
+    expect(destinations.has(firstBlocker)).toBe(false)
+    expect(destinations.has(secondBlocker)).toBe(false)
+  })
+
+  test('blue disregards yellow but treats red as an occupied destination', () => {
+    const state = {
+      ...createInitialGame(),
+      investigatorPositions: { blue: start, yellow: firstBlocker, red: secondBlocker },
+    }
+
+    const destinations = investigatorPreviewDestinations(state, 'blue')
+
+    expect(destinations.has(firstBlocker)).toBe(true)
+    expect(destinations.has(secondBlocker)).toBe(false)
+  })
+
+  test('red disregards investigators that have already moved', () => {
+    const state = {
+      ...createInitialGame(),
+      investigatorPositions: { red: start, yellow: firstBlocker, blue: secondBlocker },
+    }
+
+    const destinations = investigatorPreviewDestinations(state, 'red')
+
+    expect(destinations.has(firstBlocker)).toBe(true)
+    expect(destinations.has(secondBlocker)).toBe(true)
   })
 })
 

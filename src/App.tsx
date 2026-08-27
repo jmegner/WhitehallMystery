@@ -8,6 +8,7 @@ import {
   jackMoveReadyToConfirm,
   legalInspectorActionCircles,
   legalInvestigatorDestinations,
+  investigatorPreviewDestinations,
   legalJackDestinations,
   coachReachableJackDestinations,
   randomProgressActions,
@@ -31,7 +32,6 @@ import {
   circlesById,
   crossings,
   crossingsById,
-  reachableCrossings,
 } from './game/mapData'
 import {
   CROSSING_IDS_STORAGE_KEY,
@@ -242,17 +242,18 @@ function GameBoard({
   const investigatorMaybeCrossings = new Set<string>()
   for (const color of displayedInvestigatorColors) {
     const start = state.investigatorPositions[color]
-    if (start) for (const crossingId of reachableCrossings(start, 2)) investigatorMaybeCrossings.add(crossingId)
+    if (start) {
+      for (const crossingId of investigatorPreviewDestinations(state, color)) {
+        investigatorMaybeCrossings.add(crossingId)
+      }
+    }
   }
   const investigatorMaybeCircles = new Set<number>()
   for (const crossingId of investigatorMaybeCrossings) {
     for (const circleId of adjacentCirclesForCrossing(crossingId)) investigatorMaybeCircles.add(circleId)
   }
-  const hoveredInvestigatorStart = showInvestigatorMaybes && hoveredInvestigator
-    ? state.investigatorPositions[hoveredInvestigator]
-    : undefined
-  const hoveredInvestigatorMaybeCrossings = hoveredInvestigatorStart
-    ? reachableCrossings(hoveredInvestigatorStart, 2)
+  const hoveredInvestigatorMaybeCrossings = showInvestigatorMaybes && hoveredInvestigator
+    ? investigatorPreviewDestinations(state, hoveredInvestigator)
     : new Set<string>()
   const hoveredInvestigatorMaybeCircles = new Set<number>()
   for (const crossingId of hoveredInvestigatorMaybeCrossings) {
