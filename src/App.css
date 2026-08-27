@@ -370,7 +370,7 @@ button:disabled {
 }
 
 .board-scroll.active-investigator-yellow {
-  border-color: #ffe13b;
+  border-color: #ffff00;
 }
 
 .board-scroll.active-investigator-blue {
@@ -642,6 +642,11 @@ button:disabled {
   filter: drop-shadow(0 0 2px rgb(255 245 225 / 85%));
 }
 
+.investigator-maybe-crossing,
+.hovered-investigator-maybe-crossing {
+  stroke-width: 3;
+}
+
 .investigator-maybe-circle,
 .investigator-maybe-crossing {
   stroke: #ff4d00;
@@ -649,7 +654,7 @@ button:disabled {
 
 .hovered-investigator-maybe-circle.yellow,
 .hovered-investigator-maybe-crossing.yellow {
-  stroke: #d8ad00;
+  stroke: #ffff00;
 }
 
 .hovered-investigator-maybe-circle.blue,
@@ -670,7 +675,7 @@ button:disabled {
 }
 
 .investigator-piece.yellow circle {
-  fill: #d8ad00;
+  fill: #ffff00;
 }
 
 .investigator-piece.blue circle {
