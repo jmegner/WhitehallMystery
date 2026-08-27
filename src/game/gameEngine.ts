@@ -630,6 +630,7 @@ export const randomProgressActions = (state: GameState, random: () => number = M
     state.stage === 'handoffInspectorsSetup' ||
     state.stage === 'handoffJackStart' ||
     state.stage === 'handoffInspectorsTurn' ||
+    state.stage === 'investigatorSetupResult' ||
     state.stage === 'investigatorTurnResult' ||
     state.stage === 'handoffJackTurn'
   ) {

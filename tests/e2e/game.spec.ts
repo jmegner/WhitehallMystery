@@ -25,7 +25,7 @@ test('discovery choices only outline quadrants that still need a location', asyn
   await expect(page.getByLabel('Location 34, selectable')).toBeVisible()
 })
 
-test('Rand Side finishes investigators for review and prepares Jack without submitting', async ({ page }) => {
+test('Rand Side completes each side without showing that side its results', async ({ page }) => {
   await page.goto('/')
   const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })
 
@@ -34,21 +34,17 @@ test('Rand Side finishes investigators for review and prepares Jack without subm
   await expect(page.getByRole('heading', { name: /Deploy the Yellow Investigator/i })).toBeVisible()
 
   await randSide.click()
-  await expect(page.getByRole('heading', { name: 'Investigator Deployment Results' })).toBeVisible()
-  await expect(page.getByText('Results shown · Click anywhere on the map to continue')).toBeVisible()
-  await page.locator('.game-board').click({ position: { x: 10, y: 10 } })
   await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Investigator Deployment Results' })).toHaveCount(0)
   await page.getByRole('button', { name: /reveal my view/i }).click()
 
   await randSide.click()
-  await expect(page.getByRole('heading', { name: 'Jack: Escape in the Night' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Record move privately' })).toBeEnabled()
-
-  await page.getByRole('button', { name: 'Record move privately' }).click()
   await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
+  await expect(page.locator('.investigator-turn-announcement')).toHaveText('Investigators’ Turn')
+  await expect(page.getByRole('button', { name: 'Record move privately' })).toHaveCount(0)
   await randSide.click()
-  await expect(page.getByRole('heading', { name: 'Investigator Results' })).toBeVisible()
-  await expect(page.getByText('Results shown · Click anywhere on the map to continue')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Investigator Results' })).toHaveCount(0)
 })
 
 test('undoes Coach route locations onto the redo stack', async ({ page }) => {

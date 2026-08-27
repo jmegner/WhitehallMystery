@@ -1010,7 +1010,7 @@ function App() {
       next = gameHistoryReducer(next, revealCommand)
       historyDispatch(revealCommand)
       setShowInvestigatorTurnAnnouncement(true)
-      window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1500)
+      window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1000)
     }
     const nextStage = currentHistoryState(next).stage
     if (nextStage === 'handoffInspectorsSetup' || nextStage === 'handoffInspectorsTurn') {
@@ -1018,7 +1018,7 @@ function App() {
       next = gameHistoryReducer(next, continueCommand)
       historyDispatch(continueCommand)
       setShowInvestigatorTurnAnnouncement(true)
-      window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1500)
+      window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1000)
     }
     const storage = browserStorage()
     if (storage) saveStoredHistory(storage, next)
@@ -1057,13 +1057,14 @@ function App() {
     // or future game states cannot lock up the UI.
     for (let actionCount = 0; actionCount < 100; actionCount += 1) {
       const nextState = currentHistoryState(next)
-      if (side === 'jack' && nextState.stage === 'jackMove' && jackMoveReadyToConfirm(nextState)) break
+      if (
+        side === 'jack' &&
+        (nextState.stage === 'handoffInspectorsSetup' || nextState.stage === 'handoffInspectorsTurn')
+      ) break
       if (
         side === 'investigators' &&
-        (nextState.stage === 'investigatorTurnResult' || nextState.stage === 'investigatorSetupResult')
+        (nextState.stage === 'handoffJackStart' || nextState.stage === 'handoffJackTurn')
       ) break
-      if (side === 'jack' && nextState.stage === 'handoffInspectorsSetup') break
-      if (side === 'investigators' && nextState.stage === 'handoffJackStart') break
 
       const actions = randomProgressActions(nextState)
       if (actions.length === 0) break
