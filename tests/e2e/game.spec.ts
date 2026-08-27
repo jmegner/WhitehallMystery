@@ -1,5 +1,17 @@
 import { expect, test } from '@playwright/test'
 
+test('Rand enters the public investigator view without a reveal handoff', async ({ page }) => {
+  await page.goto('/')
+  const rand = page.getByRole('button', { name: 'Rand', exact: true })
+  for (let selection = 0; selection < 4; selection += 1) await rand.click()
+  await rand.click()
+
+  await expect(page.getByRole('heading', { name: /Deploy the Yellow Investigator/i })).toBeVisible()
+  await expect(page.getByRole('button', { name: /reveal my view/i })).toHaveCount(0)
+  await expect(page.locator('.investigator-turn-announcement')).toHaveText('Investigators’ Turn')
+  await expect(page.locator('.investigator-turn-announcement')).toBeHidden({ timeout: 2500 })
+})
+
 test('undoes Coach route locations onto the redo stack', async ({ page }) => {
   await page.goto('/')
   for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
@@ -141,15 +153,10 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
 
   await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
   await expect(page.getByLabel('inv auto')).toBeVisible()
-  const investigatorTurnAnnouncement = page.locator('.investigator-turn-announcement')
-  await expect(investigatorTurnAnnouncement).toBeVisible()
-  await expect(investigatorTurnAnnouncement).toHaveText('Investigators’ Turn')
-  await expect(investigatorTurnAnnouncement).toHaveCSS('background-color', 'rgba(0, 0, 0, 0.6)')
-  await expect(investigatorTurnAnnouncement).toHaveCSS('color', 'rgb(255, 255, 255)')
+  await expect(page.getByRole('button', { name: /reveal my view/i })).toHaveCount(0)
   await expect(page.getByText('Reachable via Coach', { exact: true })).toHaveCount(0)
   await expect(page.getByText('Private route')).toHaveCount(0)
   await page.locator('.app-header').click()
-  await expect(investigatorTurnAnnouncement).toBeHidden()
   await expect(page.locator('.public-log').getByText('M1: Jack advanced to move 1.')).toBeVisible()
 
   await page.getByLabel('Jack maybes').check()

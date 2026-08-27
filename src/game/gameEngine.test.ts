@@ -7,6 +7,7 @@ import {
   legalJackDestinations,
   legalNormalDestinations,
   coachReachableJackDestinations,
+  randomProgressActions,
 } from './gameEngine'
 import { possibleJackLocations, possibleJackSearchOutcomes } from './inference'
 import {
@@ -122,6 +123,46 @@ describe('local persistence', () => {
 })
 
 describe('game reducer', () => {
+  test('random progress selects a Jack route but leaves it ready for private review', () => {
+    const state = setupGame()
+    const actions = randomProgressActions(state, () => 0)
+    expect(actions).toHaveLength(1)
+    expect(actions[0]?.type).toBe('selectJackDestination')
+    expect(actions.some((action) => action.type === 'confirmJackMove')).toBe(false)
+
+    const selected = apply(state, ...actions)
+    expect(selected.stage).toBe('jackMove')
+    expect(selected.jackMoveSelection.type).toBe('normal')
+    expect(selected.jackMoveSelection.path).toHaveLength(1)
+    expect(randomProgressActions(selected, () => 0)).toEqual([{ type: 'confirmJackMove' }])
+  })
+
+  test('random progress switches away from a manually selected movement with no destinations', () => {
+    const boatSelected = gameReducer(setupGame(), { type: 'setJackMoveType', moveType: 'boat' })
+    expect(legalJackDestinations(boatSelected)).toEqual([])
+
+    const actions = randomProgressActions(boatSelected, () => 0)
+    expect(actions[0]).toEqual({ type: 'setJackMoveType', moveType: 'normal' })
+    expect(actions[1]?.type).toBe('selectJackDestination')
+    const progressed = apply(boatSelected, ...actions)
+    expect(progressed.jackMoveSelection.type).toBe('normal')
+    expect(progressed.jackMoveSelection.path).toHaveLength(1)
+  })
+
+  test('random progress uses the requested investigator action probabilities', () => {
+    const base = setupGame()
+    const state: GameState = { ...base, stage: 'investigatorAction', inspectorActionMode: 'search' }
+    const adjacent = legalInspectorActionCircles(state)
+    expect(adjacent.length).toBeGreaterThan(0)
+    expect(randomProgressActions(state, () => 0.29).map((action) => action.type)).toEqual([
+      'setInspectorActionMode',
+      'arrestCircle',
+    ])
+    expect(randomProgressActions(state, () => 0.3).at(-1)?.type).toBe('searchCircle')
+    expect(randomProgressActions(state, () => 0.89).at(-1)?.type).toBe('searchCircle')
+    expect(randomProgressActions(state, () => 0.9)).toEqual([{ type: 'passInspectorAction' }])
+  })
+
   test('enforces private setup and completes a normal hot-seat turn', () => {
     let state = setupGame()
     expect(state.stage).toBe('jackMove')
