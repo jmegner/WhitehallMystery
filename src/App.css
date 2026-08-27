@@ -634,8 +634,8 @@ button:disabled {
 .investigator-maybe-circle,
 .investigator-maybe-crossing {
   fill: none;
-  stroke: #ff7a00;
-  stroke-width: 1.25;
+  stroke: #ff4d00;
+  stroke-width: 2;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
   filter: drop-shadow(0 0 2px rgb(255 245 225 / 85%));

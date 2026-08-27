@@ -18,6 +18,13 @@ test('Jack can preview investigator reach and reveal a handoff by clicking the c
   await page.locator('.investigator-piece').first().hover()
   expect(await page.locator('.investigator-maybe-crossing').count()).toBeGreaterThan(0)
   expect(await page.locator('.investigator-maybe-circle').count()).toBeGreaterThan(0)
+  const crossingMaybe = page.locator('.investigator-maybe-crossing').first()
+  await expect(crossingMaybe).toHaveCSS('stroke', 'rgb(255, 77, 0)')
+  await expect(crossingMaybe).toHaveCSS('stroke-width', '2px')
+  await expect(crossingMaybe).toHaveAttribute('width', '12')
+  await expect(crossingMaybe).toHaveAttribute('height', '12')
+  await expect(crossingMaybe.evaluate((element) => element.tagName.toLowerCase())).resolves.toBe('rect')
+  await expect(page.locator('.investigator-maybe-circle').first()).toHaveAttribute('r', '21')
 
   await page.getByText('inv maybes', { exact: true }).click()
   await page.mouse.move(0, 0)

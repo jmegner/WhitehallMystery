@@ -66,6 +66,8 @@ const POSSIBLE_CIRCLE_RADIUS = 23
 const OUTCOME_CIRCLE_RADIUS = 23
 const INNER_OUTCOME_CIRCLE_RADIUS = 20.5
 const OUTER_OUTCOME_CIRCLE_RADIUS = 26
+const INVESTIGATOR_MAYBE_CIRCLE_RADIUS = 21
+const INVESTIGATOR_MAYBE_CROSSING_SIZE = 12
 const QUADRANTS: Quadrant[] = ['NW', 'NE', 'SW', 'SE']
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
 
@@ -295,7 +297,7 @@ function GameBoard({
             className="investigator-maybe-circle"
             cx={circle.x}
             cy={circle.y}
-            r="27"
+            r={INVESTIGATOR_MAYBE_CIRCLE_RADIUS}
           />
         ) : null
       })}
@@ -303,12 +305,13 @@ function GameBoard({
       {[...investigatorMaybeCrossings].map((id) => {
         const crossing = crossingsById.get(id)
         return crossing ? (
-          <circle
+          <rect
             key={`investigator-maybe-crossing-${id}`}
             className="investigator-maybe-crossing"
-            cx={crossing.x}
-            cy={crossing.y}
-            r="14.5"
+            x={crossing.x - INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
+            y={crossing.y - INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
+            width={INVESTIGATOR_MAYBE_CROSSING_SIZE}
+            height={INVESTIGATOR_MAYBE_CROSSING_SIZE}
           />
         ) : null
       })}
