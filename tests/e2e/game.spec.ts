@@ -12,6 +12,29 @@ test('Rand enters the public investigator view without a reveal handoff', async 
   await expect(page.locator('.investigator-turn-announcement')).toBeHidden({ timeout: 2500 })
 })
 
+test('Rand Side finishes investigators for review and prepares Jack without submitting', async ({ page }) => {
+  await page.goto('/')
+  const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })
+
+  await expect(page.getByRole('button', { name: 'Undo Side', exact: true })).toBeDisabled()
+  await randSide.click()
+  await expect(page.getByRole('heading', { name: /Deploy the Yellow Investigator/i })).toBeVisible()
+
+  await randSide.click()
+  await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+
+  await randSide.click()
+  await expect(page.getByRole('heading', { name: 'Jack: Escape in the Night' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Record move privately' })).toBeEnabled()
+
+  await page.getByRole('button', { name: 'Record move privately' }).click()
+  await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
+  await randSide.click()
+  await expect(page.getByRole('heading', { name: 'Investigator Results' })).toBeVisible()
+  await expect(page.getByText('Results shown · Click anywhere on the map to continue')).toBeVisible()
+})
+
 test('undoes Coach route locations onto the redo stack', async ({ page }) => {
   await page.goto('/')
   for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
@@ -342,14 +365,14 @@ test('undoes and redoes actions across private-view handoffs', async ({ page }) 
 
 test('bulk undo and redo cross sides without exposing private views', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('button', { name: 'Big Undo', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Undo Side', exact: true })).toBeDisabled()
 
   for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
   await page.getByRole('button', { name: 'Lock in four locations' }).click()
   await page.getByLabel('Available deployment crossings').getByRole('button', { name: 'FP', exact: true }).click()
   await expect(page.getByLabel('6 player actions')).toHaveText('Actions 6')
 
-  await page.getByRole('button', { name: 'Big Undo', exact: true }).click()
+  await page.getByRole('button', { name: 'Undo Side', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
   await expect(page.getByText(/restored just before their last confirmed action/i)).toBeVisible()
   await page.getByRole('button', { name: /reveal the restored view/i }).click()
