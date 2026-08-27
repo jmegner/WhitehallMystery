@@ -56,6 +56,7 @@ export type GameStage =
   | 'jackDiscoverySetup'
   | 'handoffInspectorsSetup'
   | 'investigatorSetup'
+  | 'investigatorSetupResult'
   | 'handoffJackStart'
   | 'jackChooseStart'
   | 'jackMove'
@@ -103,7 +104,7 @@ export type GameAction =
   | { type: 'toggleDiscovery'; circleId: number }
   | { type: 'confirmDiscoveries' }
   | { type: 'continueHandoff' }
-  | { type: 'placeInvestigator'; crossingId: string }
+  | { type: 'placeInvestigator'; crossingId: string; review?: boolean }
   | { type: 'chooseJackStart'; circleId: number }
   | { type: 'setJackMoveType'; moveType: JackMoveType }
   | { type: 'selectJackDestination'; circleId: number }

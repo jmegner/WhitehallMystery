@@ -19,6 +19,7 @@ const stages = new Set<GameState['stage']>([
   'jackDiscoverySetup',
   'handoffInspectorsSetup',
   'investigatorSetup',
+  'investigatorSetupResult',
   'handoffJackStart',
   'jackChooseStart',
   'jackMove',

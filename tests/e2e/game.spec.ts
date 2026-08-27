@@ -12,6 +12,19 @@ test('Rand enters the public investigator view without a reveal handoff', async 
   await expect(page.locator('.investigator-turn-announcement')).toBeHidden({ timeout: 2500 })
 })
 
+test('discovery choices only outline quadrants that still need a location', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('Location 33, selectable').click()
+
+  await expect(page.getByLabel('Location 34, selectable')).toHaveCount(0)
+  await expect(page.getByLabel('Location 34')).toBeVisible()
+  await expect(page.getByLabel('Location 33, selectable').locator('xpath=..').locator('.legal-circle')).toHaveCount(0)
+
+  // The selected location remains clickable so Jack can clear that quadrant.
+  await page.getByLabel('Location 33, selectable').click()
+  await expect(page.getByLabel('Location 34, selectable')).toBeVisible()
+})
+
 test('Rand Side finishes investigators for review and prepares Jack without submitting', async ({ page }) => {
   await page.goto('/')
   const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })
@@ -21,6 +34,9 @@ test('Rand Side finishes investigators for review and prepares Jack without subm
   await expect(page.getByRole('heading', { name: /Deploy the Yellow Investigator/i })).toBeVisible()
 
   await randSide.click()
+  await expect(page.getByRole('heading', { name: 'Investigator Deployment Results' })).toBeVisible()
+  await expect(page.getByText('Results shown · Click anywhere on the map to continue')).toBeVisible()
+  await page.locator('.game-board').click({ position: { x: 10, y: 10 } })
   await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
   await page.getByRole('button', { name: /reveal my view/i }).click()
 

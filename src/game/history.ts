@@ -31,6 +31,7 @@ export const playerViewForState = (state: GameState): PlayerView | null => {
   }
   if (
     state.stage === 'investigatorSetup' ||
+    state.stage === 'investigatorSetupResult' ||
     state.stage === 'investigatorMove' ||
     state.stage === 'investigatorAction' ||
     state.stage === 'investigatorTurnResult'
