@@ -632,13 +632,34 @@ button:disabled {
 }
 
 .investigator-maybe-circle,
-.investigator-maybe-crossing {
+.investigator-maybe-crossing,
+.hovered-investigator-maybe-circle,
+.hovered-investigator-maybe-crossing {
   fill: none;
-  stroke: #ff4d00;
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
   filter: drop-shadow(0 0 2px rgb(255 245 225 / 85%));
+}
+
+.investigator-maybe-circle,
+.investigator-maybe-crossing {
+  stroke: #ff4d00;
+}
+
+.hovered-investigator-maybe-circle.yellow,
+.hovered-investigator-maybe-crossing.yellow {
+  stroke: #d8ad00;
+}
+
+.hovered-investigator-maybe-circle.blue,
+.hovered-investigator-maybe-crossing.blue {
+  stroke: #1f68ab;
+}
+
+.hovered-investigator-maybe-circle.red,
+.hovered-investigator-maybe-crossing.red {
+  stroke: #b02f2e;
 }
 
 .investigator-piece text,

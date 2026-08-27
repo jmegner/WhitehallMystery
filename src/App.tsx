@@ -67,7 +67,9 @@ const OUTCOME_CIRCLE_RADIUS = 23
 const INNER_OUTCOME_CIRCLE_RADIUS = 20.5
 const OUTER_OUTCOME_CIRCLE_RADIUS = 26
 const INVESTIGATOR_MAYBE_CIRCLE_RADIUS = 21
-const INVESTIGATOR_MAYBE_CROSSING_SIZE = 12
+const INVESTIGATOR_MAYBE_CROSSING_SIZE = 14
+const HOVERED_INVESTIGATOR_MAYBE_CIRCLE_RADIUS = 24
+const HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE = 18
 const QUADRANTS: Quadrant[] = ['NW', 'NE', 'SW', 'SE']
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
 
@@ -246,6 +248,16 @@ function GameBoard({
   for (const crossingId of investigatorMaybeCrossings) {
     for (const circleId of adjacentCirclesForCrossing(crossingId)) investigatorMaybeCircles.add(circleId)
   }
+  const hoveredInvestigatorStart = showInvestigatorMaybes && hoveredInvestigator
+    ? state.investigatorPositions[hoveredInvestigator]
+    : undefined
+  const hoveredInvestigatorMaybeCrossings = hoveredInvestigatorStart
+    ? reachableCrossings(hoveredInvestigatorStart, 2)
+    : new Set<string>()
+  const hoveredInvestigatorMaybeCircles = new Set<number>()
+  for (const crossingId of hoveredInvestigatorMaybeCrossings) {
+    for (const circleId of adjacentCirclesForCrossing(crossingId)) hoveredInvestigatorMaybeCircles.add(circleId)
+  }
   const boardImage = `${import.meta.env.BASE_URL}map_pptx_simplified.jpg`
 
   return (
@@ -312,6 +324,33 @@ function GameBoard({
             y={crossing.y - INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
             width={INVESTIGATOR_MAYBE_CROSSING_SIZE}
             height={INVESTIGATOR_MAYBE_CROSSING_SIZE}
+          />
+        ) : null
+      })}
+
+      {[...hoveredInvestigatorMaybeCircles].map((id) => {
+        const circle = circlesById.get(id)
+        return circle ? (
+          <circle
+            key={`hovered-investigator-maybe-circle-${id}`}
+            className={`hovered-investigator-maybe-circle ${hoveredInvestigator ?? ''}`}
+            cx={circle.x}
+            cy={circle.y}
+            r={HOVERED_INVESTIGATOR_MAYBE_CIRCLE_RADIUS}
+          />
+        ) : null
+      })}
+
+      {[...hoveredInvestigatorMaybeCrossings].map((id) => {
+        const crossing = crossingsById.get(id)
+        return crossing ? (
+          <rect
+            key={`hovered-investigator-maybe-crossing-${id}`}
+            className={`hovered-investigator-maybe-crossing ${hoveredInvestigator ?? ''}`}
+            x={crossing.x - HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
+            y={crossing.y - HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
+            width={HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE}
+            height={HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE}
           />
         ) : null
       })}
