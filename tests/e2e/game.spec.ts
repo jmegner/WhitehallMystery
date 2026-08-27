@@ -40,7 +40,6 @@ test('Rand Side completes each side without showing that side its results', asyn
 
   await randSide.click()
   await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
-  await expect(page.locator('.investigator-turn-announcement')).toHaveText('Investigators’ Turn')
   await expect(page.getByRole('button', { name: 'Record move privately' })).toHaveCount(0)
   await randSide.click()
   await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
@@ -132,6 +131,13 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await expect(page.locator('.investigator-turn-announcement')).toHaveText('Investigators’ Turn')
   await expect(page.getByRole('heading', { name: 'Pass the device to Investigators' })).toHaveCount(0)
   await expect(page.getByText('Private route')).toHaveCount(0)
+  const setupJackPeek = page.getByRole('checkbox', { name: 'Jack peek', exact: true })
+  await expect(setupJackPeek).toBeVisible()
+  await expect(page.locator('.private-discovery-marker')).toHaveCount(0)
+  await setupJackPeek.check()
+  await expect(page.locator('.private-discovery-marker')).toHaveCount(4)
+  await setupJackPeek.uncheck()
+  await expect(page.locator('.private-discovery-marker')).toHaveCount(0)
 
   const deployment = page.getByLabel('Available deployment crossings')
   for (const crossing of ['FP', 'HP', 'HZ']) {

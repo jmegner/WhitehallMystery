@@ -1173,7 +1173,7 @@ function App() {
   return (
     <div
       className="app-shell"
-      onClickCapture={() => {
+      onClick={() => {
         if (showInvestigatorTurnAnnouncement) setShowInvestigatorTurnAnnouncement(false)
       }}
     >
@@ -1263,7 +1263,7 @@ function App() {
                   {showPossible && <strong>{possibleIds.size}</strong>}
                 </label>
               )}
-              {isInspectorInteraction(state.stage) && state.publicRound && (
+              {isInspectorInteraction(state.stage) && (
                 <label className="jack-peek-toggle">
                   <input
                     type="checkbox"
