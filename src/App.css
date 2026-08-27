@@ -314,6 +314,7 @@ button:disabled {
 .possibility-toggle,
 .crossing-toggle,
 .past-path-toggle,
+.investigator-maybes-toggle,
 .jack-peek-toggle {
   display: flex;
   gap: 4px;
@@ -326,6 +327,7 @@ button:disabled {
 .possibility-toggle input,
 .crossing-toggle input,
 .past-path-toggle input,
+.investigator-maybes-toggle input,
 .jack-peek-toggle input {
   margin: 0;
 }
@@ -368,7 +370,7 @@ button:disabled {
 }
 
 .board-scroll.active-investigator-yellow {
-  border-color: #ffe13b;
+  border-color: #ffff00;
 }
 
 .board-scroll.active-investigator-blue {
@@ -624,6 +626,47 @@ button:disabled {
   pointer-events: none;
 }
 
+.investigator-piece.hoverable {
+  pointer-events: auto;
+  cursor: help;
+}
+
+.investigator-maybe-circle,
+.investigator-maybe-crossing,
+.hovered-investigator-maybe-circle,
+.hovered-investigator-maybe-crossing {
+  fill: none;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.investigator-maybe-crossing,
+.hovered-investigator-maybe-crossing {
+  stroke-width: 3;
+}
+
+.investigator-maybe-circle,
+.investigator-maybe-crossing {
+  stroke: #ff4d00;
+  filter: drop-shadow(0 0 2px rgb(255 245 225 / 85%));
+}
+
+.hovered-investigator-maybe-circle.yellow,
+.hovered-investigator-maybe-crossing.yellow {
+  stroke: #ffff00;
+}
+
+.hovered-investigator-maybe-circle.blue,
+.hovered-investigator-maybe-crossing.blue {
+  stroke: #1f68ab;
+}
+
+.hovered-investigator-maybe-circle.red,
+.hovered-investigator-maybe-crossing.red {
+  stroke: #b02f2e;
+}
+
 .investigator-piece text,
 .jack-marker text {
   font: 800 10px 'Inter', sans-serif;
@@ -632,7 +675,7 @@ button:disabled {
 }
 
 .investigator-piece.yellow circle {
-  fill: #d8ad00;
+  fill: #ffff00;
 }
 
 .investigator-piece.blue circle {
@@ -1015,6 +1058,14 @@ button:disabled {
   border: 1px solid #7f6b4d;
   background: linear-gradient(145deg, #292927, #1d1e1e);
   box-shadow: 0 30px 90px rgb(0 0 0 / 50%);
+}
+
+.handoff-card.revealable {
+  cursor: pointer;
+}
+
+.handoff-card.revealable .history-controls {
+  cursor: default;
 }
 
 .handoff-card .eyebrow {

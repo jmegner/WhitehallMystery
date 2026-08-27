@@ -141,6 +141,25 @@ export const legalInvestigatorDestinations = (state: GameState): string[] => {
     .sort((a, b) => a.localeCompare(b))
 }
 
+export const investigatorPreviewDestinations = (
+  state: GameState,
+  color: InvestigatorColor,
+): Set<string> => {
+  const start = state.investigatorPositions[color]
+  if (!start) return new Set()
+  const colorIndex = INVESTIGATOR_ORDER.indexOf(color)
+  const occupiedByInvestigatorsYetToMove = new Set(
+    INVESTIGATOR_ORDER.slice(colorIndex + 1)
+      .map((other) => state.investigatorPositions[other])
+      .filter((value): value is string => Boolean(value)),
+  )
+  return new Set(
+    [...reachableCrossings(start, 2)].filter(
+      (crossingId) => !occupiedByInvestigatorsYetToMove.has(crossingId),
+    ),
+  )
+}
+
 export const legalInspectorActionCircles = (state: GameState): number[] => {
   const crossingId = state.investigatorPositions[activeInvestigatorColor(state)]
   return crossingId ? adjacentCirclesForCrossing(crossingId) : []
