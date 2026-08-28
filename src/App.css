@@ -641,6 +641,29 @@ button:disabled {
 
 .investigator-piece {
   pointer-events: none;
+  animation: investigator-color-glow 1.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 2.5px var(--investigator-background));
+}
+
+@keyframes investigator-color-glow {
+  50% {
+    filter:
+      drop-shadow(0 0 7px var(--investigator-background))
+      drop-shadow(0 0 3.5px var(--investigator-background));
+  }
+}
+
+.jack-marker {
+  animation: jack-color-glow 1.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 2.5px #ff03a7);
+}
+
+@keyframes jack-color-glow {
+  50% {
+    filter:
+      drop-shadow(0 0 7px #ff03a7)
+      drop-shadow(0 0 3.5px #ff03a7);
+  }
 }
 
 .investigator-piece.hoverable {

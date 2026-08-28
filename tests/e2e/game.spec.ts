@@ -46,6 +46,24 @@ test('Jack can preview investigator reach and reveal a handoff by clicking the c
   await expect(page.getByText('inv future', { exact: true })).toBeVisible()
   await expect(page.locator('.investigator-maybe-crossing')).toHaveCount(0)
 
+  const investigatorPieces = page.locator('.investigator-piece')
+  await expect(investigatorPieces).toHaveCount(3)
+  expect(
+    await investigatorPieces.evaluateAll((pieces) =>
+      pieces.map((piece) => ({
+        animationDuration: getComputedStyle(piece).animationDuration,
+        animationName: getComputedStyle(piece).animationName,
+        color: getComputedStyle(piece).getPropertyValue('--investigator-background').trim(),
+      })),
+    ),
+  ).toEqual([
+    { animationDuration: '1.5s', animationName: 'investigator-color-glow', color: '#ffff00' },
+    { animationDuration: '1.5s', animationName: 'investigator-color-glow', color: '#1f68ab' },
+    { animationDuration: '1.5s', animationName: 'investigator-color-glow', color: '#b02f2e' },
+  ])
+  await expect(page.locator('.jack-marker')).toHaveCSS('animation-name', 'jack-color-glow')
+  await expect(page.locator('.jack-marker')).toHaveCSS('animation-duration', '1.5s')
+
   await page.locator('.investigator-piece').first().hover()
   expect(await page.locator('.investigator-maybe-crossing').count()).toBeGreaterThan(0)
   expect(await page.locator('.investigator-maybe-circle').count()).toBeGreaterThan(0)
