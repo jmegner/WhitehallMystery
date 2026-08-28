@@ -5,6 +5,7 @@ import {
   circlesById,
   crossingsById,
   jackTransitions,
+  investigatorTransitions,
   reachableCrossings,
   startingCrossings,
 } from './mapData'
@@ -317,6 +318,80 @@ export const legalInvestigatorDestinations = (state: GameState): string[] => {
   return [...reachableCrossings(start, 2)]
     .filter((crossingId) => !occupiedByOthers.has(crossingId))
     .sort((a, b) => a.localeCompare(b))
+}
+
+export interface InvestigatorRoutePreview {
+  segments: Array<{ from: string; to: string; throughLocationPaths: number[][] }>
+  turnLabels: Map<string, string>
+}
+
+const emptyInvestigatorRoutePreview = (): InvestigatorRoutePreview => ({ segments: [], turnLabels: new Map() })
+
+export const shortestInvestigatorRoutePreview = (state: GameState, target: string): InvestigatorRoutePreview => {
+  const start = state.investigatorPositions[activeInvestigatorColor(state)]
+  if (!start || !crossingsById.has(target) || reachableCrossings(start, 2).has(target)) {
+    return emptyInvestigatorRoutePreview()
+  }
+
+  const distances = new Map<string, number>([[start, 0]])
+  const predecessors = new Map<string, Set<string>>()
+  const queue = [start]
+  let targetDistance: number | undefined
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index]
+    if (!current) continue
+    const distance = distances.get(current)
+    if (distance === undefined || (targetDistance !== undefined && distance >= targetDistance)) continue
+    for (const destination of investigatorTransitions.get(current)?.keys() ?? []) {
+      const nextDistance = distance + 1
+      const knownDistance = distances.get(destination)
+      if (knownDistance === undefined) {
+        distances.set(destination, nextDistance)
+        predecessors.set(destination, new Set([current]))
+        queue.push(destination)
+        if (destination === target) targetDistance = nextDistance
+      } else if (knownDistance === nextDistance) {
+        const existing = predecessors.get(destination) ?? new Set<string>()
+        existing.add(current)
+        predecessors.set(destination, existing)
+      }
+    }
+  }
+  if (targetDistance === undefined) return emptyInvestigatorRoutePreview()
+
+  const neededCrossings = new Set([target])
+  const segments: InvestigatorRoutePreview['segments'] = []
+  const segmentKeys = new Set<string>()
+  const backtrack = [target]
+  for (let index = 0; index < backtrack.length; index += 1) {
+    const destination = backtrack[index]
+    if (!destination) continue
+    for (const predecessor of predecessors.get(destination) ?? []) {
+      const key = `${predecessor}:${destination}`
+      if (!segmentKeys.has(key)) {
+        segmentKeys.add(key)
+        segments.push({
+          from: predecessor,
+          to: destination,
+          throughLocationPaths: investigatorTransitions.get(predecessor)?.get(destination) ?? [],
+        })
+      }
+      if (!neededCrossings.has(predecessor)) {
+        neededCrossings.add(predecessor)
+        backtrack.push(predecessor)
+      }
+    }
+  }
+
+  const turnLabels = new Map<string, string>()
+  for (const crossingId of neededCrossings) {
+    if (crossingId === start) continue
+    const distance = distances.get(crossingId)
+    if (distance === undefined || distance <= 2) continue
+    const turn = Math.ceil(distance / 2)
+    turnLabels.set(crossingId, `${turn}${distance % 2 === 1 ? 'a' : 'b'}`)
+  }
+  return { segments, turnLabels }
 }
 
 export const investigatorPreviewDestinations = (

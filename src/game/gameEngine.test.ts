@@ -12,6 +12,7 @@ import {
   coachReachableJackDestinations,
   jackRouteTurnLabels,
   randomProgressActions,
+  shortestInvestigatorRoutePreview,
   shortestJackRoutePreview,
 } from './gameEngine'
 import {
@@ -26,6 +27,7 @@ import {
   circlesById,
   crossings,
   investigatorNeighbors,
+  investigatorTransitions,
   jackTransitions,
   reachableCrossings,
   startingCrossings,
@@ -172,8 +174,32 @@ describe('investigator movement previews', () => {
     }
 
     expect(investigatorNeighbors.get('HH')).toContain('HF')
+    expect(investigatorTransitions.get('HH')?.get('HF')).toContainEqual([140])
     expect(reachableCrossings('HJ', 2)).toContain('HF')
     expect(legalInvestigatorDestinations(state)).toContain('HF')
+  })
+
+  test('shows every shortest route to a crossing beyond one turn with labels beginning at 2a', () => {
+    const start = 'HJ'
+    const state: GameState = {
+      ...createInitialGame(),
+      stage: 'investigatorMove',
+      investigatorPositions: { yellow: start },
+      activeInvestigator: 0,
+    }
+    const oneTurn = reachableCrossings(start, 2)
+    const target = crossings.find((crossing) => !oneTurn.has(crossing.id))?.id as string
+    const preview = shortestInvestigatorRoutePreview(state, target)
+
+    expect(target).toBeDefined()
+    expect(preview.segments.length).toBeGreaterThan(0)
+    expect(preview.turnLabels.get(target)).toMatch(/^[2-9]\d*[ab]$/)
+    expect([...preview.turnLabels.values()].every((label) => !label.startsWith('1'))).toBe(true)
+    expect(preview.turnLabels.has(start)).toBe(false)
+    for (const segment of preview.segments) {
+      expect(segment.throughLocationPaths).toEqual(investigatorTransitions.get(segment.from)?.get(segment.to))
+    }
+    expect(shortestInvestigatorRoutePreview(state, 'HF')).toEqual({ segments: [], turnLabels: new Map() })
   })
 })
 

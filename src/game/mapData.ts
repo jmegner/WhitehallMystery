@@ -123,20 +123,34 @@ export const investigatorNeighbors = new Map<string, Set<string>>(
   crossings.map((crossing) => [crossing.id, new Set<string>()]),
 )
 
-const connectCrossings = (first: string, second: string) => {
+export const investigatorTransitions = new Map<string, Map<string, number[][]>>(
+  crossings.map((crossing) => [crossing.id, new Map<string, number[][]>()]),
+)
+
+const connectCrossings = (first: string, second: string, throughLocations: number[] = []) => {
   if (first === second) return
   investigatorNeighbors.get(first)?.add(second)
   investigatorNeighbors.get(second)?.add(first)
+  for (const [from, to, path] of [
+    [first, second, throughLocations],
+    [second, first, [...throughLocations].reverse()],
+  ] as const) {
+    const paths = investigatorTransitions.get(from)?.get(to) ?? []
+    if (!paths.some((existing) => existing.length === path.length && existing.every((id, index) => id === path[index]))) {
+      paths.push([...path])
+    }
+    investigatorTransitions.get(from)?.set(to, paths)
+  }
 }
 
 for (const [first, second] of directCrossingEdges) connectCrossings(first, second)
 
-for (const adjacentCrossings of circleToCrossings.values()) {
+for (const [circleId, adjacentCrossings] of circleToCrossings) {
   for (let first = 0; first < adjacentCrossings.length; first += 1) {
     for (let second = first + 1; second < adjacentCrossings.length; second += 1) {
       const firstId = adjacentCrossings[first]
       const secondId = adjacentCrossings[second]
-      if (firstId && secondId) connectCrossings(firstId, secondId)
+      if (firstId && secondId) connectCrossings(firstId, secondId, [circleId])
     }
   }
 }
