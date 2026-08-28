@@ -13,6 +13,7 @@ import {
   investigatorPreviewDestinations,
   investigatorSetupPreviewDestinations,
   investigatorStartingCrossingPreviewDestinations,
+  jackRouteTurnLabels,
   legalJackDestinations,
   coachReachableJackDestinations,
   randomProgressActions,
@@ -258,11 +259,19 @@ function GameBoard({
   const [hoveredInvestigator, setHoveredInvestigator] = useState<InvestigatorColor | null>(null)
   const [hoveredInvestigatorStart, setHoveredInvestigatorStart] = useState<string | null>(null)
   const [hoveredRouteTarget, setHoveredRouteTarget] = useState<number | null>(null)
+  const [hoveredJack, setHoveredJack] = useState(false)
   const hoveredOutcome = hoveredMaybeId === null ? undefined : possibleOutcomes.get(hoveredMaybeId)
+  const peekAtJack = showJackPeek && isInspectorInteraction(state.stage)
+  const canPreviewJackDistances = state.stage === 'jackMove' || peekAtJack
   const routePreview = hoveredRouteTarget === null
     ? { segments: [], turnLabels: new Map<number, string>() }
     : shortestJackRoutePreview(state, hoveredRouteTarget)
-  const peekAtJack = showJackPeek && isInspectorInteraction(state.stage)
+  const jackHoverTurnLabels = hoveredJack && canPreviewJackDistances
+    ? jackRouteTurnLabels(state, peekAtJack ? 'normal' : state.jackMoveSelection.type)
+    : new Map<number, string>()
+  const displayedTurnLabels = hoveredJack && canPreviewJackDistances ? jackHoverTurnLabels : routePreview.turnLabels
+  const mergeTurnLabelsWithOutcomes =
+    showPossible && (showInvestigatorKnowledge || (hoveredJack && canPreviewJackDistances))
   const showJack = isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
   const privateSelections =
     isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
@@ -633,7 +642,7 @@ function GameBoard({
         [...possibleOutcomes].filter(([, outcome]) => outcome.ifNo.size > 0).map(([id, outcome]) => {
           const circle = circlesById.get(id)
           if (!circle) return null
-          const routeTurn = showInvestigatorKnowledge ? routePreview.turnLabels.get(id) : undefined
+          const routeTurn = mergeTurnLabelsWithOutcomes ? displayedTurnLabels.get(id) : undefined
           const placeLeft = circle.x > BOARD_SIZE - 70
           const x = circle.x + (placeLeft ? -24 : 24)
           const y = circle.y < 40 ? circle.y + 30 : circle.y - 19
@@ -659,8 +668,8 @@ function GameBoard({
           )
         })}
 
-      {[...routePreview.turnLabels]
-        .filter(([id]) => !(showInvestigatorKnowledge && (possibleOutcomes.get(id)?.ifNo.size ?? 0) > 0))
+      {[...displayedTurnLabels]
+        .filter(([id]) => !(mergeTurnLabelsWithOutcomes && (possibleOutcomes.get(id)?.ifNo.size ?? 0) > 0))
         .map(([id, label]) => {
           const circle = circlesById.get(id)
           return circle ? (
@@ -748,7 +757,11 @@ function GameBoard({
         (() => {
           const circle = circlesById.get(state.currentJack)
           return circle ? (
-            <g className="jack-marker">
+            <g
+              className={`jack-marker${canPreviewJackDistances ? ' hoverable' : ''}`}
+              onMouseEnter={() => canPreviewJackDistances && setHoveredJack(true)}
+              onMouseLeave={() => setHoveredJack(false)}
+            >
               <circle cx={circle.x} cy={circle.y} r="11" />
               <text x={circle.x} y={circle.y + 4} textAnchor="middle">
                 J

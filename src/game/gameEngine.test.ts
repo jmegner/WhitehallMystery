@@ -10,6 +10,7 @@ import {
   investigatorSetupPreviewDestinations,
   investigatorStartingCrossingPreviewDestinations,
   coachReachableJackDestinations,
+  jackRouteTurnLabels,
   randomProgressActions,
   shortestJackRoutePreview,
 } from './gameEngine'
@@ -164,6 +165,18 @@ describe('investigator movement previews', () => {
 })
 
 describe('Jack route previews', () => {
+  test('labels every reachable location from Jack without labeling the current location', () => {
+    const state = setupGame()
+    const streetLabels = jackRouteTurnLabels(state, 'normal')
+    const coachLabels = jackRouteTurnLabels(state, 'coach')
+
+    expect(streetLabels.has(state.currentJack as number)).toBe(false)
+    for (const destination of legalNormalDestinations(state)) expect(streetLabels.get(destination)).toBe('1')
+    expect(streetLabels.size).toBe(circles.length - 1)
+    expect([...coachLabels.values()].some((label) => label.includes('1a'))).toBe(true)
+    expect([...coachLabels.values()].some((label) => label.includes('1b'))).toBe(true)
+  })
+
   test('shows every segment and turn label on shortest future Street routes', () => {
     const state = setupGame()
     const target = 159

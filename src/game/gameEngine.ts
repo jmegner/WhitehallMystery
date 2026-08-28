@@ -128,34 +128,30 @@ export interface JackRoutePreview {
 
 const emptyJackRoutePreview = (): JackRoutePreview => ({ segments: [], turnLabels: new Map() })
 
-export const shortestJackRoutePreview = (state: GameState, target: number): JackRoutePreview => {
-  const start = state.currentJack
-  if (
-    state.stage !== 'jackMove' ||
-    start === null ||
-    target === start ||
-    legalJackDestinations(state).includes(target)
-  ) {
-    return emptyJackRoutePreview()
-  }
+interface JackRouteSearch {
+  planningState: GameState
+  initialRoutes: number[][]
+  distances: Map<number, number>
+  predecessors: Map<number, Set<number>>
+}
 
+const searchJackRoutes = (state: GameState, firstMoveType: JackMoveType, target?: number): JackRouteSearch => {
   const planningState: GameState = {
     ...state,
-    jackMoveSelection: { type: state.jackMoveSelection.type, path: [] },
+    jackMoveSelection: { type: firstMoveType, path: [] },
   }
   const initialRoutes: number[][] = []
-  if (planningState.jackMoveSelection.type === 'normal') {
+  if (firstMoveType === 'normal') {
     for (const destination of legalNormalDestinations(planningState)) initialRoutes.push([destination])
-  } else if (planningState.jackMoveSelection.type === 'coach') {
+  } else if (firstMoveType === 'coach') {
     for (const first of legalCoachFirstDestinations(planningState)) {
       for (const second of legalCoachSecondDestinations(planningState, first)) initialRoutes.push([first, second])
     }
   } else {
-    for (const destination of legalGroupedDestinations(planningState, planningState.jackMoveSelection.type)) {
+    for (const destination of legalGroupedDestinations(planningState, firstMoveType)) {
       initialRoutes.push([destination])
     }
   }
-  if (initialRoutes.length === 0) return emptyJackRoutePreview()
 
   const distances = new Map<number, number>()
   const predecessors = new Map<number, Set<number>>()
@@ -167,7 +163,7 @@ export const shortestJackRoutePreview = (state: GameState, target: number): Jack
     queue.push(destination)
   }
 
-  let targetDistance = distances.get(target)
+  let targetDistance = target === undefined ? undefined : distances.get(target)
   for (let index = 0; index < queue.length; index += 1) {
     const current = queue[index]
     if (current === undefined) continue
@@ -188,7 +184,57 @@ export const shortestJackRoutePreview = (state: GameState, target: number): Jack
       }
     }
   }
-  if (targetDistance === undefined) return emptyJackRoutePreview()
+  return { planningState, initialRoutes, distances, predecessors }
+}
+
+const routeTurnLabels = (search: JackRouteSearch, includedNodes = new Set(search.distances.keys())) => {
+  const { planningState, initialRoutes, distances } = search
+  const start = planningState.currentJack
+  const labelSets = new Map<number, Set<string>>()
+  const addLabel = (circleId: number, label: string) => {
+    if (circleId === start) return
+    const labels = labelSets.get(circleId) ?? new Set<string>()
+    labels.add(label)
+    labelSets.set(circleId, labels)
+  }
+  for (const circleId of includedNodes) {
+    const distance = distances.get(circleId)
+    if (distance !== undefined && distance > 1) addLabel(circleId, String(distance))
+  }
+  const coach = planningState.jackMoveSelection.type === 'coach'
+  for (const route of initialRoutes) {
+    const destination = route[route.length - 1]
+    if (destination === undefined || !includedNodes.has(destination)) continue
+    const first = route[0]
+    if (first === undefined) continue
+    if (coach) {
+      addLabel(first, '1a')
+      addLabel(destination, '1b')
+    } else {
+      addLabel(destination, '1')
+    }
+  }
+  return new Map([...labelSets].map(([circleId, labels]) => [circleId, [...labels].sort().join(',')]))
+}
+
+export const jackRouteTurnLabels = (state: GameState, firstMoveType: JackMoveType): Map<number, string> =>
+  state.currentJack === null ? new Map() : routeTurnLabels(searchJackRoutes(state, firstMoveType))
+
+export const shortestJackRoutePreview = (state: GameState, target: number): JackRoutePreview => {
+  const start = state.currentJack
+  if (
+    state.stage !== 'jackMove' ||
+    start === null ||
+    target === start ||
+    legalJackDestinations(state).includes(target)
+  ) {
+    return emptyJackRoutePreview()
+  }
+
+  const search = searchJackRoutes(state, state.jackMoveSelection.type, target)
+  const { planningState, initialRoutes, distances, predecessors } = search
+  if (initialRoutes.length === 0) return emptyJackRoutePreview()
+  if (!distances.has(target)) return emptyJackRoutePreview()
 
   const neededNodes = new Set([target])
   const segmentKeys = new Set<string>()
@@ -215,18 +261,6 @@ export const shortestJackRoutePreview = (state: GameState, target: number): Jack
     }
   }
 
-  const labelSets = new Map<number, Set<string>>()
-  const addLabel = (circleId: number, label: string) => {
-    if (circleId === start) return
-    const labels = labelSets.get(circleId) ?? new Set<string>()
-    labels.add(label)
-    labelSets.set(circleId, labels)
-  }
-  for (const circleId of neededNodes) {
-    const distance = distances.get(circleId)
-    if (distance !== undefined && distance > 1) addLabel(circleId, String(distance))
-  }
-
   const coach = planningState.jackMoveSelection.type === 'coach'
   for (const route of initialRoutes) {
     const destination = route[route.length - 1]
@@ -248,19 +282,11 @@ export const shortestJackRoutePreview = (state: GameState, target: number): Jack
         segments.push(segment)
       }
     }
-    if (coach) {
-      addLabel(first, '1a')
-      addLabel(destination, '1b')
-    } else {
-      addLabel(destination, '1')
-    }
   }
 
   return {
     segments,
-    turnLabels: new Map(
-      [...labelSets].map(([circleId, labels]) => [circleId, [...labels].sort().join(',')]),
-    ),
+    turnLabels: routeTurnLabels(search, neededNodes),
   }
 }
 

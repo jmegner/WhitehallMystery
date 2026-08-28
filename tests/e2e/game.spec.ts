@@ -147,6 +147,20 @@ test('Jack can preview all shortest routes to a hovered future location', async 
   await page.getByRole('button', { name: /reveal my view/i }).click()
   await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
 
+  const jackMarker = page.locator('.jack-marker')
+  await jackMarker.hover()
+  await expect(page.locator('.route-turn-count')).toHaveCount(188)
+  await expect(page.locator('[aria-label^="Location 33:"]')).toHaveCount(0)
+  await expect(page.locator('.route-preview-line')).toHaveCount(0)
+  await expect(page.locator('.route-preview-location')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Coach (2)' }).click()
+  await jackMarker.hover()
+  await expect(page.locator('.route-turn-count', { hasText: /1a/ }).first()).toBeVisible()
+  await expect(page.locator('.route-turn-count', { hasText: /1b/ }).first()).toBeVisible()
+  await expect(page.locator('.route-preview-line')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Street', exact: true }).click()
+
   const target = page.getByLabel('Location 159', { exact: true })
   await expect(target.locator('title')).toHaveCount(0)
   await expect(target).toHaveClass(/route-preview-hover-target/)
@@ -193,6 +207,32 @@ test('Jack can preview all shortest routes to a hovered future location', async 
   const mergedOutcome = page.locator('.possible-outcome-count:has(.outcome-count-turn)').first()
   await expect(mergedOutcome).toHaveText(/\d+\/\d+\/(?:1|\d+)/)
   await expect(mergedOutcome.locator('.outcome-count-turn')).toHaveCSS('fill', 'rgb(23, 23, 23)')
+})
+
+test('Jack peek uses Street turn distances when hovering over Jack', async ({ page }) => {
+  await page.goto('/')
+  for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
+  await page.getByRole('button', { name: 'Lock in four locations' }).click()
+
+  const deployment = page.getByLabel('Available deployment crossings')
+  for (const crossing of ['FP', 'HP', 'HZ']) {
+    await deployment.getByRole('button', { name: crossing, exact: true }).click()
+  }
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
+
+  const destinations = page.getByLabel('Legal Jack destinations')
+  const destination = Number(await destinations.getByRole('button').first().innerText())
+  await destinations.getByRole('button').first().click()
+  await page.getByRole('button', { name: 'Record move privately' }).click()
+  await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
+
+  await page.getByLabel('Jack peek').check()
+  await page.locator('.jack-marker').hover()
+  await expect(page.locator('.route-turn-count')).toHaveCount(188)
+  await expect(page.locator(`[aria-label^="Location ${destination}:"]`)).toHaveCount(0)
+  await expect(page.locator('.route-preview-line')).toHaveCount(0)
+  await expect(page.locator('.route-preview-location')).toHaveCount(0)
 })
 
 test('Rand enters the public investigator view without a reveal handoff', async ({ page }) => {

@@ -702,6 +702,10 @@ button:disabled {
   filter: drop-shadow(0 0 2.5px #ff03a7);
 }
 
+.jack-marker.hoverable {
+  cursor: help;
+}
+
 @keyframes jack-color-glow {
   50% {
     filter:
