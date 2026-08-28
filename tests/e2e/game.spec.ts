@@ -1,5 +1,36 @@
 import { expect, test } from '@playwright/test'
 
+test('Jack can preview investigator reach while choosing discovery locations', async ({ page }) => {
+  await page.goto('/')
+
+  const investigatorMaybes = page.getByLabel('inv maybes')
+  await expect(investigatorMaybes).toBeVisible()
+  await expect(investigatorMaybes).not.toBeChecked()
+  await expect(page.locator('.investigator-maybe-crossing')).toHaveCount(0)
+
+  await investigatorMaybes.check()
+
+  expect(await page.locator('.investigator-maybe-crossing').count()).toBeGreaterThan(6)
+  expect(await page.locator('.investigator-maybe-circle').count()).toBeGreaterThan(0)
+  await expect(page.locator('.investigator-maybe-crossing').first()).toHaveCSS('stroke', 'rgb(255, 77, 0)')
+  const possibleStarts = page.locator('.investigator-maybe-crossing.possible-investigator-start')
+  await expect(possibleStarts).toHaveCount(6)
+  await expect(possibleStarts.first()).toHaveCSS('fill', 'rgb(255, 255, 0)')
+  await expect(possibleStarts.first()).toHaveCSS('stroke', 'rgb(255, 77, 0)')
+
+  const allCrossingCount = await page.locator('.investigator-maybe-crossing').count()
+  await page.getByLabel('Crossing FP, possible investigator start').hover()
+
+  const hoveredCrossings = page.locator('.hovered-investigator-maybe-crossing.yellow')
+  const hoveredCircles = page.locator('.hovered-investigator-maybe-circle.yellow')
+  expect(await hoveredCrossings.count()).toBeGreaterThan(0)
+  expect(await hoveredCrossings.count()).toBeLessThan(allCrossingCount)
+  expect(await hoveredCircles.count()).toBeGreaterThan(0)
+  await expect(hoveredCrossings.first()).toHaveCSS('stroke', 'rgb(255, 255, 0)')
+  await expect(hoveredCrossings.first()).toHaveAttribute('width', '24')
+  await expect(hoveredCircles.first()).toHaveAttribute('r', '26')
+})
+
 test('Jack can preview investigator reach and reveal a handoff by clicking the card', async ({ page }) => {
   await page.goto('/')
   const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })

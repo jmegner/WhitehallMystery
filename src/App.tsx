@@ -11,6 +11,8 @@ import {
   legalInspectorActionCircles,
   legalInvestigatorDestinations,
   investigatorPreviewDestinations,
+  investigatorSetupPreviewDestinations,
+  investigatorStartingCrossingPreviewDestinations,
   legalJackDestinations,
   coachReachableJackDestinations,
   randomProgressActions,
@@ -227,6 +229,7 @@ function GameBoard({
 }: BoardProps) {
   const [hoveredMaybeId, setHoveredMaybeId] = useState<number | null>(null)
   const [hoveredInvestigator, setHoveredInvestigator] = useState<InvestigatorColor | null>(null)
+  const [hoveredInvestigatorStart, setHoveredInvestigatorStart] = useState<string | null>(null)
   const hoveredOutcome = hoveredMaybeId === null ? undefined : possibleOutcomes.get(hoveredMaybeId)
   const peekAtJack = showJackPeek && isInspectorInteraction(state.stage)
   const showJack = isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
@@ -251,10 +254,14 @@ function GameBoard({
     ? state.roundTrail.map((id) => circlesById.get(id)).filter((circle) => circle !== undefined)
     : []
   const pastPathSegments = trimmedRouteSegments(pastPath)
-  const displayedInvestigatorColors = state.stage === 'jackMove'
+  const canPreviewPlacedInvestigators = state.stage === 'jackChooseStart' || state.stage === 'jackMove'
+  const displayedInvestigatorColors = canPreviewPlacedInvestigators
     ? INVESTIGATOR_ORDER.filter((color) => showInvestigatorMaybes || hoveredInvestigator === color)
     : []
-  const investigatorMaybeCrossings = new Set<string>()
+  const investigatorMaybeCrossings =
+    state.stage === 'jackDiscoverySetup' && showInvestigatorMaybes
+      ? investigatorSetupPreviewDestinations()
+      : new Set<string>()
   for (const color of displayedInvestigatorColors) {
     const start = state.investigatorPositions[color]
     if (start) {
@@ -267,9 +274,13 @@ function GameBoard({
   for (const crossingId of investigatorMaybeCrossings) {
     for (const circleId of adjacentCirclesForCrossing(crossingId)) investigatorMaybeCircles.add(circleId)
   }
-  const hoveredInvestigatorMaybeCrossings = showInvestigatorMaybes && hoveredInvestigator
-    ? investigatorPreviewDestinations(state, hoveredInvestigator)
-    : new Set<string>()
+  const hoveredInvestigatorMaybeCrossings =
+    state.stage === 'jackDiscoverySetup' && hoveredInvestigatorStart
+      ? investigatorStartingCrossingPreviewDestinations(hoveredInvestigatorStart)
+      : showInvestigatorMaybes && hoveredInvestigator
+        ? investigatorPreviewDestinations(state, hoveredInvestigator)
+        : new Set<string>()
+  const hoveredInvestigatorColor = hoveredInvestigatorStart ? 'yellow' : hoveredInvestigator
   const hoveredInvestigatorMaybeCircles = new Set<number>()
   for (const crossingId of hoveredInvestigatorMaybeCrossings) {
     for (const circleId of adjacentCirclesForCrossing(crossingId)) hoveredInvestigatorMaybeCircles.add(circleId)
@@ -335,7 +346,7 @@ function GameBoard({
         return crossing ? (
           <rect
             key={`investigator-maybe-crossing-${id}`}
-            className="investigator-maybe-crossing"
+            className={`investigator-maybe-crossing${state.stage === 'jackDiscoverySetup' && crossing.starting ? ' possible-investigator-start' : ''}`}
             x={crossing.x - INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
             y={crossing.y - INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
             width={INVESTIGATOR_MAYBE_CROSSING_SIZE}
@@ -349,7 +360,7 @@ function GameBoard({
         return circle ? (
           <circle
             key={`hovered-investigator-maybe-circle-${id}`}
-            className={`hovered-investigator-maybe-circle ${hoveredInvestigator ?? ''}`}
+            className={`hovered-investigator-maybe-circle ${hoveredInvestigatorColor ?? ''}`}
             cx={circle.x}
             cy={circle.y}
             r={HOVERED_INVESTIGATOR_MAYBE_CIRCLE_RADIUS}
@@ -362,7 +373,7 @@ function GameBoard({
         return crossing ? (
           <rect
             key={`hovered-investigator-maybe-crossing-${id}`}
-            className={`hovered-investigator-maybe-crossing ${hoveredInvestigator ?? ''}`}
+            className={`hovered-investigator-maybe-crossing ${hoveredInvestigatorColor ?? ''}`}
             x={crossing.x - HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
             y={crossing.y - HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
             width={HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE}
@@ -532,16 +543,19 @@ function GameBoard({
 
       {crossings.map((crossing) => {
         const legal = legalCrossingIds.has(crossing.id)
+        const investigatorStartPreview = state.stage === 'jackDiscoverySetup' && crossing.starting
         return (
           <g key={`crossing-target-${crossing.id}`}>
             {legal && <circle className="legal-crossing" cx={crossing.x} cy={crossing.y} r="12.5" />}
             <circle
-              className={legal ? 'map-hit-target selectable' : 'map-hit-target'}
+              className={`map-hit-target${legal ? ' selectable' : ''}${investigatorStartPreview ? ' investigator-start-hover-target' : ''}`}
               cx={crossing.x}
               cy={crossing.y}
               r="12"
               onClick={() => legal && onCrossing(crossing.id)}
-              aria-label={`Crossing ${crossing.id}${legal ? ', selectable' : ''}`}
+              onMouseEnter={() => investigatorStartPreview && setHoveredInvestigatorStart(crossing.id)}
+              onMouseLeave={() => investigatorStartPreview && setHoveredInvestigatorStart(null)}
+              aria-label={`Crossing ${crossing.id}${legal ? ', selectable' : ''}${investigatorStartPreview ? ', possible investigator start' : ''}`}
             >
               <title>Crossing {crossing.id}</title>
             </circle>
@@ -581,10 +595,10 @@ function GameBoard({
         return crossing ? (
           <g
             key={`investigator-${color}`}
-            className={`investigator-piece ${color}${state.stage === 'jackMove' ? ' hoverable' : ''}`}
+            className={`investigator-piece ${color}${canPreviewPlacedInvestigators ? ' hoverable' : ''}`}
             style={investigatorPieceStyle(color)}
-            onMouseEnter={() => state.stage === 'jackMove' && setHoveredInvestigator(color)}
-            onMouseLeave={() => state.stage === 'jackMove' && setHoveredInvestigator(null)}
+            onMouseEnter={() => canPreviewPlacedInvestigators && setHoveredInvestigator(color)}
+            onMouseLeave={() => canPreviewPlacedInvestigators && setHoveredInvestigator(null)}
           >
             {active && <circle className="active-investigator-ring" cx={crossing.x} cy={crossing.y} r="15" />}
             <circle cx={crossing.x} cy={crossing.y} r="10" />
@@ -1383,7 +1397,7 @@ function App() {
                   past path
                 </label>
               )}
-              {state.stage === 'jackMove' && (
+              {isPrivateJackView(state.stage) && (
                 <label className="investigator-maybes-toggle">
                   <input
                     type="checkbox"

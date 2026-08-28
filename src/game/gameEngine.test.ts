@@ -7,6 +7,8 @@ import {
   legalJackDestinations,
   legalNormalDestinations,
   investigatorPreviewDestinations,
+  investigatorSetupPreviewDestinations,
+  investigatorStartingCrossingPreviewDestinations,
   coachReachableJackDestinations,
   randomProgressActions,
 } from './gameEngine'
@@ -18,6 +20,7 @@ import {
   crossings,
   investigatorNeighbors,
   jackTransitions,
+  reachableCrossings,
   startingCrossings,
   waterGroups,
 } from './mapData'
@@ -130,6 +133,26 @@ describe('investigator movement previews', () => {
 
     expect(destinations.has(firstBlocker)).toBe(true)
     expect(destinations.has(secondBlocker)).toBe(true)
+  })
+
+  test('setup preview combines reach from every possible deployment crossing', () => {
+    const destinations = investigatorSetupPreviewDestinations()
+    const expected = new Set(
+      startingCrossings.flatMap((crossing) => [...reachableCrossings(crossing.id, 2)]),
+    )
+
+    expect(destinations).toEqual(expected)
+    for (const crossing of startingCrossings) expect(destinations.has(crossing.id)).toBe(true)
+  })
+
+  test('starting-crossing hover preview uses only the selected possible deployment', () => {
+    const startingCrossing = startingCrossings[0]!
+    const ordinaryCrossing = crossings.find((crossing) => !crossing.starting)!
+
+    expect(investigatorStartingCrossingPreviewDestinations(startingCrossing.id)).toEqual(
+      reachableCrossings(startingCrossing.id, 2),
+    )
+    expect(investigatorStartingCrossingPreviewDestinations(ordinaryCrossing.id)).toEqual(new Set())
   })
 })
 

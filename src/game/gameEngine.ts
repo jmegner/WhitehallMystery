@@ -160,6 +160,14 @@ export const investigatorPreviewDestinations = (
   )
 }
 
+export const investigatorSetupPreviewDestinations = (): Set<string> =>
+  new Set(startingCrossings.flatMap((crossing) => [...reachableCrossings(crossing.id, 2)]))
+
+export const investigatorStartingCrossingPreviewDestinations = (crossingId: string): Set<string> =>
+  startingCrossings.some((crossing) => crossing.id === crossingId)
+    ? reachableCrossings(crossingId, 2)
+    : new Set<string>()
+
 export const legalInspectorActionCircles = (state: GameState): number[] => {
   const crossingId = state.investigatorPositions[activeInvestigatorColor(state)]
   return crossingId ? adjacentCirclesForCrossing(crossingId) : []

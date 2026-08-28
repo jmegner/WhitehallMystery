@@ -494,6 +494,11 @@ button:disabled {
   cursor: help;
 }
 
+.map-hit-target.investigator-start-hover-target {
+  pointer-events: auto;
+  cursor: help;
+}
+
 .legal-circle,
 .legal-crossing {
   fill: none;
@@ -650,6 +655,10 @@ button:disabled {
 .investigator-maybe-crossing {
   stroke: #ff4d00;
   filter: drop-shadow(0 0 2px rgb(255 245 225 / 85%));
+}
+
+.investigator-maybe-crossing.possible-investigator-start {
+  fill: #ffff00;
 }
 
 .hovered-investigator-maybe-circle.yellow,
