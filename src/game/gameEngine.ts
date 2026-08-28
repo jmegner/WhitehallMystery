@@ -61,6 +61,9 @@ export const legalNormalDestinations = (state: GameState, from = state.currentJa
     .sort((a, b) => a - b)
 }
 
+const unrestrictedStreetDestinations = (from: number): number[] =>
+  [...(jackTransitions.get(from)?.keys() ?? [])].sort((a, b) => a - b)
+
 const legalCoachSecondDestinations = (state: GameState, first: number): number[] => {
   const start = state.currentJack
   if (start === null || !isCoachCircle(first)) return []
@@ -169,7 +172,7 @@ const searchJackRoutes = (state: GameState, firstMoveType: JackMoveType, target?
     if (current === undefined) continue
     const distance = distances.get(current)
     if (distance === undefined || (targetDistance !== undefined && distance >= targetDistance)) continue
-    for (const destination of legalNormalDestinations(planningState, current)) {
+    for (const destination of unrestrictedStreetDestinations(current)) {
       const nextDistance = distance + 1
       const knownDistance = distances.get(destination)
       if (knownDistance === undefined) {
@@ -239,11 +242,17 @@ export const shortestJackRoutePreview = (state: GameState, target: number): Jack
   const neededNodes = new Set([target])
   const segmentKeys = new Set<string>()
   const segments: JackRoutePreview['segments'] = []
-  const streetSegment = (from: number, to: number) => ({
-    from,
-    to,
-    crossingPaths: jackTransitions.get(from)?.get(to) ?? [],
-  })
+  const occupied = occupiedCrossings(planningState)
+  const streetSegment = (from: number, to: number, blockInvestigators = false) => {
+    const crossingPaths = jackTransitions.get(from)?.get(to) ?? []
+    return {
+      from,
+      to,
+      crossingPaths: blockInvestigators
+        ? crossingPaths.filter((path) => path.every((crossingId) => !occupied.has(crossingId)))
+        : crossingPaths,
+    }
+  }
   const backtrack = [target]
   for (let index = 0; index < backtrack.length; index += 1) {
     const destination = backtrack[index]
@@ -272,7 +281,7 @@ export const shortestJackRoutePreview = (state: GameState, target: number): Jack
       ? [streetSegment(start, first), streetSegment(first, route[1])]
       : [
           usesStreetCrossings
-            ? streetSegment(start, first)
+            ? streetSegment(start, first, planningState.jackMoveSelection.type === 'normal')
             : { from: start, to: first, crossingPaths: [[]] },
         ]
     for (const segment of initialSegments) {

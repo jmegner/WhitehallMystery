@@ -85,8 +85,8 @@ describe('Whitehall map data', () => {
     const jackEdges = [...jackTransitions.values()].reduce((total, destinations) => total + destinations.size, 0) / 2
     const investigatorEdges =
       [...investigatorNeighbors.values()].reduce((total, destinations) => total + destinations.size, 0) / 2
-    expect(jackEdges).toBe(673)
-    expect(investigatorEdges).toBe(365)
+    expect(jackEdges).toBe(677)
+    expect(investigatorEdges).toBe(366)
     expect([...jackTransitions.get(101)!.keys()].sort((a, b) => a - b)).toEqual([
       70, 82, 83, 84, 85, 99, 100, 103, 118,
     ])
@@ -162,17 +162,59 @@ describe('investigator movement previews', () => {
     )
     expect(investigatorStartingCrossingPreviewDestinations(ordinaryCrossing.id)).toEqual(new Set())
   })
+
+  test('can move from HJ to HF in two steps through HH and location 140', () => {
+    const state: GameState = {
+      ...createInitialGame(),
+      stage: 'investigatorMove',
+      investigatorPositions: { yellow: 'HJ' },
+      activeInvestigator: 0,
+    }
+
+    expect(investigatorNeighbors.get('HH')).toContain('HF')
+    expect(reachableCrossings('HJ', 2)).toContain('HF')
+    expect(legalInvestigatorDestinations(state)).toContain('HF')
+  })
 })
 
 describe('Jack route previews', () => {
   test('labels every reachable location from Jack without labeling the current location', () => {
-    const state = setupGame()
+    const baseState = setupGame()
+    const start = baseState.currentJack as number
+    const blockedTransition = [...(jackTransitions.get(start)?.entries() ?? [])].find(
+      ([, paths]) => paths.length === 1 && (paths[0]?.length ?? 0) > 0,
+    )
+    expect(blockedTransition).toBeDefined()
+    const [blockedDestination, blockedPaths] = blockedTransition as [number, string[][]]
+    const state: GameState = {
+      ...baseState,
+      investigatorPositions: { ...baseState.investigatorPositions, yellow: blockedPaths[0]?.[0] },
+    }
     const streetLabels = jackRouteTurnLabels(state, 'normal')
     const coachLabels = jackRouteTurnLabels(state, 'coach')
 
     expect(streetLabels.has(state.currentJack as number)).toBe(false)
     for (const destination of legalNormalDestinations(state)) expect(streetLabels.get(destination)).toBe('1')
+    expect(legalNormalDestinations(state)).not.toContain(blockedDestination)
+    expect(Number(streetLabels.get(blockedDestination))).toBeGreaterThan(1)
     expect(streetLabels.size).toBe(circles.length - 1)
+    const initialDestinations = legalNormalDestinations(state)
+    expect(initialDestinations.length).toBeLessThan(jackTransitions.get(start)?.size ?? 0)
+    const expectedDistances = new Map<number, number>([[start, 0]])
+    const queue = [...initialDestinations]
+    for (const destination of initialDestinations) expectedDistances.set(destination, 1)
+    for (let index = 0; index < queue.length; index += 1) {
+      const current = queue[index] as number
+      const nextDistance = (expectedDistances.get(current) as number) + 1
+      for (const destination of jackTransitions.get(current)?.keys() ?? []) {
+        if (expectedDistances.has(destination)) continue
+        expectedDistances.set(destination, nextDistance)
+        queue.push(destination)
+      }
+    }
+    for (const [id, distance] of expectedDistances) {
+      if (id !== start) expect(streetLabels.get(id)).toBe(String(distance))
+    }
     expect([...coachLabels.values()].some((label) => label.includes('1a'))).toBe(true)
     expect([...coachLabels.values()].some((label) => label.includes('1b'))).toBe(true)
   })
@@ -190,8 +232,14 @@ describe('Jack route previews', () => {
           segment.crossingPaths.length > 0 && segment.crossingPaths.every((crossings) => crossings.length > 0),
       ),
     ).toBe(true)
+    const occupied = new Set(Object.values(state.investigatorPositions))
     for (const segment of preview.segments) {
-      expect(segment.crossingPaths).toEqual(jackTransitions.get(segment.from)?.get(segment.to))
+      const crossingPaths = jackTransitions.get(segment.from)?.get(segment.to) ?? []
+      expect(segment.crossingPaths).toEqual(
+        segment.from === state.currentJack && preview.turnLabels.get(segment.to) === '1'
+          ? crossingPaths.filter((path) => path.every((crossingId) => !occupied.has(crossingId)))
+          : crossingPaths,
+      )
     }
     expect(Number(preview.turnLabels.get(target))).toBeGreaterThan(1)
     expect(preview.turnLabels.has(state.currentJack as number)).toBe(false)
