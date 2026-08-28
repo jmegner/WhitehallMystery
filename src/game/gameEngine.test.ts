@@ -12,7 +12,12 @@ import {
   coachReachableJackDestinations,
   randomProgressActions,
 } from './gameEngine'
-import { possibleJackLocations, possibleJackSearchOutcomes } from './inference'
+import {
+  possibleJackLocations,
+  possibleJackLocationsAfterMove,
+  possibleJackSearchOutcomes,
+  possibleJackSearchOutcomesAfterMove,
+} from './inference'
 import {
   alleyDestinations,
   circles,
@@ -28,6 +33,7 @@ import {
   CROSSING_IDS_STORAGE_KEY,
   GAME_STORAGE_KEY,
   INVESTIGATOR_AUTO_STORAGE_KEY,
+  INVESTIGATOR_KNOW_STORAGE_KEY,
   JACK_PEEK_STORAGE_KEY,
   POSSIBLE_LOCATIONS_STORAGE_KEY,
   loadBooleanPreference,
@@ -172,11 +178,13 @@ describe('local persistence', () => {
     saveBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY, true)
     saveBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY, true)
     saveBooleanPreference(storage, JACK_PEEK_STORAGE_KEY, true)
+    saveBooleanPreference(storage, INVESTIGATOR_KNOW_STORAGE_KEY, true)
     saveBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY, true)
     expect(loadStoredGame(storage)).toEqual(state)
     expect(loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY)).toBe(true)
     expect(loadBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY)).toBe(true)
     expect(loadBooleanPreference(storage, JACK_PEEK_STORAGE_KEY)).toBe(true)
+    expect(loadBooleanPreference(storage, INVESTIGATOR_KNOW_STORAGE_KEY)).toBe(true)
     expect(loadBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY)).toBe(true)
   })
 
@@ -524,6 +532,24 @@ describe('game reducer', () => {
 })
 
 describe('public inference', () => {
+  test('projects investigator knowledge after each public movement type', () => {
+    const evidence: PublicRoundEvidence = { start: 33, moves: [], observations: [] }
+    const positions = { yellow: 'FP', blue: 'HP', red: 'HZ' } as const
+    const projected = (type: GameState['jackMoveSelection']['type']) =>
+      possibleJackLocationsAfterMove(evidence, type, positions, 0)
+
+    expect(projected('normal').size).toBeGreaterThan(0)
+    expect(projected('coach').size).toBeGreaterThan(projected('normal').size)
+    expect(projected('alley').size).toBeGreaterThan(0)
+    expect(projected('boat')).toEqual(new Set())
+
+    const streetOutcomes = possibleJackSearchOutcomesAfterMove(evidence, 'normal', positions, 0)
+    expect(new Set([...streetOutcomes.values()].flatMap((outcome) => [...outcome.ifYes]))).toEqual(
+      projected('normal'),
+    )
+    expect([...streetOutcomes.values()].some((outcome) => outcome.ifNo.size > 0)).toBe(true)
+  })
+
   test('calculates remaining current locations after hypothetical positive and negative searches', () => {
     const evidence: PublicRoundEvidence = {
       start: 33,

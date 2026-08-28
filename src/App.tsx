@@ -17,7 +17,12 @@ import {
   coachReachableJackDestinations,
   randomProgressActions,
 } from './game/gameEngine'
-import { movementLabel, possibleJackSearchOutcomes, type SearchOutcome } from './game/inference'
+import {
+  movementLabel,
+  possibleJackSearchOutcomes,
+  possibleJackSearchOutcomesAfterMove,
+  type SearchOutcome,
+} from './game/inference'
 import {
   actionCount,
   canBigUndo,
@@ -40,6 +45,7 @@ import {
 import {
   CROSSING_IDS_STORAGE_KEY,
   INVESTIGATOR_AUTO_STORAGE_KEY,
+  INVESTIGATOR_KNOW_STORAGE_KEY,
   INVESTIGATOR_MAYBES_STORAGE_KEY,
   JACK_PEEK_STORAGE_KEY,
   PAST_PATH_STORAGE_KEY,
@@ -171,6 +177,7 @@ interface BoardProps {
   showCrossingIds: boolean
   showPastPath: boolean
   showInvestigatorMaybes: boolean
+  showInvestigatorKnowledge: boolean
   showJackPeek: boolean
   onCircle: (circleId: number) => void
   onCircleMiddleClick: (circleId: number) => void
@@ -221,6 +228,7 @@ function GameBoard({
   showCrossingIds,
   showPastPath,
   showInvestigatorMaybes,
+  showInvestigatorKnowledge,
   showJackPeek,
   onCircle,
   onCircleMiddleClick,
@@ -289,7 +297,7 @@ function GameBoard({
 
   return (
     <svg
-      className="game-board"
+      className={`game-board${showInvestigatorKnowledge ? ' investigator-knowledge-preview' : ''}`}
       viewBox={`${BOARD_VIEWPORT.x} ${BOARD_VIEWPORT.y} ${BOARD_VIEWPORT.width} ${BOARD_VIEWPORT.height}`}
       role="img"
       aria-label="Whitehall game board"
@@ -832,7 +840,10 @@ function GameControls({ state, dispatch, onUndoRoute, onUndoSecondLocation }: Ga
         <div className="movement-tabs" role="group" aria-label="Jack movement type">
           {MOVE_TYPES.map((type) => {
             const remaining = type === 'normal' ? null : state.specialRemaining[type]
-            const disabled = remaining === 0 || (type === 'coach' && state.moveSlot > 13)
+            const disabled =
+              remaining === 0 ||
+              (type === 'coach' && state.moveSlot > 13) ||
+              (type === 'boat' && circlesById.get(state.currentJack ?? -1)?.color !== 'blue')
             return (
               <button
                 key={type}
@@ -1097,6 +1108,10 @@ function App() {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, INVESTIGATOR_MAYBES_STORAGE_KEY) : false
   })
+  const [showInvestigatorKnowledge, setShowInvestigatorKnowledge] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, INVESTIGATOR_KNOW_STORAGE_KEY) : false
+  })
   const [showInvestigatorTurnAnnouncement, setShowInvestigatorTurnAnnouncement] = useState(false)
   const [investigatorAuto, setInvestigatorAuto] = useState(() => {
     const storage = browserStorage()
@@ -1275,14 +1290,27 @@ function App() {
     }
   }
 
-  const possibleOutcomes =
-    showPossible && isInspectorInteraction(state.stage)
-      ? possibleJackSearchOutcomes(state.publicRound)
-      : new Map<number, SearchOutcome>()
+  let possibleOutcomes = new Map<number, SearchOutcome>()
+  if (showPossible && isInspectorInteraction(state.stage)) {
+    possibleOutcomes = possibleJackSearchOutcomes(state.publicRound)
+  } else if (showInvestigatorKnowledge && state.stage === 'jackMove') {
+    const { yellow, blue, red } = state.investigatorPositions
+    if (yellow && blue && red) {
+      possibleOutcomes = possibleJackSearchOutcomesAfterMove(
+        state.publicRound,
+        state.jackMoveSelection.type,
+        { yellow, blue, red },
+        state.moveSlot,
+      )
+    }
+  }
   const possibleIds = new Set<number>()
   for (const outcome of possibleOutcomes.values()) {
     for (const id of outcome.ifYes) possibleIds.add(id)
   }
+  const showPossibilityMarkers =
+    (showPossible && isInspectorInteraction(state.stage)) ||
+    (showInvestigatorKnowledge && state.stage === 'jackMove')
   const handleCircle = (circleId: number) => {
     if (state.stage === 'jackDiscoverySetup') dispatch({ type: 'toggleDiscovery', circleId })
     else if (state.stage === 'jackChooseStart') dispatch({ type: 'chooseJackStart', circleId })
@@ -1409,7 +1437,23 @@ function App() {
                       if (storage) saveBooleanPreference(storage, INVESTIGATOR_MAYBES_STORAGE_KEY, checked)
                     }}
                   />
-                  inv maybes
+                  inv future
+                </label>
+              )}
+              {state.stage === 'jackMove' && (
+                <label className="investigator-knowledge-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showInvestigatorKnowledge}
+                    onChange={(event) => {
+                      const checked = event.target.checked
+                      setShowInvestigatorKnowledge(checked)
+                      const storage = browserStorage()
+                      if (storage) saveBooleanPreference(storage, INVESTIGATOR_KNOW_STORAGE_KEY, checked)
+                    }}
+                  />
+                  inv know
+                  {showInvestigatorKnowledge && <strong>{possibleIds.size}</strong>}
                 </label>
               )}
               {isInspectorInteraction(state.stage) && state.publicRound && (
@@ -1460,10 +1504,11 @@ function App() {
                 legalCrossingIds={legalCrossingIds}
                 possibleIds={possibleIds}
                 possibleOutcomes={possibleOutcomes}
-                showPossible={showPossible}
+                showPossible={showPossibilityMarkers}
                 showCrossingIds={showCrossingIds}
                 showPastPath={showPastPath}
                 showInvestigatorMaybes={showInvestigatorMaybes}
+                showInvestigatorKnowledge={showInvestigatorKnowledge && state.stage === 'jackMove'}
                 showJackPeek={showJackPeek}
                 onCircle={handleCircle}
                 onCircleMiddleClick={handleCircleMiddleClick}

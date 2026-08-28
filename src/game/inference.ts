@@ -141,6 +141,31 @@ export const possibleJackLocations = (evidence: PublicRoundEvidence | null): Set
   return new Set(hypotheses.map((hypothesis) => hypothesis.position))
 }
 
+const evidenceAfterMove = (
+  evidence: PublicRoundEvidence | null,
+  type: JackMoveType,
+  investigatorPositions: Record<InvestigatorColor, string>,
+  currentMoveSlot: number,
+): PublicRoundEvidence | null => {
+  if (!evidence) return null
+  const cost = type === 'coach' ? 2 : 1
+  const move: PublicMoveEvidence = {
+    type,
+    startSlot: currentMoveSlot + 1,
+    endSlot: currentMoveSlot + cost,
+    investigatorPositions,
+  }
+  return { ...evidence, moves: [...evidence.moves, move] }
+}
+
+export const possibleJackLocationsAfterMove = (
+  evidence: PublicRoundEvidence | null,
+  type: JackMoveType,
+  investigatorPositions: Record<InvestigatorColor, string>,
+  currentMoveSlot: number,
+): Set<number> =>
+  possibleJackLocations(evidenceAfterMove(evidence, type, investigatorPositions, currentMoveSlot))
+
 export const possibleJackSearchOutcomes = (evidence: PublicRoundEvidence | null): Map<number, SearchOutcome> => {
   const outcomes = new Map<number, SearchOutcome>()
   if (!evidence) return outcomes
@@ -165,6 +190,14 @@ export const possibleJackSearchOutcomes = (evidence: PublicRoundEvidence | null)
 
   return outcomes
 }
+
+export const possibleJackSearchOutcomesAfterMove = (
+  evidence: PublicRoundEvidence | null,
+  type: JackMoveType,
+  investigatorPositions: Record<InvestigatorColor, string>,
+  currentMoveSlot: number,
+): Map<number, SearchOutcome> =>
+  possibleJackSearchOutcomes(evidenceAfterMove(evidence, type, investigatorPositions, currentMoveSlot))
 
 export const movementLabel = (type: JackMoveType) =>
   ({ normal: 'Street', coach: 'Coach', alley: 'Alley', boat: 'Boat' })[type]

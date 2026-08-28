@@ -315,6 +315,7 @@ button:disabled {
 .crossing-toggle,
 .past-path-toggle,
 .investigator-maybes-toggle,
+.investigator-knowledge-toggle,
 .jack-peek-toggle {
   display: flex;
   gap: 4px;
@@ -328,11 +329,13 @@ button:disabled {
 .crossing-toggle input,
 .past-path-toggle input,
 .investigator-maybes-toggle input,
+.investigator-knowledge-toggle input,
 .jack-peek-toggle input {
   margin: 0;
 }
 
-.possibility-toggle strong {
+.possibility-toggle strong,
+.investigator-knowledge-toggle strong {
   display: grid;
   place-items: center;
   min-width: 24px;
@@ -590,6 +593,11 @@ button:disabled {
   stroke: #ff03a7;
 }
 
+.game-board.investigator-knowledge-preview .possible-certainty-marker,
+.game-board.investigator-knowledge-preview .possible-outcome-yes {
+  stroke: #b00068;
+}
+
 .possible-outcome-count {
   pointer-events: none;
   stroke: rgb(255 250 235 / 95%);
@@ -609,6 +617,10 @@ button:disabled {
 
 .outcome-count-yes {
   fill: #ff03a7;
+}
+
+.game-board.investigator-knowledge-preview .outcome-count-yes {
+  fill: #b00068;
 }
 
 .private-route {
