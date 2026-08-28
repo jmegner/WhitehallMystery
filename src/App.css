@@ -674,16 +674,12 @@ button:disabled {
   pointer-events: none;
 }
 
-.investigator-piece.yellow circle {
-  fill: #ffff00;
+.investigator-piece circle {
+  fill: var(--investigator-background);
 }
 
-.investigator-piece.blue circle {
-  fill: #1f68ab;
-}
-
-.investigator-piece.red circle {
-  fill: #b02f2e;
+.investigator-piece text {
+  fill: var(--investigator-foreground);
 }
 
 .investigator-piece circle.active-investigator-ring {

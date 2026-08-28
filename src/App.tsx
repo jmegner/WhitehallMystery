@@ -1,5 +1,7 @@
 import { useReducer, useState } from 'react'
+import type { CSSProperties } from 'react'
 import './App.css'
+import { contrastingBlackOrWhite } from './colorContrast'
 import {
   activeInvestigatorColor,
   createInitialGame,
@@ -72,6 +74,19 @@ const HOVERED_INVESTIGATOR_MAYBE_CIRCLE_RADIUS = 26
 const HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE = 24
 const QUADRANTS: Quadrant[] = ['NW', 'NE', 'SW', 'SE']
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
+const INVESTIGATOR_COLORS: Record<InvestigatorColor, string> = {
+  yellow: '#ffff00',
+  blue: '#1f68ab',
+  red: '#b02f2e',
+}
+
+const investigatorPieceStyle = (color: InvestigatorColor) => {
+  const background = INVESTIGATOR_COLORS[color]
+  return {
+    '--investigator-background': background,
+    '--investigator-foreground': contrastingBlackOrWhite(background),
+  } as CSSProperties
+}
 
 const trimmedRouteSegments = (points: { x: number; y: number }[]) =>
   points.slice(0, -1).flatMap((from, index) => {
@@ -567,6 +582,7 @@ function GameBoard({
           <g
             key={`investigator-${color}`}
             className={`investigator-piece ${color}${state.stage === 'jackMove' ? ' hoverable' : ''}`}
+            style={investigatorPieceStyle(color)}
             onMouseEnter={() => state.stage === 'jackMove' && setHoveredInvestigator(color)}
             onMouseLeave={() => state.stage === 'jackMove' && setHoveredInvestigator(null)}
           >
