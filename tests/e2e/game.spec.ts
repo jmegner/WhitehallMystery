@@ -482,6 +482,38 @@ test('keeps the mobile layout within the viewport', async ({ page }) => {
   expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport)
 })
 
+test('caps and aligns the map for single- and two-column layouts', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1200 })
+  await page.goto('/')
+
+  const mapBounds = await page.locator('.game-board').boundingBox()
+  const viewportBounds = await page.locator('.board-scroll').boundingBox()
+  const controlBounds = await page.locator('.control-panel').boundingBox()
+  const layoutBounds = await page.locator('.game-layout').boundingBox()
+  const trackBounds = await page.locator('.move-track').boundingBox()
+  expect(mapBounds).not.toBeNull()
+  expect(viewportBounds).not.toBeNull()
+  expect(controlBounds).not.toBeNull()
+  expect(layoutBounds).not.toBeNull()
+  expect(trackBounds).not.toBeNull()
+  expect(mapBounds!.width).toBeLessThanOrEqual(900)
+  expect(mapBounds!.height).toBeLessThanOrEqual(900)
+  expect(viewportBounds!.width).toBeLessThanOrEqual(900)
+  expect(viewportBounds!.height).toBeLessThanOrEqual(900)
+  expect(controlBounds!.x - (viewportBounds!.x + viewportBounds!.width)).toBeLessThanOrEqual(14)
+  expect(layoutBounds!.width).toBe(1318)
+  expect(trackBounds!.width).toBe(layoutBounds!.width)
+
+  await page.setViewportSize({ width: 1000, height: 1200 })
+  const singleColumnMap = await page.locator('.board-scroll').boundingBox()
+  const boardPanel = await page.locator('.board-panel').boundingBox()
+  expect(singleColumnMap).not.toBeNull()
+  expect(boardPanel).not.toBeNull()
+  const leftGap = singleColumnMap!.x - boardPanel!.x
+  const rightGap = boardPanel!.x + boardPanel!.width - (singleColumnMap!.x + singleColumnMap!.width)
+  expect(Math.abs(leftGap - rightGap)).toBeLessThanOrEqual(1)
+})
+
 test('undoes and redoes actions across private-view handoffs', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByLabel('0 player actions')).toHaveText('Actions 0')

@@ -21,7 +21,7 @@
 .app-header,
 .move-track,
 .game-layout {
-  width: min(1600px, 100%);
+  width: min(1318px, 100%);
   margin-inline: auto;
 }
 
@@ -357,11 +357,16 @@ button:disabled {
 
 .board-stage {
   position: relative;
+  width: 100%;
+  max-width: 900px;
+  margin-left: auto;
 }
 
 .board-scroll {
   width: 100%;
+  max-width: 900px;
   max-height: calc(100vh - 265px);
+  box-sizing: border-box;
   overflow: auto;
   border: 2px solid #49351f;
   background: #a98964;
@@ -387,6 +392,8 @@ button:disabled {
 .game-board {
   display: block;
   width: 100%;
+  max-width: 900px;
+  max-height: 900px;
   height: auto;
   user-select: none;
 }
@@ -1143,6 +1150,10 @@ button:disabled {
 
   .board-scroll {
     max-height: 72vh;
+  }
+
+  .board-stage {
+    margin-inline: auto;
   }
 }
 
