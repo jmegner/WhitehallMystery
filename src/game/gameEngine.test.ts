@@ -11,6 +11,7 @@ import {
   investigatorStartingCrossingPreviewDestinations,
   coachReachableJackDestinations,
   randomProgressActions,
+  shortestJackRoutePreview,
 } from './gameEngine'
 import {
   possibleJackLocations,
@@ -159,6 +160,52 @@ describe('investigator movement previews', () => {
       reachableCrossings(startingCrossing.id, 2),
     )
     expect(investigatorStartingCrossingPreviewDestinations(ordinaryCrossing.id)).toEqual(new Set())
+  })
+})
+
+describe('Jack route previews', () => {
+  test('shows every segment and turn label on shortest future Street routes', () => {
+    const state = setupGame()
+    const target = 159
+    const preview = shortestJackRoutePreview(state, target)
+
+    expect(legalJackDestinations(state)).not.toContain(target)
+    expect(preview.segments.length).toBeGreaterThan(0)
+    expect(
+      preview.segments.every(
+        (segment) =>
+          segment.crossingPaths.length > 0 && segment.crossingPaths.every((crossings) => crossings.length > 0),
+      ),
+    ).toBe(true)
+    for (const segment of preview.segments) {
+      expect(segment.crossingPaths).toEqual(jackTransitions.get(segment.from)?.get(segment.to))
+    }
+    expect(Number(preview.turnLabels.get(target))).toBeGreaterThan(1)
+    expect(preview.turnLabels.has(state.currentJack as number)).toBe(false)
+    expect(shortestJackRoutePreview(state, legalJackDestinations(state)[0] as number)).toEqual({
+      segments: [],
+      turnLabels: new Map(),
+    })
+  })
+
+  test('labels both locations of a first-turn Coach route', () => {
+    const state = gameReducer(setupGame(), { type: 'setJackMoveType', moveType: 'coach' })
+    const currentChoices = new Set(legalJackDestinations(state))
+    const target = coachReachableJackDestinations(state).find((id) => !currentChoices.has(id)) as number
+    const preview = shortestJackRoutePreview(state, target)
+
+    expect(target).toBeDefined()
+    expect(
+      preview.segments.every(
+        (segment) =>
+          segment.crossingPaths.length > 0 && segment.crossingPaths.every((crossings) => crossings.length > 0),
+      ),
+    ).toBe(true)
+    for (const segment of preview.segments) {
+      expect(segment.crossingPaths).toEqual(jackTransitions.get(segment.from)?.get(segment.to))
+    }
+    expect(preview.turnLabels.get(target)).toContain('1b')
+    expect([...preview.turnLabels.values()]).toContain('1a')
   })
 })
 

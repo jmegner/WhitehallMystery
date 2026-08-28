@@ -473,6 +473,34 @@ button:disabled {
   filter: drop-shadow(0 0 2px rgb(255 250 235 / 90%));
 }
 
+.route-preview-line {
+  fill: none;
+  stroke: #0462c7;
+  stroke-width: 3;
+  stroke-dasharray: 7 5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  filter: drop-shadow(0 0 2px rgb(255 255 255 / 90%));
+}
+
+.route-preview-location {
+  fill: none;
+  stroke: #0462c7;
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  filter: drop-shadow(0 0 1px rgb(255 255 255 / 90%));
+}
+
+.route-turn-count {
+  fill: #171717;
+  stroke: rgb(255 250 235 / 96%);
+  stroke-width: 4px;
+  paint-order: stroke fill;
+  font: 900 13px 'Inter', sans-serif;
+  pointer-events: none;
+}
+
 .past-path-step {
   pointer-events: none;
 }
@@ -505,6 +533,11 @@ button:disabled {
 }
 
 .map-hit-target.investigator-start-hover-target {
+  pointer-events: auto;
+  cursor: help;
+}
+
+.map-hit-target.route-preview-hover-target {
   pointer-events: auto;
   cursor: help;
 }
@@ -628,6 +661,10 @@ button:disabled {
 
 .game-board.investigator-knowledge-preview .outcome-count-yes {
   fill: #b00068;
+}
+
+.outcome-count-turn {
+  fill: #171717;
 }
 
 .private-route {

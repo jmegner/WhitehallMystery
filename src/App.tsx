@@ -16,6 +16,7 @@ import {
   legalJackDestinations,
   coachReachableJackDestinations,
   randomProgressActions,
+  shortestJackRoutePreview,
 } from './game/gameEngine'
 import {
   movementLabel,
@@ -68,17 +69,35 @@ const BOARD_SIZE = 1200
 const BOARD_VIEWPORT = { x: 70, y: 10, width: 1100, height: 1090 } as const
 const EDGE_ARROW_LENGTH = 12
 const EDGE_ARROW_HALF_WIDTH = 10
-const ROUTE_CIRCLE_RADIUS = 18.5
-const COACH_REACHABLE_CIRCLE_RADIUS = 18.5
-const CLUE_CIRCLE_RADIUS = 18
-const OVERLAPPING_CLUE_CIRCLE_RADIUS = 23
-const POSSIBLE_CIRCLE_RADIUS = 23
-const OUTCOME_CIRCLE_RADIUS = 23
-const INNER_OUTCOME_CIRCLE_RADIUS = 20.5
-const OUTER_OUTCOME_CIRCLE_RADIUS = 26
-const INVESTIGATOR_MAYBE_CIRCLE_RADIUS = 21
+const LOCATION_OUTLINES = {
+  mapLocation: { radius: 18, strokeWidth: 0 },
+  legal: { radius: 18.5, strokeWidth: 2 },
+  clue: { radius: 18, strokeWidth: 3 },
+  clueOutsideLegal: { radius: 23, strokeWidth: 3 },
+  discovery: { radius: 19, strokeWidth: 4 },
+  possible: { radius: 23, strokeWidth: 4 },
+  outcomeInner: { radius: 20.5, strokeWidth: 4 },
+  outcomeOuter: { radius: 26, strokeWidth: 4 },
+  investigatorMaybe: { radius: 21, strokeWidth: 2 },
+  hoveredInvestigatorMaybe: { radius: 26, strokeWidth: 2 },
+  routePreview: { strokeWidth: 2.5 },
+} as const
+const LOCATION_OUTLINE_GAP = 1
+const enclosingLocationOutlineRadius = (outlines: Array<{ radius: number; strokeWidth: number }>) =>
+  Math.max(...outlines.map(({ radius, strokeWidth }) => radius + strokeWidth / 2)) +
+  LOCATION_OUTLINE_GAP +
+  LOCATION_OUTLINES.routePreview.strokeWidth / 2
+const ROUTE_CIRCLE_RADIUS = LOCATION_OUTLINES.legal.radius
+const COACH_REACHABLE_CIRCLE_RADIUS = LOCATION_OUTLINES.legal.radius
+const CLUE_CIRCLE_RADIUS = LOCATION_OUTLINES.clue.radius
+const OVERLAPPING_CLUE_CIRCLE_RADIUS = LOCATION_OUTLINES.clueOutsideLegal.radius
+const POSSIBLE_CIRCLE_RADIUS = LOCATION_OUTLINES.possible.radius
+const OUTCOME_CIRCLE_RADIUS = LOCATION_OUTLINES.possible.radius
+const INNER_OUTCOME_CIRCLE_RADIUS = LOCATION_OUTLINES.outcomeInner.radius
+const OUTER_OUTCOME_CIRCLE_RADIUS = LOCATION_OUTLINES.outcomeOuter.radius
+const INVESTIGATOR_MAYBE_CIRCLE_RADIUS = LOCATION_OUTLINES.investigatorMaybe.radius
 const INVESTIGATOR_MAYBE_CROSSING_SIZE = 15
-const HOVERED_INVESTIGATOR_MAYBE_CIRCLE_RADIUS = 26
+const HOVERED_INVESTIGATOR_MAYBE_CIRCLE_RADIUS = LOCATION_OUTLINES.hoveredInvestigatorMaybe.radius
 const HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE = 24
 const QUADRANTS: Quadrant[] = ['NW', 'NE', 'SW', 'SE']
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
@@ -238,7 +257,11 @@ function GameBoard({
   const [hoveredMaybeId, setHoveredMaybeId] = useState<number | null>(null)
   const [hoveredInvestigator, setHoveredInvestigator] = useState<InvestigatorColor | null>(null)
   const [hoveredInvestigatorStart, setHoveredInvestigatorStart] = useState<string | null>(null)
+  const [hoveredRouteTarget, setHoveredRouteTarget] = useState<number | null>(null)
   const hoveredOutcome = hoveredMaybeId === null ? undefined : possibleOutcomes.get(hoveredMaybeId)
+  const routePreview = hoveredRouteTarget === null
+    ? { segments: [], turnLabels: new Map<number, string>() }
+    : shortestJackRoutePreview(state, hoveredRouteTarget)
   const peekAtJack = showJackPeek && isInspectorInteraction(state.stage)
   const showJack = isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
   const privateSelections =
@@ -293,6 +316,27 @@ function GameBoard({
   for (const crossingId of hoveredInvestigatorMaybeCrossings) {
     for (const circleId of adjacentCirclesForCrossing(crossingId)) hoveredInvestigatorMaybeCircles.add(circleId)
   }
+  const routePreviewLocationRadius = (id: number) => {
+    const outlines: Array<{ radius: number; strokeWidth: number }> = [LOCATION_OUTLINES.mapLocation]
+    const legal = legalCircleIds.has(id) || coachReachableCircleIds.has(id)
+    if (legal || state.jackMoveSelection.path.includes(id)) outlines.push(LOCATION_OUTLINES.legal)
+    if (investigatorMaybeCircles.has(id)) outlines.push(LOCATION_OUTLINES.investigatorMaybe)
+    if (hoveredInvestigatorMaybeCircles.has(id)) outlines.push(LOCATION_OUTLINES.hoveredInvestigatorMaybe)
+    if (state.clueLocations.includes(id)) {
+      outlines.push(legal ? LOCATION_OUTLINES.clueOutsideLegal : LOCATION_OUTLINES.clue)
+    }
+    if (state.reachedDiscoveries.includes(id) || privateSelections.has(id)) {
+      outlines.push(LOCATION_OUTLINES.discovery)
+    }
+    if (showPossible && !hoveredOutcome && possibleIds.has(id)) outlines.push(LOCATION_OUTLINES.possible)
+    if (showPossible && hoveredOutcome) {
+      const remainsIfNo = hoveredOutcome.ifNo.has(id)
+      const remainsIfYes = hoveredOutcome.ifYes.has(id)
+      if (remainsIfNo && remainsIfYes) outlines.push(LOCATION_OUTLINES.outcomeOuter)
+      else if (remainsIfNo || remainsIfYes) outlines.push(LOCATION_OUTLINES.possible)
+    }
+    return enclosingLocationOutlineRadius(outlines)
+  }
   const boardImage = `${import.meta.env.BASE_URL}map_pptx_simplified.jpg`
 
   return (
@@ -335,6 +379,59 @@ function GameBoard({
           y2={segment.y2}
         />
       ))}
+
+      {routePreview.segments.flatMap(({ from, to, crossingPaths }) => crossingPaths.map((routeCrossings, option) => {
+        const fromCircle = circlesById.get(from)
+        const toCircle = circlesById.get(to)
+        if (!fromCircle || !toCircle) return null
+        const points = [
+          fromCircle,
+          ...routeCrossings.map((id) => crossingsById.get(id)).filter((crossing) => crossing !== undefined),
+          toCircle,
+        ]
+        const first = points[0]
+        const second = points[1]
+        const penultimate = points[points.length - 2]
+        const last = points[points.length - 1]
+        if (!first || !second || !penultimate || !last) return null
+        const startDistance = Math.hypot(second.x - first.x, second.y - first.y)
+        const endDistance = Math.hypot(last.x - penultimate.x, last.y - penultimate.y)
+        if (startDistance === 0 || endDistance === 0) return null
+        const displayedPoints = [
+          {
+            x: first.x + ((second.x - first.x) / startDistance) * ROUTE_CIRCLE_RADIUS,
+            y: first.y + ((second.y - first.y) / startDistance) * ROUTE_CIRCLE_RADIUS,
+          },
+          ...points.slice(1, -1),
+          {
+            x: last.x - ((last.x - penultimate.x) / endDistance) * ROUTE_CIRCLE_RADIUS,
+            y: last.y - ((last.y - penultimate.y) / endDistance) * ROUTE_CIRCLE_RADIUS,
+          },
+        ]
+        return (
+          <polyline
+            key={`route-preview-${from}-${to}-${option}`}
+            className="route-preview-line"
+            points={displayedPoints.map((point) => `${point.x},${point.y}`).join(' ')}
+            data-route-from={from}
+            data-route-to={to}
+            data-route-option={option}
+          />
+        )
+      }))}
+
+      {[...routePreview.turnLabels].map(([id]) => {
+        const circle = circlesById.get(id)
+        return circle ? (
+          <circle
+            key={`route-preview-location-${id}`}
+            className="route-preview-location"
+            cx={circle.x}
+            cy={circle.y}
+            r={routePreviewLocationRadius(id)}
+          />
+        ) : null
+      })}
 
       {[...investigatorMaybeCircles].map((id) => {
         const circle = circlesById.get(id)
@@ -483,6 +580,8 @@ function GameBoard({
         const selectable = legal || (state.stage === 'jackDiscoverySetup' && state.discoveryLocations.includes(circle.id))
         const coachReachable = coachReachableCircleIds.has(circle.id)
         const inferenceHoverTarget = showPossible && possibleOutcomes.has(circle.id)
+        const routePreviewHoverTarget =
+          state.stage === 'jackMove' && state.currentJack !== circle.id && !legalCircleIds.has(circle.id)
         const selected = state.jackMoveSelection.path.includes(circle.id)
         return (
           <g key={`circle-target-${circle.id}`}>
@@ -505,7 +604,7 @@ function GameBoard({
             {legal && <circle className="legal-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
             {selected && <circle className="selected-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
             <circle
-              className={`map-hit-target${selectable ? ' selectable' : ''}${inferenceHoverTarget ? ' inference-hover-target' : ''}`}
+              className={`map-hit-target${selectable ? ' selectable' : ''}${inferenceHoverTarget ? ' inference-hover-target' : ''}${routePreviewHoverTarget ? ' route-preview-hover-target' : ''}`}
               cx={circle.x}
               cy={circle.y}
               r="18"
@@ -516,12 +615,16 @@ function GameBoard({
                   onCircleMiddleClick(circle.id)
                 }
               }}
-              onMouseEnter={() => inferenceHoverTarget && setHoveredMaybeId(circle.id)}
-              onMouseLeave={() => inferenceHoverTarget && setHoveredMaybeId(null)}
+              onMouseEnter={() => {
+                if (inferenceHoverTarget) setHoveredMaybeId(circle.id)
+                if (routePreviewHoverTarget) setHoveredRouteTarget(circle.id)
+              }}
+              onMouseLeave={() => {
+                if (inferenceHoverTarget) setHoveredMaybeId(null)
+                if (routePreviewHoverTarget) setHoveredRouteTarget(null)
+              }}
               aria-label={`Location ${circle.id}${selectable ? ', selectable' : ''}`}
-            >
-              <title>Location {circle.id}</title>
-            </circle>
+            />
           </g>
         )
       })}
@@ -530,6 +633,7 @@ function GameBoard({
         [...possibleOutcomes].filter(([, outcome]) => outcome.ifNo.size > 0).map(([id, outcome]) => {
           const circle = circlesById.get(id)
           if (!circle) return null
+          const routeTurn = showInvestigatorKnowledge ? routePreview.turnLabels.get(id) : undefined
           const placeLeft = circle.x > BOARD_SIZE - 70
           const x = circle.x + (placeLeft ? -24 : 24)
           const y = circle.y < 40 ? circle.y + 30 : circle.y - 19
@@ -540,13 +644,37 @@ function GameBoard({
               x={x}
               y={y}
               textAnchor={placeLeft ? 'end' : 'start'}
-              aria-label={`Search outcome at ${id}: ${outcome.ifNo.size} if no, ${outcome.ifYes.size} if yes`}
+              aria-label={`Search outcome at ${id}: ${outcome.ifNo.size} if no, ${outcome.ifYes.size} if yes${routeTurn ? `, turn ${routeTurn}` : ''}`}
             >
               <tspan className="outcome-count-no">{outcome.ifNo.size}</tspan>
               <tspan className="outcome-count-separator">/</tspan>
               <tspan className="outcome-count-yes">{outcome.ifYes.size}</tspan>
+              {routeTurn && (
+                <>
+                  <tspan className="outcome-count-separator">/</tspan>
+                  <tspan className="outcome-count-turn">{routeTurn}</tspan>
+                </>
+              )}
             </text>
           )
+        })}
+
+      {[...routePreview.turnLabels]
+        .filter(([id]) => !(showInvestigatorKnowledge && (possibleOutcomes.get(id)?.ifNo.size ?? 0) > 0))
+        .map(([id, label]) => {
+          const circle = circlesById.get(id)
+          return circle ? (
+            <text
+              key={`route-turn-${id}`}
+              className="route-turn-count"
+              x={circle.x}
+              y={circle.y - 24}
+              textAnchor="middle"
+              aria-label={`Location ${id}: ${label} turns away`}
+            >
+              {label}
+            </text>
+          ) : null
         })}
 
       {crossings.map((crossing) => {
@@ -564,9 +692,7 @@ function GameBoard({
               onMouseEnter={() => investigatorStartPreview && setHoveredInvestigatorStart(crossing.id)}
               onMouseLeave={() => investigatorStartPreview && setHoveredInvestigatorStart(null)}
               aria-label={`Crossing ${crossing.id}${legal ? ', selectable' : ''}${investigatorStartPreview ? ', possible investigator start' : ''}`}
-            >
-              <title>Crossing {crossing.id}</title>
-            </circle>
+            />
           </g>
         )
       })}
