@@ -67,6 +67,9 @@ test('Jack can preview investigator reach and reveal a handoff by clicking the c
   await page.locator('.investigator-piece').first().hover()
   expect(await page.locator('.investigator-maybe-crossing').count()).toBeGreaterThan(0)
   expect(await page.locator('.investigator-maybe-circle').count()).toBeGreaterThan(0)
+  expect(await page.locator('.investigator-hover-turn-count').count()).toBeGreaterThan(0)
+  await expect(page.locator('.investigator-hover-turn-count', { hasText: /^1[ab]$/ })).toHaveCount(0)
+  await expect(page.locator('.investigator-route-preview-line')).toHaveCount(0)
   const crossingMaybe = page.locator('.investigator-maybe-crossing').first()
   await expect(crossingMaybe).toHaveCSS('stroke', 'rgb(255, 77, 0)')
   await expect(crossingMaybe).toHaveCSS('stroke-width', '3px')
@@ -241,12 +244,55 @@ test('Jack peek uses Street turn distances when hovering over Jack', async ({ pa
   await page.mouse.move(0, 0)
   await expect(investigatorRouteLines).toHaveCount(0)
 
+  await page.locator('.investigator-piece.yellow').hover()
+  expect(await page.locator('.investigator-hover-turn-count').count()).toBeGreaterThan(0)
+  await expect(page.locator('.investigator-hover-turn-count', { hasText: /^1[ab]$/ })).toHaveCount(0)
+  await expect(page.locator('.investigator-route-preview-line')).toHaveCount(0)
+  await expect(page.locator('.investigator-route-preview-crossing')).toHaveCount(0)
+  await page.mouse.move(0, 0)
+
   await page.getByLabel('Jack peek').check()
   await page.locator('.jack-marker').hover()
   await expect(page.locator('.route-turn-count')).toHaveCount(188)
   await expect(page.locator(`[aria-label^="Location ${destination}:"]`)).toHaveCount(0)
   await expect(page.locator('.route-preview-line')).toHaveCount(0)
   await expect(page.locator('.route-preview-location')).toHaveCount(0)
+})
+
+test('active investigator can stay by clicking the piece', async ({ page }) => {
+  await page.goto('/')
+  for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
+  await page.getByRole('button', { name: 'Lock in four locations' }).click()
+
+  const deployment = page.getByLabel('Available deployment crossings')
+  for (const crossing of ['FP', 'HP', 'HZ']) {
+    await deployment.getByRole('button', { name: crossing, exact: true }).click()
+  }
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
+
+  const destinations = page.getByLabel('Legal Jack destinations')
+  await destinations.getByRole('button').first().click()
+  await page.getByRole('button', { name: 'Record move privately' }).click()
+  await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
+  await expect(page.getByLabel('Legal yellow Investigator destinations').getByRole('button').first()).toHaveText('FP')
+
+  const yellow = page.getByLabel('Yellow Investigator at crossing FP, selectable to stay')
+  const positionBefore = await yellow.locator('circle').last().evaluate((circle) => ({
+    x: circle.getAttribute('cx'),
+    y: circle.getAttribute('cy'),
+  }))
+  await yellow.click()
+
+  await expect(page.getByRole('heading', { name: 'Blue Investigator: Move' })).toBeVisible()
+  await expect(page.locator('.investigator-piece.blue .active-investigator-ring')).toBeVisible()
+  await expect(page.getByLabel('Yellow Investigator at crossing FP')).toBeVisible()
+  expect(
+    await page.locator('.investigator-piece.yellow circle').last().evaluate((circle) => ({
+      x: circle.getAttribute('cx'),
+      y: circle.getAttribute('cy'),
+    })),
+  ).toEqual(positionBefore)
 })
 
 test('Rand enters the public investigator view without a reveal handoff', async ({ page }) => {

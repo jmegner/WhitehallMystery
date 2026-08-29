@@ -495,7 +495,8 @@ button:disabled {
 }
 
 .route-turn-count,
-.investigator-route-turn-count {
+.investigator-route-turn-count,
+.investigator-hover-turn-count {
   fill: #171717;
   stroke: rgb(255 250 235 / 96%);
   stroke-width: 4px;
@@ -725,6 +726,10 @@ button:disabled {
 .investigator-piece.hoverable {
   pointer-events: auto;
   cursor: help;
+}
+
+.investigator-piece.selectable {
+  cursor: pointer;
 }
 
 .investigator-maybe-circle,

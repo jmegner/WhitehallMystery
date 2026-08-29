@@ -9,6 +9,7 @@ import {
   investigatorPreviewDestinations,
   investigatorSetupPreviewDestinations,
   investigatorStartingCrossingPreviewDestinations,
+  investigatorShortestTurnLabels,
   coachReachableJackDestinations,
   jackRouteTurnLabels,
   randomProgressActions,
@@ -179,6 +180,19 @@ describe('investigator movement previews', () => {
     expect(legalInvestigatorDestinations(state)).toContain('HF')
   })
 
+  test('allows the active Investigator to stay at the current crossing', () => {
+    const base = setupGame()
+    const crossingId = base.investigatorPositions.yellow as string
+    const state: GameState = { ...base, stage: 'investigatorMove', activeInvestigator: 0 }
+
+    expect(legalInvestigatorDestinations(state)[0]).toBe(crossingId)
+    const next = gameReducer(state, { type: 'moveInvestigator', crossingId })
+
+    expect(next.investigatorPositions.yellow).toBe(crossingId)
+    expect(next.activeInvestigator).toBe(1)
+    expect(next.stage).toBe('investigatorMove')
+  })
+
   test('shows every shortest route to a crossing beyond one turn with labels beginning at 2a', () => {
     const start = 'HJ'
     const state: GameState = {
@@ -201,13 +215,20 @@ describe('investigator movement previews', () => {
     }
     const sameTurnAlternative = crossings
       .filter((crossing) => !oneTurn.has(crossing.id))
-      .map((crossing) => shortestInvestigatorRoutePreview(state, crossing.id).turnLabels.get(crossing.id))
-      .find((label) => label?.includes(','))
+      .map((crossing) => ({
+        crossingId: crossing.id,
+        label: shortestInvestigatorRoutePreview(state, crossing.id).turnLabels.get(crossing.id),
+      }))
+      .find(({ label }) => label?.includes(','))
     expect(sameTurnAlternative).toBeDefined()
-    const [firstArrival, secondArrival] = (sameTurnAlternative as string).split(',')
+    const [firstArrival, secondArrival] = (sameTurnAlternative?.label as string).split(',')
     expect(firstArrival?.endsWith('a')).toBe(true)
     expect(secondArrival?.endsWith('b')).toBe(true)
     expect(firstArrival?.slice(0, -1)).toBe(secondArrival?.slice(0, -1))
+    const pureTurnLabels = investigatorShortestTurnLabels(start)
+    expect(pureTurnLabels.get(sameTurnAlternative?.crossingId as string)).toBe(firstArrival)
+    expect([...pureTurnLabels.keys()].some((id) => oneTurn.has(id))).toBe(false)
+    expect(pureTurnLabels.has(start)).toBe(false)
     expect(shortestInvestigatorRoutePreview(state, 'HF')).toEqual({ segments: [], turnLabels: new Map() })
   })
 })

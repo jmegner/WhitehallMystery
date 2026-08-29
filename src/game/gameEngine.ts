@@ -317,7 +317,7 @@ export const legalInvestigatorDestinations = (state: GameState): string[] => {
   )
   return [...reachableCrossings(start, 2)]
     .filter((crossingId) => !occupiedByOthers.has(crossingId))
-    .sort((a, b) => a.localeCompare(b))
+    .sort((a, b) => (a === start ? -1 : b === start ? 1 : a.localeCompare(b)))
 }
 
 export interface InvestigatorRoutePreview {
@@ -326,6 +326,30 @@ export interface InvestigatorRoutePreview {
 }
 
 const emptyInvestigatorRoutePreview = (): InvestigatorRoutePreview => ({ segments: [], turnLabels: new Map() })
+
+export const investigatorShortestTurnLabels = (start: string): Map<string, string> => {
+  if (!crossingsById.has(start)) return new Map()
+  const distances = new Map<string, number>([[start, 0]])
+  const queue = [start]
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index]
+    if (!current) continue
+    const distance = distances.get(current) ?? 0
+    for (const destination of investigatorTransitions.get(current)?.keys() ?? []) {
+      if (distances.has(destination)) continue
+      distances.set(destination, distance + 1)
+      queue.push(destination)
+    }
+  }
+  return new Map(
+    [...distances]
+      .filter(([, distance]) => distance > 2)
+      .map(([crossingId, distance]) => [
+        crossingId,
+        `${Math.ceil(distance / 2)}${distance % 2 === 1 ? 'a' : 'b'}`,
+      ]),
+  )
+}
 
 export const shortestInvestigatorRoutePreview = (state: GameState, target: string): InvestigatorRoutePreview => {
   const start = state.investigatorPositions[activeInvestigatorColor(state)]

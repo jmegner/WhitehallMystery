@@ -13,6 +13,7 @@ import {
   investigatorPreviewDestinations,
   investigatorSetupPreviewDestinations,
   investigatorStartingCrossingPreviewDestinations,
+  investigatorShortestTurnLabels,
   jackRouteTurnLabels,
   legalJackDestinations,
   coachReachableJackDestinations,
@@ -322,6 +323,7 @@ function GameBoard({
     : []
   const pastPathSegments = trimmedRouteSegments(pastPath)
   const canPreviewPlacedInvestigators = state.stage === 'jackChooseStart' || state.stage === 'jackMove'
+  const canPreviewInvestigatorDistances = canPreviewPlacedInvestigators || isInspectorInteraction(state.stage)
   const displayedInvestigatorColors = canPreviewPlacedInvestigators
     ? INVESTIGATOR_ORDER.filter((color) => showInvestigatorMaybes || hoveredInvestigator === color)
     : []
@@ -344,9 +346,15 @@ function GameBoard({
   const hoveredInvestigatorMaybeCrossings =
     state.stage === 'jackDiscoverySetup' && hoveredInvestigatorStart
       ? investigatorStartingCrossingPreviewDestinations(hoveredInvestigatorStart)
-      : showInvestigatorMaybes && hoveredInvestigator
+      : canPreviewPlacedInvestigators && showInvestigatorMaybes && hoveredInvestigator
         ? investigatorPreviewDestinations(state, hoveredInvestigator)
         : new Set<string>()
+  const hoveredInvestigatorStartId = hoveredInvestigator
+    ? state.investigatorPositions[hoveredInvestigator]
+    : undefined
+  const hoveredInvestigatorTurnLabels = hoveredInvestigatorStartId
+    ? investigatorShortestTurnLabels(hoveredInvestigatorStartId)
+    : new Map<string, string>()
   const hoveredInvestigatorColor = hoveredInvestigatorStart ? 'yellow' : hoveredInvestigator
   const hoveredInvestigatorMaybeCircles = new Set<number>()
   for (const crossingId of hoveredInvestigatorMaybeCrossings) {
@@ -817,6 +825,22 @@ function GameBoard({
         ) : null
       })}
 
+      {[...hoveredInvestigatorTurnLabels].map(([id, label]) => {
+        const crossing = crossingsById.get(id)
+        return crossing ? (
+          <text
+            key={`investigator-hover-turn-${id}`}
+            className="investigator-hover-turn-count"
+            x={crossing.x}
+            y={crossing.y - 19}
+            textAnchor="middle"
+            aria-label={`Crossing ${id}: ${label} turns from ${hoveredInvestigator} investigator`}
+          >
+            {label}
+          </text>
+        ) : null
+      })}
+
       {showCrossingIds &&
         crossings.map((crossing) => (
           <text
@@ -846,13 +870,16 @@ function GameBoard({
         const crossingId = state.investigatorPositions[color]
         const crossing = crossingId ? crossingsById.get(crossingId) : undefined
         const active = isInspectorInteraction(state.stage) && activeInvestigatorColor(state) === color
+        const selectable = crossing ? legalCrossingIds.has(crossing.id) : false
         return crossing ? (
           <g
             key={`investigator-${color}`}
-            className={`investigator-piece ${color}${canPreviewPlacedInvestigators ? ' hoverable' : ''}`}
+            className={`investigator-piece ${color}${canPreviewInvestigatorDistances ? ' hoverable' : ''}${selectable ? ' selectable' : ''}`}
             style={investigatorPieceStyle(color)}
-            onMouseEnter={() => canPreviewPlacedInvestigators && setHoveredInvestigator(color)}
-            onMouseLeave={() => canPreviewPlacedInvestigators && setHoveredInvestigator(null)}
+            onMouseEnter={() => canPreviewInvestigatorDistances && setHoveredInvestigator(color)}
+            onMouseLeave={() => canPreviewInvestigatorDistances && setHoveredInvestigator(null)}
+            onClick={selectable ? () => onCrossing(crossing.id) : undefined}
+            aria-label={`${displayColor(color)} Investigator at crossing ${crossing.id}${selectable ? ', selectable to stay' : ''}`}
           >
             {active && <circle className="active-investigator-ring" cx={crossing.x} cy={crossing.y} r="15" />}
             <circle cx={crossing.x} cy={crossing.y} r="10" />
