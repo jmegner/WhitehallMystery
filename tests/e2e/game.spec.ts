@@ -247,9 +247,9 @@ test('Jack can preview all shortest routes to a hovered future location', async 
 
   await page.getByLabel('inv know').check()
   await target.hover()
-  const mergedOutcome = page.locator('.possible-outcome-count:has(.outcome-count-turn)').first()
-  await expect(mergedOutcome).toHaveText(/\d+\/\d+\/(?:1|\d+)/)
-  await expect(mergedOutcome.locator('.outcome-count-turn')).toHaveCSS('fill', 'rgb(23, 23, 23)')
+  await expect(page.locator('.possible-outcome-count .outcome-count-turn')).toHaveCount(0)
+  await expect(page.locator('.possible-outcome-count').first()).toHaveText(/^\d+\/\d+$/)
+  await expect(page.locator('.route-turn-count').first()).toBeVisible()
 })
 
 test('Jack peek uses Street turn distances when hovering over Jack', async ({ page }) => {

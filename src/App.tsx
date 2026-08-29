@@ -333,8 +333,6 @@ function GameBoard({
     : hoveredJack && canPreviewJackDistances
       ? jackHoverTurnLabels
       : routePreview.turnLabels
-  const mergeTurnLabelsWithOutcomes =
-    showPossible && (showInvestigatorKnowledge || (hoveredJack && canPreviewJackDistances))
   const showJack = isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
   const activeInvestigatorStartId = isInspectorInteraction(state.stage)
     ? state.investigatorPositions[activeInvestigatorColor(state)]
@@ -796,7 +794,6 @@ function GameBoard({
         [...possibleOutcomes].filter(([, outcome]) => outcome.ifNo.size > 0).map(([id, outcome]) => {
           const circle = circlesById.get(id)
           if (!circle) return null
-          const routeTurn = mergeTurnLabelsWithOutcomes ? displayedTurnLabels.get(id) : undefined
           const position = indicatorTextPosition(
             circle.x,
             circle.y,
@@ -811,23 +808,16 @@ function GameBoard({
               x={position.x}
               y={position.y}
               textAnchor={position.textAnchor}
-              aria-label={`Search outcome at ${id}: ${outcome.ifNo.size} if no, ${outcome.ifYes.size} if yes${routeTurn ? `, turn ${routeTurn}` : ''}`}
+              aria-label={`Search outcome at ${id}: ${outcome.ifNo.size} if no, ${outcome.ifYes.size} if yes`}
             >
               <tspan className="outcome-count-no">{outcome.ifNo.size}</tspan>
               <tspan className="outcome-count-separator">/</tspan>
               <tspan className="outcome-count-yes">{outcome.ifYes.size}</tspan>
-              {routeTurn && (
-                <>
-                  <tspan className="outcome-count-separator">/</tspan>
-                  <tspan className="outcome-count-turn">{routeTurn}</tspan>
-                </>
-              )}
             </text>
           )
         })}
 
       {[...displayedTurnLabels]
-        .filter(([id]) => !(mergeTurnLabelsWithOutcomes && (possibleOutcomes.get(id)?.ifNo.size ?? 0) > 0))
         .map(([id, label]) => {
           const circle = circlesById.get(id)
           if (!circle) return null
