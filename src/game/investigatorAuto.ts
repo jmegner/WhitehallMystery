@@ -18,8 +18,16 @@ const nextAutomaticActions = (
   if (state.stage !== 'investigatorAction' || state.inspectorActionMode !== 'search') return []
 
   const outcomes = resolveOutcomes(state.publicRound)
+  const mostRecentlyRevealedDiscovery = state.reachedDiscoveries.at(-1)
+  const alreadyResolvedLocations = new Set(state.clueLocations)
+  if (mostRecentlyRevealedDiscovery !== undefined) {
+    alreadyResolvedLocations.add(mostRecentlyRevealedDiscovery)
+  }
   const possibleAdjacent = legalInspectorActionCircles(state).filter(
-    (id) => !state.checkedThisAction.includes(id) && outcomes.has(id),
+    (id) =>
+      !state.checkedThisAction.includes(id) &&
+      !alreadyResolvedLocations.has(id) &&
+      outcomes.has(id),
   )
 
   if (state.checkedThisAction.length > 0) {

@@ -73,4 +73,44 @@ describe('investigator auto actions', () => {
 
     expect(result.commands).toEqual([])
   })
+
+  test('skips clues and the latest revealed discovery, then ends an existing search', () => {
+    const crossing = crossings.find(
+      ({ id }) => adjacentCirclesForCrossing(id).length >= 4 && !adjacentCirclesForCrossing(id).includes(33),
+    )!
+    const state: GameState = {
+      ...createInitialGame(),
+      stage: 'investigatorAction',
+      activeInvestigator: 2,
+      currentJack: 33,
+      roundTrail: [33],
+      publicRound: { start: 33, moves: [], observations: [] },
+      investigatorPositions: { red: crossing.id },
+      inspectorActionMode: 'search',
+    }
+    const [alreadySearched, knownClue, latestDiscovery, remainingPossible] =
+      legalInspectorActionCircles(state)
+    state.checkedThisAction = [alreadySearched!]
+    state.clueLocations = [knownClue!]
+    state.reachedDiscoveries = [99, latestDiscovery!]
+    const outcomes = new Map(
+      [knownClue, latestDiscovery, remainingPossible].map((circleId) => [
+        circleId!,
+        {
+          ifNo: new Set([33]),
+          ifYes: new Set([circleId!]),
+          positiveMeansJackIsThereNow: false,
+        },
+      ]),
+    )
+
+    const result = automaticInvestigatorActions(createGameHistory(state), () => outcomes)
+    const actions = result.commands.flatMap((command) => command.type === 'apply' ? [command.action] : [])
+
+    expect(actions).toEqual([
+      { type: 'searchCircle', circleId: remainingPossible },
+      { type: 'passInspectorAction' },
+    ])
+    expect(currentHistoryState(result.next).stage).toBe('investigatorTurnResult')
+  })
 })
