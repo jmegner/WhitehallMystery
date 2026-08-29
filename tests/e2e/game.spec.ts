@@ -364,6 +364,38 @@ test('active investigator can stay by clicking the piece', async ({ page }) => {
   ).toEqual(positionBefore)
 })
 
+test('moving to a hovered crossing clears its shortest-path indicators', async ({ page }) => {
+  await page.goto('/')
+  for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
+  await page.getByRole('button', { name: 'Lock in four locations' }).click()
+
+  const deployment = page.getByLabel('Available deployment crossings')
+  for (const crossing of ['FP', 'HP', 'HZ']) {
+    await deployment.getByRole('button', { name: crossing, exact: true }).click()
+  }
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
+  await page.getByLabel('Legal Jack destinations').getByRole('button').first().click()
+  await page.getByRole('button', { name: 'Record move privately' }).click()
+
+  const moveChoice = page.locator(
+    '.investigator-distance-preview-hover-target:not([aria-label^="Crossing FP,"])',
+  ).first()
+  await moveChoice.hover()
+  expect(await page.locator('.investigator-hover-turn-count').count()).toBeGreaterThan(0)
+  await moveChoice.click()
+
+  await expect(page.getByRole('heading', { name: 'Blue Investigator: Move' })).toBeVisible()
+  await expect(page.locator('.investigator-hover-turn-count')).toHaveCount(0)
+  await expect(page.locator('.investigator-route-turn-count')).toHaveCount(0)
+  await expect(page.locator('.investigator-route-preview-line')).toHaveCount(0)
+  await expect(page.locator('.investigator-route-preview-crossing')).toHaveCount(0)
+
+  await page.mouse.move(0, 0)
+  await page.locator('.investigator-piece.yellow').hover()
+  expect(await page.locator('.investigator-hover-turn-count').count()).toBeGreaterThan(0)
+})
+
 test('Rand enters the public investigator view without a reveal handoff', async ({ page }) => {
   await page.goto('/')
   const rand = page.getByRole('button', { name: 'Rand', exact: true })

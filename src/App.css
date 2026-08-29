@@ -689,10 +689,6 @@ button:disabled {
   fill: #b00068;
 }
 
-.outcome-count-turn {
-  fill: #171717;
-}
-
 .private-route {
   stroke: #ff03a7;
   stroke-width: 5;

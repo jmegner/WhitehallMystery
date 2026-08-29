@@ -312,8 +312,14 @@ function GameBoard({
   const [hoveredRouteTarget, setHoveredRouteTarget] = useState<number | null>(null)
   const [hoveredInvestigatorRouteTarget, setHoveredInvestigatorRouteTarget] = useState<string | null>(null)
   const [hoveredInvestigatorMoveChoice, setHoveredInvestigatorMoveChoice] = useState<string | null>(null)
+  const [suppressedInvestigatorHoverCrossing, setSuppressedInvestigatorHoverCrossing] = useState<string | null>(null)
   const [hoveredJack, setHoveredJack] = useState(false)
   const [hoveredDiscoveryRouteStart, setHoveredDiscoveryRouteStart] = useState<number | null>(null)
+  const clearCrossingHoverPreviews = () => {
+    setHoveredInvestigatorStart(null)
+    setHoveredInvestigatorRouteTarget(null)
+    setHoveredInvestigatorMoveChoice(null)
+  }
   const hoveredOutcome = hoveredMaybeId === null ? undefined : possibleOutcomes.get(hoveredMaybeId)
   const peekAtJack = showJackPeek && isInspectorInteraction(state.stage)
   const canPreviewJackDistances = state.stage === 'jackMove' || peekAtJack
@@ -856,16 +862,20 @@ function GameBoard({
               cx={crossing.x}
               cy={crossing.y}
               r="12"
-              onClick={() => legal && onCrossing(crossing.id)}
+              onClick={() => {
+                if (!legal) return
+                clearCrossingHoverPreviews()
+                setHoveredInvestigator(null)
+                setSuppressedInvestigatorHoverCrossing(crossing.id)
+                onCrossing(crossing.id)
+              }}
               onMouseEnter={() => {
                 if (investigatorStartPreview) setHoveredInvestigatorStart(crossing.id)
                 if (investigatorRoutePreviewTarget) setHoveredInvestigatorRouteTarget(crossing.id)
                 if (investigatorMoveDistancePreviewTarget) setHoveredInvestigatorMoveChoice(crossing.id)
               }}
               onMouseLeave={() => {
-                if (investigatorStartPreview) setHoveredInvestigatorStart(null)
-                if (investigatorRoutePreviewTarget) setHoveredInvestigatorRouteTarget(null)
-                if (investigatorMoveDistancePreviewTarget) setHoveredInvestigatorMoveChoice(null)
+                clearCrossingHoverPreviews()
               }}
               aria-label={`Crossing ${crossing.id}${legal ? ', selectable' : ''}${investigatorStartPreview ? ', possible investigator start' : ''}`}
             />
@@ -965,8 +975,17 @@ function GameBoard({
             key={`investigator-${color}`}
             className={`investigator-piece ${color}${canPreviewInvestigatorDistances ? ' hoverable' : ''}${selectable ? ' selectable' : ''}`}
             style={investigatorPieceStyle(color)}
-            onMouseEnter={() => canPreviewInvestigatorDistances && setHoveredInvestigator(color)}
-            onMouseLeave={() => canPreviewInvestigatorDistances && setHoveredInvestigator(null)}
+            onMouseEnter={() => {
+              if (canPreviewInvestigatorDistances && suppressedInvestigatorHoverCrossing !== crossing.id) {
+                setHoveredInvestigator(color)
+              }
+            }}
+            onMouseLeave={() => {
+              if (canPreviewInvestigatorDistances) setHoveredInvestigator(null)
+              if (suppressedInvestigatorHoverCrossing === crossing.id) {
+                setSuppressedInvestigatorHoverCrossing(null)
+              }
+            }}
             onClick={selectable ? () => onCrossing(crossing.id) : undefined}
             aria-label={`${displayColor(color)} Investigator at crossing ${crossing.id}${selectable ? ', selectable to stay' : ''}`}
           >
