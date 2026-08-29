@@ -27,6 +27,7 @@ import {
   possibleJackSearchOutcomesAfterMove,
   type SearchOutcome,
 } from './game/inference'
+import { automaticInvestigatorActions } from './game/investigatorAuto'
 import {
   actionCount,
   canBigUndo,
@@ -1394,45 +1395,6 @@ function App() {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY) : false
   })
-  const automaticInvestigatorActions = (initial: GameHistory) => {
-    const commands: Parameters<typeof gameHistoryReducer>[1][] = []
-    let next = initial
-    while (commands.length < 12) {
-      const nextState = currentHistoryState(next)
-      if (nextState.stage !== 'investigatorAction' || nextState.inspectorActionMode !== 'search') break
-      const adjacent = legalInspectorActionCircles(nextState)
-      const outcomes = possibleJackSearchOutcomes(nextState.publicRound)
-      const possibleAdjacent = adjacent.filter(
-        (id) => !nextState.checkedThisAction.includes(id) && outcomes.has(id),
-      )
-      let actions: GameAction[] = []
-      if (nextState.checkedThisAction.length > 0) {
-        if (possibleAdjacent.length === 0) actions = [{ type: 'passInspectorAction' }]
-        else if (possibleAdjacent.length === 1) {
-          actions = [{ type: 'searchCircle', circleId: possibleAdjacent[0]! }]
-        }
-      } else if (possibleAdjacent.length === 0) {
-        actions = [{ type: 'passInspectorAction' }]
-      } else if (
-        possibleAdjacent.length === 1 &&
-        outcomes.get(possibleAdjacent[0]!)?.positiveMeansJackIsThereNow
-      ) {
-        actions = [
-          { type: 'setInspectorActionMode', mode: 'arrest' },
-          { type: 'arrestCircle', circleId: possibleAdjacent[0]! },
-        ]
-      }
-      if (actions.length === 0) break
-      for (const action of actions) {
-        const command = { type: 'apply' as const, action }
-        const advanced = gameHistoryReducer(next, command)
-        if (advanced === next) return { next, commands }
-        next = advanced
-        commands.push(command)
-      }
-    }
-    return { next, commands }
-  }
   const applyHistoryCommands = (
     commands: Parameters<typeof gameHistoryReducer>[1][],
     runInvestigatorAuto = false,
