@@ -37,6 +37,7 @@ import {
   waterGroups,
 } from './mapData'
 import {
+  ALT_ANGLE_STORAGE_KEY,
   CROSSING_IDS_STORAGE_KEY,
   GAME_STORAGE_KEY,
   INVESTIGATOR_AUTO_STORAGE_KEY,
@@ -367,12 +368,14 @@ describe('local persistence', () => {
     const storage = createMemoryStorage()
     const state = setupGame()
     saveStoredGame(storage, state)
+    saveBooleanPreference(storage, ALT_ANGLE_STORAGE_KEY, true)
     saveBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY, true)
     saveBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY, true)
     saveBooleanPreference(storage, JACK_PEEK_STORAGE_KEY, true)
     saveBooleanPreference(storage, INVESTIGATOR_KNOW_STORAGE_KEY, true)
     saveBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY, true)
     expect(loadStoredGame(storage)).toEqual(state)
+    expect(loadBooleanPreference(storage, ALT_ANGLE_STORAGE_KEY)).toBe(true)
     expect(loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY)).toBe(true)
     expect(loadBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY)).toBe(true)
     expect(loadBooleanPreference(storage, JACK_PEEK_STORAGE_KEY)).toBe(true)

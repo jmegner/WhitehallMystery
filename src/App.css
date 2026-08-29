@@ -290,6 +290,12 @@ button:disabled {
   font-size: 0.72rem;
 }
 
+.history-controls .side-history-button {
+  min-width: 0;
+  padding-inline: 4px;
+  font-size: 0.62rem;
+}
+
 .action-counter {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -304,6 +310,10 @@ button:disabled {
   padding: 8px 12px;
 }
 
+.handoff-card .history-controls .side-history-button {
+  padding-inline: 4px;
+}
+
 .handoff-card .action-counter {
   min-width: auto;
   color: #cfc4b4;
@@ -313,6 +323,7 @@ button:disabled {
 
 .possibility-toggle,
 .crossing-toggle,
+.alternate-angle-toggle,
 .past-path-toggle,
 .investigator-maybes-toggle,
 .investigator-knowledge-toggle,
@@ -327,6 +338,7 @@ button:disabled {
 
 .possibility-toggle input,
 .crossing-toggle input,
+.alternate-angle-toggle input,
 .past-path-toggle input,
 .investigator-maybes-toggle input,
 .investigator-knowledge-toggle input,

@@ -50,6 +50,7 @@ import {
   reachableCrossings,
 } from './game/mapData'
 import {
+  ALT_ANGLE_STORAGE_KEY,
   CROSSING_IDS_STORAGE_KEY,
   INVESTIGATOR_AUTO_STORAGE_KEY,
   INVESTIGATOR_KNOW_STORAGE_KEY,
@@ -114,6 +115,39 @@ const OUTER_OUTCOME_CIRCLE_RADIUS = LOCATION_OUTLINES.outcomeOuter.radius
 const INVESTIGATOR_MAYBE_CIRCLE_RADIUS = LOCATION_OUTLINES.investigatorMaybe.radius
 const INVESTIGATOR_MAYBE_CROSSING_SIZE = 15
 const HOVERED_INVESTIGATOR_MAYBE_CIRCLE_RADIUS = LOCATION_OUTLINES.hoveredInvestigatorMaybe.radius
+
+type IndicatorAngle = 'above' | 'upper-right'
+
+const INDICATOR_OFFSETS = {
+  location: { above: 24, diagonalX: 17, diagonalY: 13 },
+  crossingTurn: { above: 15, diagonalX: 12, diagonalY: 7 },
+  crossingId: { above: 9, diagonalX: 10, diagonalY: 6 },
+} as const
+
+const indicatorTextPosition = (
+  x: number,
+  y: number,
+  usualAngle: IndicatorAngle,
+  alternateAngle: boolean,
+  offsets: { above: number; diagonalX: number; diagonalY: number },
+) => {
+  const angle = alternateAngle
+    ? usualAngle === 'above' ? 'upper-right' : 'above'
+    : usualAngle
+  if (angle === 'above') {
+    return {
+      x,
+      y: y < 40 ? y + offsets.above + 6 : y - offsets.above,
+      textAnchor: 'middle' as const,
+    }
+  }
+  const placeLeft = x > BOARD_SIZE - 70
+  return {
+    x: x + (placeLeft ? -offsets.diagonalX : offsets.diagonalX),
+    y: y < 40 ? y + offsets.diagonalY + 11 : y - offsets.diagonalY,
+    textAnchor: placeLeft ? 'end' as const : 'start' as const,
+  }
+}
 const HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE = 24
 const QUADRANTS: Quadrant[] = ['NW', 'NE', 'SW', 'SE']
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
@@ -210,6 +244,7 @@ interface BoardProps {
   possibleOutcomes: Map<number, SearchOutcome>
   showPossible: boolean
   showCrossingIds: boolean
+  alternateIndicatorAngle: boolean
   showPastPath: boolean
   showInvestigatorMaybes: boolean
   showInvestigatorKnowledge: boolean
@@ -261,6 +296,7 @@ function GameBoard({
   possibleOutcomes,
   showPossible,
   showCrossingIds,
+  alternateIndicatorAngle,
   showPastPath,
   showInvestigatorMaybes,
   showInvestigatorKnowledge,
@@ -373,6 +409,8 @@ function GameBoard({
   const hoveredInvestigatorTurnLabels = investigatorDistanceStartId
     ? investigatorShortestTurnLabels(investigatorDistanceStartId, includeFirstTurnInvestigatorLabels)
     : new Map<string, string>()
+  const showCrossingTurnLabels =
+    investigatorRoutePreview.turnLabels.size > 0 || hoveredInvestigatorTurnLabels.size > 0
   const hoveredInvestigatorColor = hoveredInvestigatorStart ? 'yellow' : hoveredInvestigator
   const hoveredInvestigatorMaybeCircles = new Set<number>()
   for (const crossingId of hoveredInvestigatorMaybeCrossings) {
@@ -759,16 +797,20 @@ function GameBoard({
           const circle = circlesById.get(id)
           if (!circle) return null
           const routeTurn = mergeTurnLabelsWithOutcomes ? displayedTurnLabels.get(id) : undefined
-          const placeLeft = circle.x > BOARD_SIZE - 70
-          const x = circle.x + (placeLeft ? -24 : 24)
-          const y = circle.y < 40 ? circle.y + 30 : circle.y - 19
+          const position = indicatorTextPosition(
+            circle.x,
+            circle.y,
+            'upper-right',
+            alternateIndicatorAngle,
+            INDICATOR_OFFSETS.location,
+          )
           return (
             <text
               key={`possible-count-${id}`}
               className="possible-outcome-count"
-              x={x}
-              y={y}
-              textAnchor={placeLeft ? 'end' : 'start'}
+              x={position.x}
+              y={position.y}
+              textAnchor={position.textAnchor}
               aria-label={`Search outcome at ${id}: ${outcome.ifNo.size} if no, ${outcome.ifYes.size} if yes${routeTurn ? `, turn ${routeTurn}` : ''}`}
             >
               <tspan className="outcome-count-no">{outcome.ifNo.size}</tspan>
@@ -788,18 +830,26 @@ function GameBoard({
         .filter(([id]) => !(mergeTurnLabelsWithOutcomes && (possibleOutcomes.get(id)?.ifNo.size ?? 0) > 0))
         .map(([id, label]) => {
           const circle = circlesById.get(id)
-          return circle ? (
+          if (!circle) return null
+          const position = indicatorTextPosition(
+            circle.x,
+            circle.y,
+            'above',
+            alternateIndicatorAngle,
+            INDICATOR_OFFSETS.location,
+          )
+          return (
             <text
               key={`route-turn-${id}`}
               className="route-turn-count"
-              x={circle.x}
-              y={circle.y - 24}
-              textAnchor="middle"
+              x={position.x}
+              y={position.y}
+              textAnchor={position.textAnchor}
               aria-label={`Location ${id}: ${label} turns away`}
             >
               {label}
             </text>
-          ) : null
+          )
         })}
 
       {crossings.map((crossing) => {
@@ -835,48 +885,73 @@ function GameBoard({
 
       {[...investigatorRoutePreview.turnLabels].map(([id, label]) => {
         const crossing = crossingsById.get(id)
-        return crossing ? (
+        if (!crossing) return null
+        const position = indicatorTextPosition(
+          crossing.x,
+          crossing.y,
+          'above',
+          alternateIndicatorAngle,
+          INDICATOR_OFFSETS.crossingTurn,
+        )
+        return (
           <text
             key={`investigator-route-turn-${id}`}
             className="investigator-route-turn-count"
-            x={crossing.x}
-            y={crossing.y - 19}
-            textAnchor="middle"
+            x={position.x}
+            y={position.y}
+            textAnchor={position.textAnchor}
             aria-label={`Crossing ${id}: ${label} turns away`}
           >
             {label}
           </text>
-        ) : null
+        )
       })}
 
       {[...hoveredInvestigatorTurnLabels].map(([id, label]) => {
         const crossing = crossingsById.get(id)
-        return crossing ? (
+        if (!crossing) return null
+        const position = indicatorTextPosition(
+          crossing.x,
+          crossing.y,
+          'above',
+          alternateIndicatorAngle,
+          INDICATOR_OFFSETS.crossingTurn,
+        )
+        return (
           <text
             key={`investigator-hover-turn-${id}`}
             className="investigator-hover-turn-count"
-            x={crossing.x}
-            y={crossing.y - 19}
-            textAnchor="middle"
+            x={position.x}
+            y={position.y}
+            textAnchor={position.textAnchor}
             aria-label={`Crossing ${id}: ${label} turns from ${investigatorDistanceStartId}`}
           >
             {label}
           </text>
-        ) : null
+        )
       })}
 
-      {showCrossingIds &&
-        crossings.map((crossing) => (
-          <text
-            key={`crossing-label-${crossing.id}`}
-            className="crossing-id-label"
-            x={crossing.x}
-            y={crossing.y - 9}
-            textAnchor="middle"
-          >
-            {crossing.id}
-          </text>
-        ))}
+      {showCrossingIds && !showCrossingTurnLabels &&
+        crossings.map((crossing) => {
+          const position = indicatorTextPosition(
+            crossing.x,
+            crossing.y,
+            'above',
+            alternateIndicatorAngle,
+            INDICATOR_OFFSETS.crossingId,
+          )
+          return (
+            <text
+              key={`crossing-label-${crossing.id}`}
+              className="crossing-id-label"
+              x={position.x}
+              y={position.y}
+              textAnchor={position.textAnchor}
+            >
+              {crossing.id}
+            </text>
+          )
+        })}
 
       {pastPath.slice(1).map((circle, index) => (
         <g
@@ -1011,7 +1086,10 @@ function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand
   const mode = undoMode(history)
   return (
     <div className="history-controls" aria-label="Action history controls">
-      <button type="button" disabled={!canBigUndo(history)} onClick={onBigUndo}>
+      <span className="action-counter" aria-label={`${actionCount(history)} player actions`}>
+        Actions {actionCount(history)}
+      </span>
+      <button className="side-history-button" type="button" disabled={!canBigUndo(history)} onClick={onBigUndo}>
         Undo Side
       </button>
       <button type="button" disabled={mode === 'disabled'} onClick={onUndo}>
@@ -1020,8 +1098,8 @@ function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand
       <button type="button" disabled={!canRedo(history)} onClick={onRedo}>
         Redo
       </button>
-      <button type="button" disabled={!canRedoAll(history)} onClick={onRedoAll}>
-        Redo All
+      <button className="side-history-button" type="button" disabled={!canRedoAll(history)} onClick={onRedoAll}>
+        Redo Side
       </button>
       <button type="button" onClick={onRand}>
         Rand
@@ -1029,9 +1107,6 @@ function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand
       <button type="button" onClick={onRandSide}>
         Rand Side
       </button>
-      <span className="action-counter" aria-label={`${actionCount(history)} player actions`}>
-        Actions {actionCount(history)}
-      </span>
     </div>
   )
 }
@@ -1401,6 +1476,10 @@ function App() {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY) : false
   })
+  const [alternateIndicatorAngle, setAlternateIndicatorAngle] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, ALT_ANGLE_STORAGE_KEY) : false
+  })
   const [showPastPath, setShowPastPath] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, PAST_PATH_STORAGE_KEY) : false
@@ -1672,6 +1751,19 @@ function App() {
                 />
                 crossing ids
               </label>
+              <label className="alternate-angle-toggle">
+                <input
+                  type="checkbox"
+                  checked={alternateIndicatorAngle}
+                  onChange={(event) => {
+                    const checked = event.target.checked
+                    setAlternateIndicatorAngle(checked)
+                    const storage = browserStorage()
+                    if (storage) saveBooleanPreference(storage, ALT_ANGLE_STORAGE_KEY, checked)
+                  }}
+                />
+                alt angle
+              </label>
               {isPrivateJackView(state.stage) && (
                 <label className="past-path-toggle">
                   <input
@@ -1768,6 +1860,7 @@ function App() {
                 possibleOutcomes={possibleOutcomes}
                 showPossible={showPossibilityMarkers}
                 showCrossingIds={showCrossingIds}
+                alternateIndicatorAngle={alternateIndicatorAngle}
                 showPastPath={showPastPath}
                 showInvestigatorMaybes={showInvestigatorMaybes}
                 showInvestigatorKnowledge={showInvestigatorKnowledge && state.stage === 'jackMove'}

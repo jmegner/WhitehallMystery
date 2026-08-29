@@ -43,6 +43,30 @@ test('Jack can preview unrestricted Street distances while choosing discovery lo
   }
 })
 
+test('alt angle swaps map indicator positions and persists', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('crossing ids').check()
+  await page.getByLabel('Location 33, selectable').hover()
+
+  const crossingLabel = page.locator('.crossing-id-label').filter({ hasText: /^FP$/ })
+  const routeLabel = page.locator('.route-turn-count[aria-label^="Location 34:"]')
+  const defaultCrossingX = await crossingLabel.getAttribute('x')
+  const defaultRouteX = await routeLabel.getAttribute('x')
+  await expect(crossingLabel).toHaveAttribute('text-anchor', 'middle')
+  await expect(routeLabel).toHaveAttribute('text-anchor', 'middle')
+
+  await page.getByLabel('alt angle').check()
+  await page.getByLabel('Location 33, selectable').hover()
+
+  await expect(crossingLabel).not.toHaveAttribute('x', defaultCrossingX!)
+  await expect(routeLabel).not.toHaveAttribute('x', defaultRouteX!)
+  await expect(crossingLabel).toHaveAttribute('text-anchor', 'start')
+  await expect(routeLabel).toHaveAttribute('text-anchor', 'start')
+
+  await page.reload()
+  await expect(page.getByLabel('alt angle')).toBeChecked()
+})
+
 test('Jack can preview investigator reach and reveal a handoff by clicking the card', async ({ page }) => {
   await page.goto('/')
   const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })
@@ -134,6 +158,10 @@ test('Jack can preview investigator knowledge for the selected movement type', a
   const projectedOutcomeCount = page.locator('.possible-outcome-count').first()
   await expect(projectedOutcomeCount).toHaveText(/\d+\/\d+/)
   await expect(projectedOutcomeCount.locator('.outcome-count-yes')).toHaveCSS('fill', 'rgb(176, 0, 104)')
+  await expect(projectedOutcomeCount).not.toHaveAttribute('text-anchor', 'middle')
+  await page.getByLabel('alt angle').check()
+  await expect(projectedOutcomeCount).toHaveAttribute('text-anchor', 'middle')
+  await page.getByLabel('alt angle').uncheck()
   await expect(page.locator('.investigator-knowledge-toggle strong')).toHaveText(String(streetCount))
 
   await page.locator('.map-hit-target.inference-hover-target').first().hover()
@@ -241,9 +269,12 @@ test('Jack peek uses Street turn distances when hovering over Jack', async ({ pa
   await destinations.getByRole('button').first().click()
   await page.getByRole('button', { name: 'Record move privately' }).click()
   await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
+  await page.getByLabel('crossing ids').check()
+  await expect(page.locator('.crossing-id-label')).toHaveCount(174)
 
   const distantCrossing = page.locator('.investigator-route-preview-hover-target').first()
   await distantCrossing.hover()
+  await expect(page.locator('.crossing-id-label')).toHaveCount(0)
   const investigatorRouteLines = page.locator('.investigator-route-preview-line')
   expect(await investigatorRouteLines.count()).toBeGreaterThan(0)
   await expect(investigatorRouteLines.first()).toHaveCSS('stroke', 'rgb(4, 98, 199)')
@@ -251,21 +282,31 @@ test('Jack peek uses Street turn distances when hovering over Jack', async ({ pa
   const investigatorRouteOutlines = page.locator('.investigator-route-preview-crossing')
   expect(await investigatorRouteOutlines.count()).toBeGreaterThan(0)
   await expect(investigatorRouteOutlines.first()).toHaveCSS('stroke', 'rgb(4, 98, 199)')
-  await expect(page.locator('.investigator-route-turn-count', { hasText: /^2a$/ }).first()).toBeVisible()
+  const investigatorRouteTurn = page.locator('.investigator-route-turn-count', { hasText: /^2a$/ }).first()
+  await expect(investigatorRouteTurn).toBeVisible()
+  await expect(investigatorRouteTurn).toHaveAttribute('text-anchor', 'middle')
+  await page.getByLabel('alt angle').check()
+  await distantCrossing.hover()
+  await expect(investigatorRouteTurn).toHaveAttribute('text-anchor', 'start')
+  await page.getByLabel('alt angle').uncheck()
+  await distantCrossing.hover()
   await expect(page.locator('.investigator-route-turn-count', { hasText: /^1[ab]$/ })).toHaveCount(0)
   await page.mouse.move(0, 0)
   await expect(investigatorRouteLines).toHaveCount(0)
+  await expect(page.locator('.crossing-id-label')).toHaveCount(174)
 
   const legalMoveChoice = page.locator(
     '.investigator-distance-preview-hover-target:not([aria-label^="Crossing FP,"])',
   ).first()
   await legalMoveChoice.hover()
+  await expect(page.locator('.crossing-id-label')).toHaveCount(0)
   expect(await page.locator('.investigator-hover-turn-count').count()).toBeGreaterThan(0)
   await expect(page.locator('.investigator-hover-turn-count', { hasText: /^1a$/ }).first()).toBeVisible()
   await expect(page.locator('.investigator-hover-turn-count', { hasText: /^1b$/ }).first()).toBeVisible()
   await expect(page.locator('.investigator-route-preview-line')).toHaveCount(0)
   await expect(page.locator('.investigator-route-preview-crossing')).toHaveCount(0)
   await page.mouse.move(0, 0)
+  await expect(page.locator('.crossing-id-label')).toHaveCount(174)
 
   await page.locator('.investigator-piece.yellow').hover()
   expect(await page.locator('.investigator-hover-turn-count').count()).toBeGreaterThan(0)
@@ -352,7 +393,15 @@ test('Rand Side completes each side without showing that side its results', asyn
   await page.goto('/')
   const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })
 
-  await expect(page.getByRole('button', { name: 'Undo Side', exact: true })).toBeDisabled()
+  const historyControls = page.getByLabel('Action history controls')
+  await expect(historyControls.locator(':scope > *').first()).toHaveClass(/action-counter/)
+  const undoSide = page.getByRole('button', { name: 'Undo Side', exact: true })
+  const undo = page.getByRole('button', { name: 'Undo', exact: true })
+  expect(Number.parseFloat(await undoSide.evaluate((button) => getComputedStyle(button).fontSize)))
+    .toBeLessThan(Number.parseFloat(await undo.evaluate((button) => getComputedStyle(button).fontSize)))
+  expect((await undoSide.boundingBox())!.width).toBeLessThan(60)
+
+  await expect(undoSide).toBeDisabled()
   await randSide.click()
   await expect(page.getByRole('heading', { name: /Deploy the Yellow Investigator/i })).toBeVisible()
 
@@ -750,12 +799,12 @@ test('bulk undo and redo cross sides without exposing private views', async ({ p
   await page.getByRole('button', { name: /reveal the restored view/i }).click()
   await expect(page.getByLabel('4 player actions')).toHaveText('Actions 4')
 
-  await page.getByRole('button', { name: 'Redo All', exact: true }).click()
+  await page.getByRole('button', { name: 'Redo Side', exact: true }).click()
   await expect(page.getByRole('heading', { name: /Deploy the Blue Investigator/i })).toBeVisible()
   await expect(page.locator('.investigator-turn-announcement')).toHaveText('Investigators’ Turn')
   await expect(page.getByRole('heading', { name: /Pass the device to Investigators/i })).toHaveCount(0)
   await expect(page.getByLabel('6 player actions')).toHaveText('Actions 6')
-  await expect(page.getByRole('button', { name: 'Redo All', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Redo Side', exact: true })).toBeDisabled()
 })
 
 test('draws a clue ring outside a valid-choice ring at the same location', async ({ page }) => {
