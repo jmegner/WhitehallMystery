@@ -10,6 +10,7 @@ import {
   investigatorSetupPreviewDestinations,
   investigatorStartingCrossingPreviewDestinations,
   investigatorShortestTurnLabels,
+  removeStrictCrossingSupersetRoutes,
   coachReachableJackDestinations,
   jackRouteTurnLabels,
   randomProgressActions,
@@ -230,6 +231,17 @@ describe('investigator movement previews', () => {
     expect([...pureTurnLabels.keys()].some((id) => oneTurn.has(id))).toBe(false)
     expect(pureTurnLabels.has(start)).toBe(false)
     expect(shortestInvestigatorRoutePreview(state, 'HF')).toEqual({ segments: [], turnLabels: new Map() })
+  })
+
+  test('removes same-turn routes that only add crossings to a shorter route', () => {
+    const shorter = ['A', 'B', 'D', 'E']
+    const samePlusExtra = ['A', 'B', 'C', 'D', 'E']
+    const genuinelyDifferent = ['A', 'F', 'G', 'H', 'E']
+
+    expect(removeStrictCrossingSupersetRoutes([shorter, samePlusExtra, genuinelyDifferent])).toEqual([
+      shorter,
+      genuinelyDifferent,
+    ])
   })
 })
 
