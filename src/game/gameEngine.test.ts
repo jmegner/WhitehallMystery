@@ -193,12 +193,21 @@ describe('investigator movement previews', () => {
 
     expect(target).toBeDefined()
     expect(preview.segments.length).toBeGreaterThan(0)
-    expect(preview.turnLabels.get(target)).toMatch(/^[2-9]\d*[ab]$/)
+    expect(preview.turnLabels.get(target)).toMatch(/^[2-9]\d*[ab](?:,[2-9]\d*[ab])?$/)
     expect([...preview.turnLabels.values()].every((label) => !label.startsWith('1'))).toBe(true)
     expect(preview.turnLabels.has(start)).toBe(false)
     for (const segment of preview.segments) {
       expect(segment.throughLocationPaths).toEqual(investigatorTransitions.get(segment.from)?.get(segment.to))
     }
+    const sameTurnAlternative = crossings
+      .filter((crossing) => !oneTurn.has(crossing.id))
+      .map((crossing) => shortestInvestigatorRoutePreview(state, crossing.id).turnLabels.get(crossing.id))
+      .find((label) => label?.includes(','))
+    expect(sameTurnAlternative).toBeDefined()
+    const [firstArrival, secondArrival] = (sameTurnAlternative as string).split(',')
+    expect(firstArrival?.endsWith('a')).toBe(true)
+    expect(secondArrival?.endsWith('b')).toBe(true)
+    expect(firstArrival?.slice(0, -1)).toBe(secondArrival?.slice(0, -1))
     expect(shortestInvestigatorRoutePreview(state, 'HF')).toEqual({ segments: [], turnLabels: new Map() })
   })
 })

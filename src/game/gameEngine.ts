@@ -334,63 +334,72 @@ export const shortestInvestigatorRoutePreview = (state: GameState, target: strin
   }
 
   const distances = new Map<string, number>([[start, 0]])
-  const predecessors = new Map<string, Set<string>>()
   const queue = [start]
-  let targetDistance: number | undefined
   for (let index = 0; index < queue.length; index += 1) {
     const current = queue[index]
     if (!current) continue
-    const distance = distances.get(current)
-    if (distance === undefined || (targetDistance !== undefined && distance >= targetDistance)) continue
+    const distance = distances.get(current) ?? 0
     for (const destination of investigatorTransitions.get(current)?.keys() ?? []) {
-      const nextDistance = distance + 1
-      const knownDistance = distances.get(destination)
-      if (knownDistance === undefined) {
-        distances.set(destination, nextDistance)
-        predecessors.set(destination, new Set([current]))
-        queue.push(destination)
-        if (destination === target) targetDistance = nextDistance
-      } else if (knownDistance === nextDistance) {
-        const existing = predecessors.get(destination) ?? new Set<string>()
-        existing.add(current)
-        predecessors.set(destination, existing)
-      }
+      if (distances.has(destination)) continue
+      distances.set(destination, distance + 1)
+      queue.push(destination)
     }
   }
-  if (targetDistance === undefined) return emptyInvestigatorRoutePreview()
+  const shortestDistance = distances.get(target)
+  if (shortestDistance === undefined) return emptyInvestigatorRoutePreview()
 
-  const neededCrossings = new Set([target])
+  const maximumSteps = shortestDistance % 2 === 1 ? shortestDistance + 1 : shortestDistance
+  const exactDistanceLayers = (origin: string) => {
+    const layers = [new Set([origin])]
+    for (let step = 1; step <= maximumSteps; step += 1) {
+      const next = new Set<string>()
+      for (const crossingId of layers[step - 1] ?? []) {
+        for (const neighbor of investigatorTransitions.get(crossingId)?.keys() ?? []) next.add(neighbor)
+      }
+      layers.push(next)
+    }
+    return layers
+  }
+  const fromStart = exactDistanceLayers(start)
+  const fromTarget = exactDistanceLayers(target)
+  const routeLengths = [shortestDistance]
+  if (maximumSteps > shortestDistance && fromStart[maximumSteps]?.has(target)) routeLengths.push(maximumSteps)
+
   const segments: InvestigatorRoutePreview['segments'] = []
   const segmentKeys = new Set<string>()
-  const backtrack = [target]
-  for (let index = 0; index < backtrack.length; index += 1) {
-    const destination = backtrack[index]
-    if (!destination) continue
-    for (const predecessor of predecessors.get(destination) ?? []) {
-      const key = `${predecessor}:${destination}`
-      if (!segmentKeys.has(key)) {
-        segmentKeys.add(key)
-        segments.push({
-          from: predecessor,
-          to: destination,
-          throughLocationPaths: investigatorTransitions.get(predecessor)?.get(destination) ?? [],
-        })
-      }
-      if (!neededCrossings.has(predecessor)) {
-        neededCrossings.add(predecessor)
-        backtrack.push(predecessor)
+  const labelSets = new Map<string, Set<string>>()
+  for (const routeLength of routeLengths) {
+    for (let step = 0; step < routeLength; step += 1) {
+      for (const from of fromStart[step] ?? []) {
+        if (!fromTarget[routeLength - step]?.has(from)) continue
+        for (const to of investigatorTransitions.get(from)?.keys() ?? []) {
+          if (!fromTarget[routeLength - step - 1]?.has(to)) continue
+          const key = [from, to].sort().join(':')
+          if (!segmentKeys.has(key)) {
+            segmentKeys.add(key)
+            segments.push({
+              from,
+              to,
+              throughLocationPaths: investigatorTransitions.get(from)?.get(to) ?? [],
+            })
+          }
+          const arrivalStep = step + 1
+          if (arrivalStep <= 2) continue
+          const labels = labelSets.get(to) ?? new Set<string>()
+          labels.add(`${Math.ceil(arrivalStep / 2)}${arrivalStep % 2 === 1 ? 'a' : 'b'}`)
+          labelSets.set(to, labels)
+        }
       }
     }
   }
 
-  const turnLabels = new Map<string, string>()
-  for (const crossingId of neededCrossings) {
-    if (crossingId === start) continue
-    const distance = distances.get(crossingId)
-    if (distance === undefined || distance <= 2) continue
-    const turn = Math.ceil(distance / 2)
-    turnLabels.set(crossingId, `${turn}${distance % 2 === 1 ? 'a' : 'b'}`)
-  }
+  const labelOrder = (label: string) => Number.parseInt(label, 10) * 2 + (label.endsWith('b') ? 1 : 0)
+  const turnLabels = new Map(
+    [...labelSets].map(([crossingId, labels]) => [
+      crossingId,
+      [...labels].sort((first, second) => labelOrder(first) - labelOrder(second)).join(','),
+    ]),
+  )
   return { segments, turnLabels }
 }
 
