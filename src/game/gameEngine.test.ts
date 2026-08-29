@@ -13,6 +13,7 @@ import {
   removeStrictCrossingSupersetRoutes,
   coachReachableJackDestinations,
   jackRouteTurnLabels,
+  unrestrictedJackStreetTurnLabels,
   randomProgressActions,
   shortestInvestigatorRoutePreview,
   shortestJackRoutePreview,
@@ -230,6 +231,10 @@ describe('investigator movement previews', () => {
     expect(pureTurnLabels.get(sameTurnAlternative?.crossingId as string)).toBe(firstArrival)
     expect([...pureTurnLabels.keys()].some((id) => oneTurn.has(id))).toBe(false)
     expect(pureTurnLabels.has(start)).toBe(false)
+    const allTurnLabels = investigatorShortestTurnLabels(start, true)
+    expect([...allTurnLabels].filter(([, label]) => label === '1a').length).toBeGreaterThan(0)
+    expect([...allTurnLabels].filter(([, label]) => label === '1b').length).toBeGreaterThan(0)
+    expect(allTurnLabels.size).toBe(crossings.length - 1)
     expect(shortestInvestigatorRoutePreview(state, 'HF')).toEqual({ segments: [], turnLabels: new Map() })
   })
 
@@ -246,6 +251,17 @@ describe('investigator movement previews', () => {
 })
 
 describe('Jack route previews', () => {
+  test('labels unrestricted Street distances from a proposed discovery location', () => {
+    const start = 33
+    const labels = unrestrictedJackStreetTurnLabels(start)
+
+    expect(labels.has(start)).toBe(false)
+    expect(labels.size).toBe(circles.length - 1)
+    for (const neighbor of jackTransitions.get(start)?.keys() ?? []) {
+      expect(labels.get(neighbor)).toBe('1')
+    }
+  })
+
   test('labels every reachable location from Jack without labeling the current location', () => {
     const baseState = setupGame()
     const start = baseState.currentJack as number

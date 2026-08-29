@@ -31,6 +31,18 @@ test('Jack can preview investigator reach while choosing discovery locations', a
   await expect(hoveredCircles.first()).toHaveAttribute('r', '26')
 })
 
+test('Jack can preview unrestricted Street distances while choosing discovery locations', async ({ page }) => {
+  await page.goto('/')
+
+  for (const location of [33, 19, 138]) {
+    await page.getByLabel(`Location ${location}${location === 33 ? ', selectable' : ''}`, { exact: true }).hover()
+    await expect(page.locator('.route-turn-count')).toHaveCount(188)
+    await expect(page.locator(`[aria-label^="Location ${location}:"]`)).toHaveCount(0)
+    await expect(page.locator('.route-preview-line')).toHaveCount(0)
+    await expect(page.locator('.route-preview-location')).toHaveCount(0)
+  }
+})
+
 test('Jack can preview investigator reach and reveal a handoff by clicking the card', async ({ page }) => {
   await page.goto('/')
   const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })
@@ -244,11 +256,27 @@ test('Jack peek uses Street turn distances when hovering over Jack', async ({ pa
   await page.mouse.move(0, 0)
   await expect(investigatorRouteLines).toHaveCount(0)
 
+  const legalMoveChoice = page.locator(
+    '.investigator-distance-preview-hover-target:not([aria-label^="Crossing FP,"])',
+  ).first()
+  await legalMoveChoice.hover()
+  expect(await page.locator('.investigator-hover-turn-count').count()).toBeGreaterThan(0)
+  await expect(page.locator('.investigator-hover-turn-count', { hasText: /^1a$/ }).first()).toBeVisible()
+  await expect(page.locator('.investigator-hover-turn-count', { hasText: /^1b$/ }).first()).toBeVisible()
+  await expect(page.locator('.investigator-route-preview-line')).toHaveCount(0)
+  await expect(page.locator('.investigator-route-preview-crossing')).toHaveCount(0)
+  await page.mouse.move(0, 0)
+
   await page.locator('.investigator-piece.yellow').hover()
   expect(await page.locator('.investigator-hover-turn-count').count()).toBeGreaterThan(0)
   await expect(page.locator('.investigator-hover-turn-count', { hasText: /^1[ab]$/ })).toHaveCount(0)
   await expect(page.locator('.investigator-route-preview-line')).toHaveCount(0)
   await expect(page.locator('.investigator-route-preview-crossing')).toHaveCount(0)
+  await page.mouse.move(0, 0)
+
+  await page.locator('.investigator-piece.blue').hover()
+  await expect(page.locator('.investigator-hover-turn-count', { hasText: /^1a$/ }).first()).toBeVisible()
+  await expect(page.locator('.investigator-hover-turn-count', { hasText: /^1b$/ }).first()).toBeVisible()
   await page.mouse.move(0, 0)
 
   await page.getByLabel('Jack peek').check()
@@ -312,7 +340,7 @@ test('discovery choices only outline quadrants that still need a location', asyn
   await page.getByLabel('Location 33, selectable').click()
 
   await expect(page.getByLabel('Location 34, selectable')).toHaveCount(0)
-  await expect(page.getByLabel('Location 34')).toBeVisible()
+  await expect(page.getByLabel('Location 34', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Location 33, selectable').locator('xpath=..').locator('.legal-circle')).toHaveCount(0)
 
   // The selected location remains clickable so Jack can clear that quadrant.

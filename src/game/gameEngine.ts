@@ -224,6 +224,27 @@ const routeTurnLabels = (search: JackRouteSearch, includedNodes = new Set(search
 export const jackRouteTurnLabels = (state: GameState, firstMoveType: JackMoveType): Map<number, string> =>
   state.currentJack === null ? new Map() : routeTurnLabels(searchJackRoutes(state, firstMoveType))
 
+export const unrestrictedJackStreetTurnLabels = (start: number): Map<number, string> => {
+  if (!circlesById.has(start)) return new Map()
+  const distances = new Map<number, number>([[start, 0]])
+  const queue = [start]
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index]
+    if (current === undefined) continue
+    const nextDistance = (distances.get(current) ?? 0) + 1
+    for (const destination of unrestrictedStreetDestinations(current)) {
+      if (distances.has(destination)) continue
+      distances.set(destination, nextDistance)
+      queue.push(destination)
+    }
+  }
+  return new Map(
+    [...distances]
+      .filter(([circleId]) => circleId !== start)
+      .map(([circleId, distance]) => [circleId, String(distance)]),
+  )
+}
+
 export const shortestJackRoutePreview = (state: GameState, target: number): JackRoutePreview => {
   const start = state.currentJack
   if (
@@ -327,7 +348,10 @@ export interface InvestigatorRoutePreview {
 
 const emptyInvestigatorRoutePreview = (): InvestigatorRoutePreview => ({ segments: [], turnLabels: new Map() })
 
-export const investigatorShortestTurnLabels = (start: string): Map<string, string> => {
+export const investigatorShortestTurnLabels = (
+  start: string,
+  includeFirstTurn = false,
+): Map<string, string> => {
   if (!crossingsById.has(start)) return new Map()
   const distances = new Map<string, number>([[start, 0]])
   const queue = [start]
@@ -343,7 +367,7 @@ export const investigatorShortestTurnLabels = (start: string): Map<string, strin
   }
   return new Map(
     [...distances]
-      .filter(([, distance]) => distance > 2)
+      .filter(([, distance]) => distance > (includeFirstTurn ? 0 : 2))
       .map(([crossingId, distance]) => [
         crossingId,
         `${Math.ceil(distance / 2)}${distance % 2 === 1 ? 'a' : 'b'}`,

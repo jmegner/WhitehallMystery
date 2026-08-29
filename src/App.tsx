@@ -15,6 +15,7 @@ import {
   investigatorStartingCrossingPreviewDestinations,
   investigatorShortestTurnLabels,
   jackRouteTurnLabels,
+  unrestrictedJackStreetTurnLabels,
   legalJackDestinations,
   coachReachableJackDestinations,
   randomProgressActions,
@@ -274,7 +275,9 @@ function GameBoard({
   const [hoveredInvestigatorStart, setHoveredInvestigatorStart] = useState<string | null>(null)
   const [hoveredRouteTarget, setHoveredRouteTarget] = useState<number | null>(null)
   const [hoveredInvestigatorRouteTarget, setHoveredInvestigatorRouteTarget] = useState<string | null>(null)
+  const [hoveredInvestigatorMoveChoice, setHoveredInvestigatorMoveChoice] = useState<string | null>(null)
   const [hoveredJack, setHoveredJack] = useState(false)
+  const [hoveredDiscoveryRouteStart, setHoveredDiscoveryRouteStart] = useState<number | null>(null)
   const hoveredOutcome = hoveredMaybeId === null ? undefined : possibleOutcomes.get(hoveredMaybeId)
   const peekAtJack = showJackPeek && isInspectorInteraction(state.stage)
   const canPreviewJackDistances = state.stage === 'jackMove' || peekAtJack
@@ -284,7 +287,16 @@ function GameBoard({
   const jackHoverTurnLabels = hoveredJack && canPreviewJackDistances
     ? jackRouteTurnLabels(state, peekAtJack ? 'normal' : state.jackMoveSelection.type)
     : new Map<number, string>()
-  const displayedTurnLabels = hoveredJack && canPreviewJackDistances ? jackHoverTurnLabels : routePreview.turnLabels
+  const previewDiscoveryDistances =
+    state.stage === 'jackDiscoverySetup' && hoveredDiscoveryRouteStart !== null
+  const discoveryHoverTurnLabels = previewDiscoveryDistances
+    ? unrestrictedJackStreetTurnLabels(hoveredDiscoveryRouteStart)
+    : new Map<number, string>()
+  const displayedTurnLabels = previewDiscoveryDistances
+    ? discoveryHoverTurnLabels
+    : hoveredJack && canPreviewJackDistances
+      ? jackHoverTurnLabels
+      : routePreview.turnLabels
   const mergeTurnLabelsWithOutcomes =
     showPossible && (showInvestigatorKnowledge || (hoveredJack && canPreviewJackDistances))
   const showJack = isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
@@ -353,8 +365,13 @@ function GameBoard({
   const hoveredInvestigatorStartId = hoveredInvestigator
     ? state.investigatorPositions[hoveredInvestigator]
     : undefined
-  const hoveredInvestigatorTurnLabels = hoveredInvestigatorStartId
-    ? investigatorShortestTurnLabels(hoveredInvestigatorStartId)
+  const investigatorDistanceStartId =
+    hoveredInvestigatorStartId ?? (state.stage === 'investigatorMove' ? hoveredInvestigatorMoveChoice : null)
+  const includeFirstTurnInvestigatorLabels = hoveredInvestigator !== null
+    ? hoveredInvestigator !== activeInvestigatorColor(state)
+    : hoveredInvestigatorMoveChoice !== null
+  const hoveredInvestigatorTurnLabels = investigatorDistanceStartId
+    ? investigatorShortestTurnLabels(investigatorDistanceStartId, includeFirstTurnInvestigatorLabels)
     : new Map<string, string>()
   const hoveredInvestigatorColor = hoveredInvestigatorStart ? 'yellow' : hoveredInvestigator
   const hoveredInvestigatorMaybeCircles = new Set<number>()
@@ -687,6 +704,7 @@ function GameBoard({
         const inferenceHoverTarget = showPossible && possibleOutcomes.has(circle.id)
         const routePreviewHoverTarget =
           state.stage === 'jackMove' && state.currentJack !== circle.id && !legalCircleIds.has(circle.id)
+        const discoveryDistanceHoverTarget = state.stage === 'jackDiscoverySetup'
         const selected = state.jackMoveSelection.path.includes(circle.id)
         return (
           <g key={`circle-target-${circle.id}`}>
@@ -709,7 +727,7 @@ function GameBoard({
             {legal && <circle className="legal-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
             {selected && <circle className="selected-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
             <circle
-              className={`map-hit-target${selectable ? ' selectable' : ''}${inferenceHoverTarget ? ' inference-hover-target' : ''}${routePreviewHoverTarget ? ' route-preview-hover-target' : ''}`}
+              className={`map-hit-target${selectable ? ' selectable' : ''}${inferenceHoverTarget ? ' inference-hover-target' : ''}${routePreviewHoverTarget ? ' route-preview-hover-target' : ''}${discoveryDistanceHoverTarget ? ' discovery-distance-hover-target' : ''}`}
               cx={circle.x}
               cy={circle.y}
               r="18"
@@ -723,10 +741,12 @@ function GameBoard({
               onMouseEnter={() => {
                 if (inferenceHoverTarget) setHoveredMaybeId(circle.id)
                 if (routePreviewHoverTarget) setHoveredRouteTarget(circle.id)
+                if (discoveryDistanceHoverTarget) setHoveredDiscoveryRouteStart(circle.id)
               }}
               onMouseLeave={() => {
                 if (inferenceHoverTarget) setHoveredMaybeId(null)
                 if (routePreviewHoverTarget) setHoveredRouteTarget(null)
+                if (discoveryDistanceHoverTarget) setHoveredDiscoveryRouteStart(null)
               }}
               aria-label={`Location ${circle.id}${selectable ? ', selectable' : ''}`}
             />
@@ -787,11 +807,12 @@ function GameBoard({
         const investigatorStartPreview = state.stage === 'jackDiscoverySetup' && crossing.starting
         const investigatorRoutePreviewTarget =
           activeInvestigatorStartId !== undefined && !investigatorOneTurnCrossings.has(crossing.id)
+        const investigatorMoveDistancePreviewTarget = state.stage === 'investigatorMove' && legal
         return (
           <g key={`crossing-target-${crossing.id}`}>
             {legal && <circle className="legal-crossing" cx={crossing.x} cy={crossing.y} r="12.5" />}
             <circle
-              className={`map-hit-target${legal ? ' selectable' : ''}${investigatorStartPreview ? ' investigator-start-hover-target' : ''}${investigatorRoutePreviewTarget ? ' investigator-route-preview-hover-target' : ''}`}
+              className={`map-hit-target${legal ? ' selectable' : ''}${investigatorStartPreview ? ' investigator-start-hover-target' : ''}${investigatorRoutePreviewTarget ? ' investigator-route-preview-hover-target' : ''}${investigatorMoveDistancePreviewTarget ? ' investigator-distance-preview-hover-target' : ''}`}
               cx={crossing.x}
               cy={crossing.y}
               r="12"
@@ -799,10 +820,12 @@ function GameBoard({
               onMouseEnter={() => {
                 if (investigatorStartPreview) setHoveredInvestigatorStart(crossing.id)
                 if (investigatorRoutePreviewTarget) setHoveredInvestigatorRouteTarget(crossing.id)
+                if (investigatorMoveDistancePreviewTarget) setHoveredInvestigatorMoveChoice(crossing.id)
               }}
               onMouseLeave={() => {
                 if (investigatorStartPreview) setHoveredInvestigatorStart(null)
                 if (investigatorRoutePreviewTarget) setHoveredInvestigatorRouteTarget(null)
+                if (investigatorMoveDistancePreviewTarget) setHoveredInvestigatorMoveChoice(null)
               }}
               aria-label={`Crossing ${crossing.id}${legal ? ', selectable' : ''}${investigatorStartPreview ? ', possible investigator start' : ''}`}
             />
@@ -835,7 +858,7 @@ function GameBoard({
             x={crossing.x}
             y={crossing.y - 19}
             textAnchor="middle"
-            aria-label={`Crossing ${id}: ${label} turns from ${hoveredInvestigator} investigator`}
+            aria-label={`Crossing ${id}: ${label} turns from ${investigatorDistanceStartId}`}
           >
             {label}
           </text>
