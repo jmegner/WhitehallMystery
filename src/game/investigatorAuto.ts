@@ -18,12 +18,13 @@ const nextAutomaticActions = (
   if (state.stage !== 'investigatorAction' || state.inspectorActionMode !== 'search') return []
 
   const outcomes = resolveOutcomes(state.publicRound)
+  const adjacent = legalInspectorActionCircles(state)
   const mostRecentlyRevealedDiscovery = state.reachedDiscoveries.at(-1)
   const alreadyResolvedLocations = new Set(state.clueLocations)
   if (mostRecentlyRevealedDiscovery !== undefined) {
     alreadyResolvedLocations.add(mostRecentlyRevealedDiscovery)
   }
-  const possibleAdjacent = legalInspectorActionCircles(state).filter(
+  const possibleAdjacent = adjacent.filter(
     (id) =>
       !state.checkedThisAction.includes(id) &&
       !alreadyResolvedLocations.has(id) &&
@@ -61,7 +62,7 @@ export const automaticInvestigatorActions = (
 ) => {
   const commands: HistoryCommand[] = []
   let next = initial
-  while (commands.length < 12) {
+  while (true) {
     const actions = nextAutomaticActions(next, resolveOutcomes)
     if (actions.length === 0) break
     for (const action of actions) {
