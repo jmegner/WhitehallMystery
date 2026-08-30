@@ -7,6 +7,7 @@ import {
   canRedoAll,
   createGameHistory,
   currentHistoryState,
+  gameRecap,
   gameHistoryReducer,
   undoMode,
   type GameHistory,
@@ -158,5 +159,57 @@ describe('game action history', () => {
     const history = gameHistoryReducer(readyForInvestigatorView(), { type: 'undo' })
     saveStoredHistory(storage, history)
     expect(loadStoredHistory(storage)).toEqual(history)
+  })
+
+  test('builds a complete game-over recap from the active action history', () => {
+    const initial = createInitialGame()
+    const started = { ...initial, stage: 'jackMove' as const, currentJack: 33, roundTrail: [33] }
+    const selected = {
+      ...started,
+      jackMoveSelection: { type: 'coach' as const, path: [44, 55] },
+    }
+    const moved = { ...selected, currentJack: 55, roundTrail: [33, 44, 55] }
+    const yellowMoved = {
+      ...moved,
+      stage: 'investigatorMove' as const,
+      activeInvestigator: 1,
+      investigatorPositions: { yellow: 'BB', blue: 'HP', red: 'HZ' },
+    }
+    const blueMoved = {
+      ...yellowMoved,
+      activeInvestigator: 2,
+      investigatorPositions: { yellow: 'BB', blue: 'BC', red: 'HZ' },
+    }
+    const investigatorsMoved = {
+      ...blueMoved,
+      stage: 'investigatorAction' as const,
+      activeInvestigator: 0,
+      investigatorPositions: { yellow: 'BB', blue: 'BC', red: 'BD' },
+    }
+    const clueFound = { ...investigatorsMoved, activeInvestigator: 1 }
+    const gameOver = { ...clueFound, stage: 'gameOver' as const }
+    const history: GameHistory = {
+      cursor: 8,
+      pendingReveal: null,
+      entries: [
+        { state: initial, action: null, counted: false },
+        { state: started, action: { type: 'chooseJackStart', circleId: 33 }, counted: true },
+        { state: selected, action: { type: 'selectJackDestination', circleId: 44 }, counted: true },
+        { state: moved, action: { type: 'confirmJackMove' }, counted: true },
+        { state: yellowMoved, action: { type: 'moveInvestigator', crossingId: 'BB' }, counted: true },
+        { state: blueMoved, action: { type: 'moveInvestigator', crossingId: 'BC' }, counted: true },
+        { state: investigatorsMoved, action: { type: 'moveInvestigator', crossingId: 'BD' }, counted: true },
+        { state: clueFound, action: { type: 'searchCircle', circleId: 55 }, counted: true },
+        { state: gameOver, action: { type: 'arrestCircle', circleId: 55 }, counted: true },
+      ],
+    }
+
+    expect(gameRecap(history)).toEqual([
+      'Jack started at location 33.',
+      'Jack moved via Coach to {44, 55}.',
+      'Investigators moved {BB, BC, BD}.',
+      'Yellow found a clue at 55.',
+      'Blue executed an arrest at 55: caught Jack.',
+    ])
   })
 })

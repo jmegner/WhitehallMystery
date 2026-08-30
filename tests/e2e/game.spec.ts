@@ -1,5 +1,111 @@
 import { expect, test } from '@playwright/test'
 
+test('keeps history buttons left-aligned ahead of the action count and options', async ({ page }) => {
+  await page.goto('/')
+
+  const historyControls = page.getByLabel('Action history controls')
+  const undoSideBox = await historyControls.getByRole('button', { name: 'Undo Side' }).boundingBox()
+  const randSideBox = await historyControls.getByRole('button', { name: 'Rand Side' }).boundingBox()
+  const actionBox = await historyControls.getByLabel(/player actions/).boundingBox()
+  const crossingBox = await page.getByLabel('crossing ids').boundingBox()
+
+  expect(undoSideBox).not.toBeNull()
+  expect(randSideBox).not.toBeNull()
+  expect(actionBox).not.toBeNull()
+  expect(crossingBox).not.toBeNull()
+  expect(undoSideBox!.x).toBeLessThan(randSideBox!.x)
+  expect(randSideBox!.x).toBeLessThan(actionBox!.x)
+  expect(actionBox!.x).toBeLessThan(crossingBox!.x)
+  await expect(page.locator('.board-options')).toHaveCSS('justify-content', 'flex-start')
+})
+
+test('shows the complete action recap in the public log after game over', async ({ page }) => {
+  const baseState = {
+    stage: 'jackChooseStart',
+    round: 1,
+    moveSlot: 0,
+    discoveryLocations: [33, 46, 147, 159],
+    reachedDiscoveries: [],
+    currentJack: null,
+    roundTrail: [],
+    investigatorPositions: { yellow: 'FP', blue: 'HP', red: 'HZ' },
+    activeInvestigator: 0,
+    jackMoveSelection: { type: 'normal', path: [] },
+    specialRemaining: { coach: 2, alley: 2, boat: 2 },
+    publicRound: null,
+    clueLocations: [],
+    inspectorActionMode: 'choose',
+    checkedThisAction: [],
+    publicLog: ['This current-round entry should be replaced by the recap.'],
+    notice: '',
+    result: null,
+  }
+  const started = {
+    ...baseState,
+    stage: 'jackMove',
+    currentJack: 33,
+    reachedDiscoveries: [33],
+    roundTrail: [33],
+    publicRound: { start: 33, moves: [], observations: [] },
+  }
+  const selected = { ...started, jackMoveSelection: { type: 'coach', path: [44, 55] } }
+  const moved = {
+    ...started,
+    stage: 'investigatorMove',
+    currentJack: 55,
+    roundTrail: [33, 44, 55],
+  }
+  const yellowMoved = {
+    ...moved,
+    activeInvestigator: 1,
+    investigatorPositions: { yellow: 'BB', blue: 'HP', red: 'HZ' },
+  }
+  const blueMoved = {
+    ...yellowMoved,
+    activeInvestigator: 2,
+    investigatorPositions: { yellow: 'BB', blue: 'BC', red: 'HZ' },
+  }
+  const investigatorsMoved = {
+    ...blueMoved,
+    stage: 'investigatorAction',
+    activeInvestigator: 0,
+    investigatorPositions: { yellow: 'BB', blue: 'BC', red: 'BD' },
+  }
+  const clueFound = { ...investigatorsMoved, activeInvestigator: 1 }
+  const gameOver = {
+    ...clueFound,
+    stage: 'gameOver',
+    result: { winner: 'investigators', reason: 'Jack was arrested.' },
+  }
+  const storedHistory = {
+    entries: [
+      { state: baseState, action: null, counted: false },
+      { state: started, action: { type: 'chooseJackStart', circleId: 33 }, counted: true },
+      { state: selected, action: { type: 'selectJackDestination', circleId: 44 }, counted: true },
+      { state: moved, action: { type: 'confirmJackMove' }, counted: true },
+      { state: yellowMoved, action: { type: 'moveInvestigator', crossingId: 'BB' }, counted: true },
+      { state: blueMoved, action: { type: 'moveInvestigator', crossingId: 'BC' }, counted: true },
+      { state: investigatorsMoved, action: { type: 'moveInvestigator', crossingId: 'BD' }, counted: true },
+      { state: clueFound, action: { type: 'searchCircle', circleId: 55 }, counted: true },
+      { state: gameOver, action: { type: 'arrestCircle', circleId: 55 }, counted: true },
+    ],
+    cursor: 8,
+    pendingReveal: null,
+  }
+  await page.addInitScript((history) => {
+    localStorage.setItem('whitehall-mystery.game.v1', JSON.stringify({ version: 2, history }))
+  }, storedHistory)
+  await page.goto('/')
+
+  const publicLog = page.locator('.public-log')
+  await expect(publicLog.getByText('Jack started at location 33.')).toBeVisible()
+  await expect(publicLog.getByText('Jack moved via Coach to {44, 55}.')).toBeVisible()
+  await expect(publicLog.getByText('Investigators moved {BB, BC, BD}.')).toBeVisible()
+  await expect(publicLog.getByText('Yellow found a clue at 55.')).toBeVisible()
+  await expect(publicLog.getByText('Blue executed an arrest at 55: caught Jack.')).toBeVisible()
+  await expect(publicLog.getByText('This current-round entry should be replaced by the recap.')).toHaveCount(0)
+})
+
 test('Jack can preview investigator reach while choosing discovery locations', async ({ page }) => {
   await page.goto('/')
 
@@ -426,7 +532,7 @@ test('Rand Side completes each side without showing that side its results', asyn
   const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })
 
   const historyControls = page.getByLabel('Action history controls')
-  await expect(historyControls.locator(':scope > *').first()).toHaveClass(/action-counter/)
+  await expect(historyControls.locator(':scope > *').last()).toHaveClass(/action-counter/)
   const undoSide = page.getByRole('button', { name: 'Undo Side', exact: true })
   const undo = page.getByRole('button', { name: 'Undo', exact: true })
   expect(Number.parseFloat(await undoSide.evaluate((button) => getComputedStyle(button).fontSize)))

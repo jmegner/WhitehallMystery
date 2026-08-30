@@ -1,5 +1,5 @@
 import { gameReducer } from './gameEngine'
-import type { GameAction, GameState } from './types'
+import { INVESTIGATOR_ORDER, type GameAction, type GameState, type InvestigatorColor, type JackMoveType } from './types'
 
 export type PlayerView = 'jack' | 'investigators'
 
@@ -95,6 +95,52 @@ export const canRedoAll = (history: GameHistory) =>
 
 export const actionCount = (history: GameHistory) =>
   history.entries.slice(1, history.cursor + 1).filter((entry) => entry.counted).length
+
+const recapMoveLabels: Record<JackMoveType, string> = {
+  normal: 'Street',
+  coach: 'Coach',
+  alley: 'Alley',
+  boat: 'Boat',
+}
+
+const recapInvestigatorName = (color: InvestigatorColor) =>
+  `${color.slice(0, 1).toUpperCase()}${color.slice(1)}`
+
+export const gameRecap = (history: GameHistory): string[] => {
+  const recap: string[] = []
+
+  for (let index = 1; index <= history.cursor; index += 1) {
+    const before = history.entries[index - 1]?.state
+    const entry = history.entries[index]
+    const action = entry?.action
+    if (!before || !entry || !action) continue
+
+    if (action.type === 'chooseJackStart') {
+      recap.push(`Jack started at location ${action.circleId}.`)
+    } else if (action.type === 'confirmJackMove') {
+      const locations = before.jackMoveSelection.path.join(', ')
+      if (locations) {
+        recap.push(`Jack moved via ${recapMoveLabels[before.jackMoveSelection.type]} to {${locations}}.`)
+      }
+    } else if (action.type === 'moveInvestigator' && before.activeInvestigator === INVESTIGATOR_ORDER.length - 1) {
+      const positions = INVESTIGATOR_ORDER.map((color) => entry.state.investigatorPositions[color])
+      if (positions.every((position): position is string => position !== undefined)) {
+        recap.push(`Investigators moved {${positions.join(', ')}}.`)
+      }
+    } else if (action.type === 'searchCircle' && before.roundTrail.includes(action.circleId)) {
+      const color = INVESTIGATOR_ORDER[before.activeInvestigator]
+      if (color) recap.push(`${recapInvestigatorName(color)} found a clue at ${action.circleId}.`)
+    } else if (action.type === 'arrestCircle') {
+      const color = INVESTIGATOR_ORDER[before.activeInvestigator]
+      if (color) {
+        const result = before.currentJack === action.circleId ? 'caught Jack' : 'missed'
+        recap.push(`${recapInvestigatorName(color)} executed an arrest at ${action.circleId}: ${result}.`)
+      }
+    }
+  }
+
+  return recap
+}
 
 const applyAction = (history: GameHistory, action: GameAction): GameHistory => {
   const current = currentHistoryState(history)

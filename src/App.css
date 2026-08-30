@@ -272,7 +272,7 @@ button:disabled {
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 6px !important;
   flex-wrap: nowrap;
 }
@@ -302,7 +302,7 @@ button:disabled {
 }
 
 .handoff-card .history-controls {
-  justify-content: center;
+  justify-content: flex-start;
   margin-top: 22px;
 }
 

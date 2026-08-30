@@ -29,6 +29,7 @@ import {
   type SearchOutcome,
 } from './game/inference'
 import { automaticInvestigatorActions } from './game/investigatorAuto'
+import { currentRoundPublicLog } from './game/publicLog'
 import {
   actionCount,
   canBigUndo,
@@ -36,6 +37,7 @@ import {
   canRedoAll,
   createGameHistory,
   currentHistoryState,
+  gameRecap,
   gameHistoryReducer,
   undoMode,
   type GameHistory,
@@ -1095,9 +1097,6 @@ function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand
   const mode = undoMode(history)
   return (
     <div className="history-controls" aria-label="Action history controls">
-      <span className="action-counter" aria-label={`${actionCount(history)} player actions`}>
-        Actions {actionCount(history)}
-      </span>
       <button className="side-history-button" type="button" disabled={!canBigUndo(history)} onClick={onBigUndo}>
         Undo Side
       </button>
@@ -1116,6 +1115,9 @@ function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand
       <button type="button" onClick={onRandSide}>
         Rand Side
       </button>
+      <span className="action-counter" aria-label={`${actionCount(history)} player actions`}>
+        Actions {actionCount(history)}
+      </span>
     </div>
   )
 }
@@ -1473,6 +1475,8 @@ function HandoffScreen({
 function App() {
   const [history, historyDispatch] = useReducer(gameHistoryReducer, undefined, initializeHistory)
   const state = currentHistoryState(history)
+  const recap = state.stage === 'gameOver' ? gameRecap(history) : []
+  const displayedPublicLog = recap.length > 0 ? recap : currentRoundPublicLog(state.publicLog)
   const [showPossible, setShowPossible] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY) : false
@@ -1960,7 +1964,7 @@ function App() {
           <details className="public-log" open>
             <summary>Public hunt log</summary>
             <ol>
-              {state.publicLog.slice(-8).map((entry, index) => (
+              {displayedPublicLog.map((entry, index) => (
                 <li key={`${index}-${entry}`}>{entry}</li>
               ))}
             </ol>
