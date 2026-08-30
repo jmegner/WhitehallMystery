@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="An interactive, reproducible graph analysis of movement, discovery locations, pursuit, and escape in Whitehall Mystery."
+    />
+    <title>Routes Through Whitehall — Map & Strategy Report</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script type="module" src="./report.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#report-content">Skip to the report</a>
+    <header class="masthead">
+      <div class="masthead__eyebrow">Whitehall Mystery · Initial report</div>
+      <h1>Routes Through Whitehall</h1>
+      <p>
+        A graph-based field guide to Jack’s reach, investigator pressure, discovery-site geometry,
+        chokepoints, and special movement.
+      </p>
+      <a class="game-link" href="../../">Return to the game</a>
+    </header>
+    <nav class="section-nav" aria-label="Report sections">
+      <a href="#overview">Overview</a>
+      <a href="#jack">Jack’s routes</a>
+      <a href="#discoveries">Discovery sets</a>
+      <a href="#investigators">Investigators</a>
+      <a href="#pursuit">Pursuit & escape</a>
+      <a href="#strategy">Strategy sources</a>
+      <a href="#methods">Methods</a>
+    </nav>
+    <div id="scenario-controls" class="scenario-rail" aria-label="Movement model"></div>
+    <p id="report-live" class="sr-only" aria-live="polite"></p>
+    <main id="report-content">
+      <section id="overview" class="hero-section" aria-labelledby="overview-title">
+        <div class="hero-copy">
+          <p class="section-kicker">The board as two linked graphs</p>
+          <h2 id="overview-title">Every shortcut has a cost—and every crossing is leverage.</h2>
+          <p>
+            Jack moves among 189 numbered locations. Investigators move on a different network of
+            174 crossings. The report measures both networks together, preserving the rules for
+            alleys, boats, coaches, discovery locations, and occupied-crossing blocks.
+          </p>
+          <div class="metric-strip" aria-label="Map node counts">
+            <div><strong>189</strong><span>Jack locations</span></div>
+            <div><strong>174</strong><span>crossings</span></div>
+            <div><strong>6</strong><span>investigator starts</span></div>
+          </div>
+        </div>
+        <figure class="board-preview">
+          <img id="board-image" alt="Whitehall Mystery board map" />
+          <figcaption>Numbered circles and crossings are analyzed from the project’s traced map data.</figcaption>
+        </figure>
+      </section>
+      <section id="jack" class="report-section" aria-labelledby="jack-title">
+        <p class="section-kicker">Centrality, diameter, and shortcuts</p>
+        <h2 id="jack-title">Jack’s routes</h2>
+        <div id="jack-content" class="section-content"></div>
+      </section>
+      <section id="discoveries" class="report-section" aria-labelledby="discoveries-title">
+        <p class="section-kicker">One white circle per quadrant</p>
+        <h2 id="discoveries-title">Discovery locations and tours</h2>
+        <div id="discoveries-content" class="section-content"></div>
+      </section>
+      <section id="investigators" class="report-section" aria-labelledby="investigators-title">
+        <p class="section-kicker">Coverage, starts, and crossing control</p>
+        <h2 id="investigators-title">Investigator positioning</h2>
+        <div id="investigators-content" class="section-content"></div>
+      </section>
+      <section id="pursuit" class="report-section" aria-labelledby="pursuit-title">
+        <p class="section-kicker">Catch-up zones and escape valves</p>
+        <h2 id="pursuit-title">Pursuit, escape, and backtracking</h2>
+        <div id="pursuit-content" class="section-content"></div>
+      </section>
+      <section id="strategy" class="report-section" aria-labelledby="strategy-title">
+        <p class="section-kicker">Claims checked against the graph</p>
+        <h2 id="strategy-title">Strategy discussions</h2>
+        <div id="strategy-content" class="section-content"></div>
+      </section>
+      <section id="methods" class="report-section" aria-labelledby="methods-title">
+        <p class="section-kicker">Reproducible and rules-aware</p>
+        <h2 id="methods-title">Methods and limits</h2>
+        <div id="methods-content" class="section-content"></div>
+      </section>
+    </main>
+    <footer>
+      <p>Independent fan analysis. Whitehall Mystery is designed by Gabriele Mari and Gianluca Santopietro.</p>
+    </footer>
+  </body>
+</html>

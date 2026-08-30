@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react-swc'
+import { resolve } from 'node:path'
 
 // https://vite.dev/config/
 // Host-specific base paths:
@@ -13,5 +14,13 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     base,
+    build: {
+      rollupOptions: {
+        input: {
+          game: resolve(__dirname, 'index.html'),
+          report: resolve(__dirname, 'reports/initial_report/index.html'),
+        },
+      },
+    },
   }
 })
