@@ -201,7 +201,7 @@ test('alt angle swaps map indicator positions and persists', async ({ page }) =>
   await expect(page.getByLabel('alt')).toBeChecked()
 })
 
-test('Jack can preview investigator reach and reveal a handoff by clicking the card', async ({ page }) => {
+test('reveals a private handoff when the handoff card is clicked', async ({ page }) => {
   await page.goto('/')
   const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })
   await randSide.click()
@@ -211,6 +211,14 @@ test('Jack can preview investigator reach and reveal a handoff by clicking the c
   await expect(handoffCard).toContainText('Pass the device to Jack')
   await handoffCard.click({ position: { x: 20, y: 20 } })
   await expect(page.getByRole('heading', { name: 'Jack: Choose the Starting Location' })).toBeVisible()
+})
+
+test('Jack-view future checkbox shows investigator reach and searchable locations', async ({ page }) => {
+  await page.goto('/')
+  const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })
+  await randSide.click()
+  await randSide.click()
+  await page.getByRole('button', { name: /reveal my view/i }).click()
 
   await page.getByLabel('Secret Discovery Locations').getByRole('button').first().click()
   await expect(page.getByText('future', { exact: true })).toBeVisible()
