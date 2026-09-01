@@ -53,6 +53,7 @@ import {
 } from './game/mapData'
 import {
   ALT_ANGLE_STORAGE_KEY,
+  COACH_PREVIEW_STORAGE_KEY,
   CROSSING_IDS_STORAGE_KEY,
   INVESTIGATOR_AUTO_STORAGE_KEY,
   INVESTIGATOR_KNOW_STORAGE_KEY,
@@ -1552,6 +1553,10 @@ function App() {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY) : false
   })
+  const [showCoachPreview, setShowCoachPreview] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, COACH_PREVIEW_STORAGE_KEY, true) : true
+  })
   const [alternateIndicatorAngle, setAlternateIndicatorAngle] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, ALT_ANGLE_STORAGE_KEY) : false
@@ -1696,7 +1701,9 @@ function App() {
     for (const id of state.discoveryLocations) legalCircleIds.add(id)
   } else if (state.stage === 'jackMove') {
     for (const id of legalJackDestinations(state)) legalCircleIds.add(id)
-    for (const id of coachReachableJackDestinations(state)) coachReachableCircleIds.add(id)
+    if (state.jackMoveSelection.type === 'coach' || (state.jackMoveSelection.type === 'normal' && showCoachPreview)) {
+      for (const id of coachReachableJackDestinations(state)) coachReachableCircleIds.add(id)
+    }
   } else if (state.stage === 'investigatorSetup') {
     for (const id of deploymentChoices(state)) legalCrossingIds.add(id)
   } else if (state.stage === 'investigatorMove') {
@@ -1814,7 +1821,7 @@ function App() {
                 onRand={handleRand}
                 onRandSide={handleRandSide}
               />
-              <label className="crossing-toggle">
+              <label className="crossing-toggle" title="show crossing ids">
                 <input
                   type="checkbox"
                   checked={showCrossingIds}
@@ -1825,9 +1832,12 @@ function App() {
                     if (storage) saveBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY, checked)
                   }}
                 />
-                crossing ids
+                xings
               </label>
-              <label className="alternate-angle-toggle">
+              <label
+                className="alternate-angle-toggle"
+                title="use alternate angle for placing indicators; swap above and up-right positions for indicators"
+              >
                 <input
                   type="checkbox"
                   checked={alternateIndicatorAngle}
@@ -1838,10 +1848,10 @@ function App() {
                     if (storage) saveBooleanPreference(storage, ALT_ANGLE_STORAGE_KEY, checked)
                   }}
                 />
-                alt angle
+                alt
               </label>
               {isPrivateJackView(state.stage) && (
-                <label className="past-path-toggle">
+                <label className="past-path-toggle" title="show Jack's taken path for this round">
                   <input
                     type="checkbox"
                     checked={showPastPath}
@@ -1852,11 +1862,29 @@ function App() {
                       if (storage) saveBooleanPreference(storage, PAST_PATH_STORAGE_KEY, checked)
                     }}
                   />
-                  past path
+                  past
+                </label>
+              )}
+              {state.stage === 'jackMove' && (
+                <label className="coach-preview-toggle" title="show possible coach moves when street move is selected">
+                  <input
+                    type="checkbox"
+                    checked={showCoachPreview}
+                    onChange={(event) => {
+                      const checked = event.target.checked
+                      setShowCoachPreview(checked)
+                      const storage = browserStorage()
+                      if (storage) saveBooleanPreference(storage, COACH_PREVIEW_STORAGE_KEY, checked)
+                    }}
+                  />
+                  coach
                 </label>
               )}
               {isPrivateJackView(state.stage) && (
-                <label className="investigator-maybes-toggle">
+                <label
+                  className="investigator-maybes-toggle"
+                  title="show what crossings are reachable and locations are searchable/arrestable by investigators after they move"
+                >
                   <input
                     type="checkbox"
                     checked={showInvestigatorMaybes}
@@ -1867,11 +1895,14 @@ function App() {
                       if (storage) saveBooleanPreference(storage, INVESTIGATOR_MAYBES_STORAGE_KEY, checked)
                     }}
                   />
-                  inv future
+                  future
                 </label>
               )}
               {state.stage === 'jackMove' && (
-                <label className="investigator-knowledge-toggle">
+                <label
+                  className="investigator-knowledge-toggle"
+                  title="show what investigators know for your possible locations (more precisely, locations that are worth searching/arresting)"
+                >
                   <input
                     type="checkbox"
                     checked={showInvestigatorKnowledge}
@@ -1882,12 +1913,15 @@ function App() {
                       if (storage) saveBooleanPreference(storage, INVESTIGATOR_KNOW_STORAGE_KEY, checked)
                     }}
                   />
-                  inv know
+                  know
                   {showInvestigatorKnowledge && <strong>{possibleIds.size}</strong>}
                 </label>
               )}
               {isInspectorInteraction(state.stage) && state.publicRound && (
-                <label className="possibility-toggle">
+                <label
+                  className="possibility-toggle"
+                  title="show what places are useful to search/arrest because Jack may be/was there; does not show places that he could have been but can't be now and searching would not help narrow down where he is"
+                >
                   <input
                     type="checkbox"
                     checked={showPossible}
@@ -1898,12 +1932,12 @@ function App() {
                       if (storage) saveBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY, checked)
                     }}
                   />
-                  Jack maybes
+                  maybes
                   {showPossible && <strong>{possibleIds.size}</strong>}
                 </label>
               )}
               {isInspectorInteraction(state.stage) && (
-                <label className="jack-peek-toggle">
+                <label className="jack-peek-toggle" title="peek at Jack's current location and path this round">
                   <input
                     type="checkbox"
                     checked={showJackPeek}
@@ -1914,7 +1948,7 @@ function App() {
                       if (storage) saveBooleanPreference(storage, JACK_PEEK_STORAGE_KEY, checked)
                     }}
                   />
-                  Jack peek
+                  peek
                 </label>
               )}
             </div>
@@ -1976,7 +2010,7 @@ function App() {
             <span>
               <i className="legend-dot legal" /> Legal target
             </span>
-            {isPrivateJackView(state.stage) && (
+            {coachReachableCircleIds.size > 0 && (
               <span>
                 <i className="legend-dot coach-reachable" /> Reachable via Coach
               </span>

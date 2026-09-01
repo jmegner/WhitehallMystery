@@ -4,6 +4,7 @@ import { createGameHistory, currentHistoryState, type GameHistory } from './hist
 export const GAME_STORAGE_KEY = 'whitehall-mystery.game.v1'
 export const ALT_ANGLE_STORAGE_KEY = 'whitehall-mystery.alt-indicator-angle'
 export const CROSSING_IDS_STORAGE_KEY = 'whitehall-mystery.show-crossing-ids'
+export const COACH_PREVIEW_STORAGE_KEY = 'whitehall-mystery.show-coach-preview'
 export const PAST_PATH_STORAGE_KEY = 'whitehall-mystery.show-past-path'
 export const INVESTIGATOR_MAYBES_STORAGE_KEY = 'whitehall-mystery.show-investigator-maybes'
 export const INVESTIGATOR_KNOW_STORAGE_KEY = 'whitehall-mystery.show-investigator-knowledge'

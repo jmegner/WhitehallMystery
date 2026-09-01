@@ -322,6 +322,7 @@ button:disabled {
 }
 
 .possibility-toggle,
+.coach-preview-toggle,
 .crossing-toggle,
 .alternate-angle-toggle,
 .past-path-toggle,
@@ -337,6 +338,7 @@ button:disabled {
 }
 
 .possibility-toggle input,
+.coach-preview-toggle input,
 .crossing-toggle input,
 .alternate-angle-toggle input,
 .past-path-toggle input,

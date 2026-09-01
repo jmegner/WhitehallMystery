@@ -3,11 +3,22 @@ import { expect, test } from '@playwright/test'
 test('keeps history buttons left-aligned ahead of the action count and options', async ({ page }) => {
   await page.goto('/')
 
+  await expect(page.locator('label.crossing-toggle')).toHaveAttribute('title', 'show crossing ids')
+  await expect(page.locator('label.alternate-angle-toggle')).toHaveAttribute(
+    'title',
+    'use alternate angle for placing indicators; swap above and up-right positions for indicators',
+  )
+  await expect(page.locator('label.past-path-toggle')).toHaveAttribute('title', "show Jack's taken path for this round")
+  await expect(page.locator('label.investigator-maybes-toggle')).toHaveAttribute(
+    'title',
+    'show what crossings are reachable and locations are searchable/arrestable by investigators after they move',
+  )
+
   const historyControls = page.getByLabel('Action history controls')
   const undoSideBox = await historyControls.getByRole('button', { name: 'Undo Side' }).boundingBox()
   const randSideBox = await historyControls.getByRole('button', { name: 'Rand Side' }).boundingBox()
   const actionBox = await historyControls.getByLabel(/player actions/).boundingBox()
-  const crossingBox = await page.getByLabel('crossing ids').boundingBox()
+  const crossingBox = await page.getByLabel('xings').boundingBox()
 
   expect(undoSideBox).not.toBeNull()
   expect(randSideBox).not.toBeNull()
@@ -109,7 +120,7 @@ test('shows the complete action recap in the public log after game over', async 
 test('Jack can preview investigator reach while choosing discovery locations', async ({ page }) => {
   await page.goto('/')
 
-  const investigatorMaybes = page.getByLabel('inv future')
+  const investigatorMaybes = page.getByLabel('future')
   await expect(investigatorMaybes).toBeVisible()
   await expect(investigatorMaybes).not.toBeChecked()
   await expect(page.locator('.investigator-maybe-crossing')).toHaveCount(0)
@@ -168,7 +179,7 @@ test('Jack can preview unrestricted Street distances while choosing discovery an
 
 test('alt angle swaps map indicator positions and persists', async ({ page }) => {
   await page.goto('/')
-  await page.getByLabel('crossing ids').check()
+  await page.getByLabel('xings').check()
   await page.getByLabel('Location 33, selectable').hover()
 
   const crossingLabel = page.locator('.crossing-id-label').filter({ hasText: /^FP$/ })
@@ -178,7 +189,7 @@ test('alt angle swaps map indicator positions and persists', async ({ page }) =>
   await expect(crossingLabel).toHaveAttribute('text-anchor', 'middle')
   await expect(routeLabel).toHaveAttribute('text-anchor', 'middle')
 
-  await page.getByLabel('alt angle').check()
+  await page.getByLabel('alt').check()
   await page.getByLabel('Location 33, selectable').hover()
 
   await expect(crossingLabel).not.toHaveAttribute('x', defaultCrossingX!)
@@ -187,7 +198,7 @@ test('alt angle swaps map indicator positions and persists', async ({ page }) =>
   await expect(routeLabel).toHaveAttribute('text-anchor', 'start')
 
   await page.reload()
-  await expect(page.getByLabel('alt angle')).toBeChecked()
+  await expect(page.getByLabel('alt')).toBeChecked()
 })
 
 test('Jack can preview investigator reach and reveal a handoff by clicking the card', async ({ page }) => {
@@ -202,7 +213,7 @@ test('Jack can preview investigator reach and reveal a handoff by clicking the c
   await expect(page.getByRole('heading', { name: 'Jack: Choose the Starting Location' })).toBeVisible()
 
   await page.getByLabel('Secret Discovery Locations').getByRole('button').first().click()
-  await expect(page.getByText('inv future', { exact: true })).toBeVisible()
+  await expect(page.getByText('future', { exact: true })).toBeVisible()
   await expect(page.locator('.investigator-maybe-crossing')).toHaveCount(0)
 
   const investigatorPieces = page.locator('.investigator-piece')
@@ -237,7 +248,7 @@ test('Jack can preview investigator reach and reveal a handoff by clicking the c
   await expect(crossingMaybe.evaluate((element) => element.tagName.toLowerCase())).resolves.toBe('rect')
   await expect(page.locator('.investigator-maybe-circle').first()).toHaveAttribute('r', '21')
 
-  await page.getByText('inv future', { exact: true }).click()
+  await page.getByText('future', { exact: true }).click()
   await page.mouse.move(0, 0)
   expect(await page.locator('.investigator-maybe-crossing').count()).toBeGreaterThan(0)
   await expect(page.locator('.hovered-investigator-maybe-crossing')).toHaveCount(0)
@@ -254,7 +265,7 @@ test('Jack can preview investigator reach and reveal a handoff by clicking the c
   await expect(coloredCrossingMaybe).toHaveCSS('stroke', 'rgb(255, 255, 0)')
   await expect(hoveredPiece.locator('circle').last()).toHaveCSS('fill', 'rgb(255, 255, 0)')
   await page.reload()
-  await expect(page.getByLabel('inv future')).toBeChecked()
+  await expect(page.getByLabel('future')).toBeChecked()
 })
 
 test('Jack can preview investigator knowledge for the selected movement type', async ({ page }) => {
@@ -269,8 +280,16 @@ test('Jack can preview investigator knowledge for the selected movement type', a
   await page.getByRole('button', { name: /reveal my view/i }).click()
   await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
 
-  const investigatorKnowledge = page.getByLabel('inv know')
+  const investigatorKnowledge = page.getByLabel('know')
   await expect(investigatorKnowledge).toBeVisible()
+  await expect(page.locator('label.coach-preview-toggle')).toHaveAttribute(
+    'title',
+    'show possible coach moves when street move is selected',
+  )
+  await expect(page.locator('label.investigator-knowledge-toggle')).toHaveAttribute(
+    'title',
+    'show what investigators know for your possible locations (more precisely, locations that are worth searching/arresting)',
+  )
   await expect(page.locator('.possible-marker')).toHaveCount(0)
   await investigatorKnowledge.check()
 
@@ -283,9 +302,9 @@ test('Jack can preview investigator knowledge for the selected movement type', a
   await expect(projectedOutcomeCount).toHaveText(/\d+\/\d+/)
   await expect(projectedOutcomeCount.locator('.outcome-count-yes')).toHaveCSS('fill', 'rgb(176, 0, 104)')
   await expect(projectedOutcomeCount).not.toHaveAttribute('text-anchor', 'middle')
-  await page.getByLabel('alt angle').check()
+  await page.getByLabel('alt').check()
   await expect(projectedOutcomeCount).toHaveAttribute('text-anchor', 'middle')
-  await page.getByLabel('alt angle').uncheck()
+  await page.getByLabel('alt').uncheck()
   await expect(page.locator('.investigator-knowledge-toggle strong')).toHaveText(String(streetCount))
 
   await page.locator('.map-hit-target.inference-hover-target').first().hover()
@@ -296,7 +315,7 @@ test('Jack can preview investigator knowledge for the selected movement type', a
   const coachCount = await page.locator('.possible-marker').count()
   expect(coachCount).toBeGreaterThan(streetCount)
   await expect(page.locator('.investigator-knowledge-toggle strong')).toHaveText(String(coachCount))
-  await page.getByLabel('inv future').check()
+  await page.getByLabel('future').check()
   await expect(page.locator('.investigator-maybe-circle').first()).toHaveCSS('stroke-width', '2px')
   const overlappingIndicatorGap = await page.locator('.possible-marker').evaluateAll((possibleMarkers) => {
     const futureMarkers = [...document.querySelectorAll<SVGCircleElement>('.investigator-maybe-circle')]
@@ -338,7 +357,7 @@ test('Jack can preview investigator knowledge for the selected movement type', a
   expect(validChoiceGap as number).toBeGreaterThanOrEqual(1)
 
   await page.reload()
-  await expect(page.getByLabel('inv know')).toBeChecked()
+  await expect(page.getByLabel('know')).toBeChecked()
   await expect(page.locator('.possible-marker')).toHaveCount(coachCount)
 })
 
@@ -353,7 +372,7 @@ test('keeps unrevealed Discovery outlines outside inv future outlines', async ({
   }
   await page.getByRole('button', { name: /reveal my view/i }).click()
   await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '46', exact: true }).click()
-  await page.getByLabel('inv future').check()
+  await page.getByLabel('future').check()
 
   const privateDiscoveryGap = await page.locator('.private-discovery-marker').evaluateAll((privateMarkers) => {
     const futureMarkers = [...document.querySelectorAll<SVGCircleElement>('.investigator-maybe-circle')]
@@ -452,7 +471,7 @@ test('Jack can preview all shortest routes to a hovered future location', async 
   await page.getByRole('button', { name: 'Street', exact: true }).click()
   await target.hover()
 
-  await page.getByLabel('inv know').check()
+  await page.getByLabel('know').check()
   await target.hover()
   await expect(page.locator('.possible-outcome-count .outcome-count-turn')).toHaveCount(0)
   await expect(page.locator('.possible-outcome-count').first()).toHaveText(/^\d+\/\d+$/)
@@ -494,7 +513,7 @@ test('Jack peek uses Street turn distances when hovering over Jack', async ({ pa
   await destinations.getByRole('button').first().click()
   await page.getByRole('button', { name: 'Record move privately' }).click()
   await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
-  await page.getByLabel('crossing ids').check()
+  await page.getByLabel('xings').check()
   await expect(page.locator('.crossing-id-label')).toHaveCount(174)
 
   const distantCrossing = page.locator('.investigator-route-preview-hover-target').first()
@@ -510,10 +529,10 @@ test('Jack peek uses Street turn distances when hovering over Jack', async ({ pa
   const investigatorRouteTurn = page.locator('.investigator-route-turn-count', { hasText: /^2a$/ }).first()
   await expect(investigatorRouteTurn).toBeVisible()
   await expect(investigatorRouteTurn).toHaveAttribute('text-anchor', 'middle')
-  await page.getByLabel('alt angle').check()
+  await page.getByLabel('alt').check()
   await distantCrossing.hover()
   await expect(investigatorRouteTurn).toHaveAttribute('text-anchor', 'start')
-  await page.getByLabel('alt angle').uncheck()
+  await page.getByLabel('alt').uncheck()
   await distantCrossing.hover()
   await expect(page.locator('.investigator-route-turn-count', { hasText: /^1[ab]$/ })).toHaveCount(0)
   await page.mouse.move(0, 0)
@@ -545,7 +564,7 @@ test('Jack peek uses Street turn distances when hovering over Jack', async ({ pa
   await expect(page.locator('.investigator-hover-turn-count', { hasText: /^1b$/ }).first()).toBeVisible()
   await page.mouse.move(0, 0)
 
-  await page.getByLabel('Jack peek').check()
+  await page.getByLabel('peek').check()
   await page.locator('.jack-marker').hover()
   await expect(page.locator('.route-turn-count')).toHaveCount(188)
   await expect(page.locator(`[aria-label^="Location ${destination}:"]`)).toHaveCount(0)
@@ -697,6 +716,20 @@ test('undoes Coach route locations onto the redo stack', async ({ page }) => {
   expect(await coachReachableLegend.evaluate((element) => getComputedStyle(element, '::after').borderColor)).toBe(
     'rgb(46, 230, 107)',
   )
+  const coachPreview = page.getByLabel('coach')
+  await expect(coachPreview).toBeChecked()
+  await coachPreview.uncheck()
+  await expect(coachReachableRings).toHaveCount(0)
+  await expect(page.getByText('Reachable via Coach', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Coach (2)', exact: true }).click()
+  expect(await coachReachableRings.count()).toBeGreaterThan(0)
+  await page.getByRole('button', { name: 'Street', exact: true }).click()
+  await expect(coachReachableRings).toHaveCount(0)
+  await page.reload()
+  await expect(coachPreview).not.toBeChecked()
+  await expect(coachReachableRings).toHaveCount(0)
+  await coachPreview.check()
+  expect(await coachReachableRings.count()).toBeGreaterThan(0)
   await page.getByRole('button', { name: 'Alley (2)', exact: true }).click()
   await expect(coachReachableRings).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Boat (2)', exact: true })).toBeDisabled()
@@ -715,7 +748,7 @@ test('undoes Coach route locations onto the redo stack', async ({ page }) => {
   await second.click()
   const undoSecond = page.getByRole('button', { name: 'Undo 2nd Loc.', exact: true })
   await expect(undoSecond).toBeVisible()
-  await expect(page.getByLabel('13 player actions')).toHaveText('Actions 13')
+  await expect(page.getByLabel('15 player actions')).toHaveText('Actions 15')
   await expect(page.locator('.private-route-summary strong')).toHaveText(`33 → ${firstId} → ${secondId}`)
   await expect(page.getByRole('button', { name: 'Record move privately' })).toBeEnabled()
   await expect(undoSecond.evaluate((button) => button.previousElementSibling?.textContent?.trim())).resolves.toBe(
@@ -724,7 +757,7 @@ test('undoes Coach route locations onto the redo stack', async ({ page }) => {
 
   await undoSecond.click()
   await expect(undoSecond).toHaveCount(0)
-  await expect(page.getByLabel('12 player actions')).toHaveText('Actions 12')
+  await expect(page.getByLabel('14 player actions')).toHaveText('Actions 14')
   await expect(page.locator('.private-route-summary strong')).toHaveText(`33 → ${firstId}`)
   await expect(page.getByRole('button', { name: 'Record move privately' })).toBeDisabled()
   await expect(destinations.getByRole('button', { name: secondId, exact: true })).toBeVisible()
@@ -732,17 +765,17 @@ test('undoes Coach route locations onto the redo stack', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Redo', exact: true }).click()
   await expect(undoSecond).toBeVisible()
-  await expect(page.getByLabel('13 player actions')).toHaveText('Actions 13')
+  await expect(page.getByLabel('15 player actions')).toHaveText('Actions 15')
   await expect(page.locator('.private-route-summary strong')).toHaveText(`33 → ${firstId} → ${secondId}`)
 
   await page.getByRole('button', { name: 'Undo route', exact: true }).click()
   await expect(page.locator('.private-route-summary strong')).toHaveText('33')
-  await expect(page.getByLabel('11 player actions')).toHaveText('Actions 11')
+  await expect(page.getByLabel('13 player actions')).toHaveText('Actions 13')
   await expect(page.getByRole('button', { name: 'Undo route', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeEnabled()
   await page.getByRole('button', { name: 'Redo', exact: true }).click()
   await expect(page.locator('.private-route-summary strong')).toHaveText(`33 → ${firstId}`)
-  await expect(page.getByLabel('12 player actions')).toHaveText('Actions 12')
+  await expect(page.getByLabel('14 player actions')).toHaveText('Actions 14')
 })
 
 test('plays a complete hot-seat turn without exposing Jack during handoffs', async ({ page }) => {
@@ -759,7 +792,11 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await expect(page.locator('.investigator-turn-announcement')).toHaveText('Investigators’ Turn')
   await expect(page.getByRole('heading', { name: 'Pass the device to Investigators' })).toHaveCount(0)
   await expect(page.getByText('Private route')).toHaveCount(0)
-  const setupJackPeek = page.getByRole('checkbox', { name: 'Jack peek', exact: true })
+  const setupJackPeek = page.getByRole('checkbox', { name: 'peek', exact: true })
+  await expect(page.locator('label.jack-peek-toggle')).toHaveAttribute(
+    'title',
+    "peek at Jack's current location and path this round",
+  )
   await expect(setupJackPeek).toBeVisible()
   await expect(page.locator('.private-discovery-marker')).toHaveCount(0)
   await setupJackPeek.check()
@@ -821,6 +858,10 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await page.getByLabel(`Location ${firstDestination}, selectable`).click({ button: 'middle' })
 
   await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
+  await expect(page.locator('label.possibility-toggle')).toHaveAttribute(
+    'title',
+    "show what places are useful to search/arrest because Jack may be/was there; does not show places that he could have been but can't be now and searching would not help narrow down where he is",
+  )
   await expect(page.getByLabel('inv auto')).toBeVisible()
   await expect(page.getByRole('button', { name: /reveal my view/i })).toHaveCount(0)
   await expect(page.getByText('Reachable via Coach', { exact: true })).toHaveCount(0)
@@ -828,12 +869,12 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await page.locator('.app-header').click()
   await expect(page.locator('.public-log').getByText('M1: Jack advanced to move 1.')).toBeVisible()
 
-  await page.getByLabel('Jack maybes').check()
+  await page.getByLabel('maybes').check()
   await page.reload()
-  await expect(page.getByLabel('Jack maybes')).toBeChecked()
+  await expect(page.getByLabel('maybes')).toBeChecked()
   await expect(page.locator('.jack-location-edge-arrows')).toHaveCount(0)
   await expect(page.locator('.track-location')).toHaveCount(0)
-  await expect(page.getByRole('checkbox', { name: 'past path', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('checkbox', { name: 'past', exact: true })).toHaveCount(0)
   await expect(page.locator('.possible-marker').first()).toBeVisible()
   await expect(page.locator('.investigator-piece.yellow .active-investigator-ring')).toBeVisible()
   await expect(page.locator('.board-scroll')).toHaveClass(/active-investigator-yellow/)
@@ -853,7 +894,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   })
   expect(investigatorGuideClearances).toEqual([17, 17, 17, 17])
 
-  const jackPeek = page.getByRole('checkbox', { name: 'Jack peek', exact: true })
+  const jackPeek = page.getByRole('checkbox', { name: 'peek', exact: true })
   await jackPeek.check()
   await page.reload()
   await expect(jackPeek).toBeChecked()
@@ -899,7 +940,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await expect(page.getByText('Round 1 · Move 1 of 15')).toBeVisible()
   await expect(page.getByLabel('Move 0, location 33')).toContainText('33')
   await expect(page.getByLabel(`Move 1, location ${firstDestination}`)).toContainText(String(firstDestination))
-  const pastPathToggle = page.getByRole('checkbox', { name: 'past path', exact: true })
+  const pastPathToggle = page.getByRole('checkbox', { name: 'past', exact: true })
   await pastPathToggle.check()
   await expect(page.locator('.past-path-line')).toBeVisible()
   await expect(page.locator('.past-path-line')).toHaveCSS('stroke-dasharray', '5px, 3px')
@@ -925,14 +966,14 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   expect(pastPathClearances[0]).toBeGreaterThanOrEqual(18.4)
   expect(pastPathClearances[1]).toBeGreaterThanOrEqual(18.4)
   await page.reload()
-  await expect(page.getByRole('checkbox', { name: 'past path', exact: true })).toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'past', exact: true })).toBeChecked()
   await expect(page.locator('.past-path-line')).toBeVisible()
 
-  await page.getByLabel('crossing ids').check()
+  await page.getByLabel('xings').check()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'New game' }).click()
   await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
-  await expect(page.getByLabel('crossing ids')).toBeChecked()
+  await expect(page.getByLabel('xings')).toBeChecked()
   await expect.poll(() => page.evaluate(() => ({
     maybes: localStorage.getItem('whitehall-mystery.show-possible-locations'),
     peek: localStorage.getItem('whitehall-mystery.show-jack-peek'),
@@ -964,10 +1005,10 @@ test('keeps the mobile layout within the viewport', async ({ page }) => {
     'rgb(122, 60, 175)',
   )
   await expect(page.locator('.crossing-id-label')).toHaveCount(0)
-  await page.getByLabel('crossing ids').check()
+  await page.getByLabel('xings').check()
   await expect(page.locator('.crossing-id-label')).toHaveCount(174)
   await page.reload()
-  await expect(page.getByLabel('crossing ids')).toBeChecked()
+  await expect(page.getByLabel('xings')).toBeChecked()
   await expect(page.locator('.crossing-id-label')).toHaveCount(174)
   const dimensions = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
@@ -1134,7 +1175,7 @@ test('previews positive and negative search outcomes for Jack maybes', async ({ 
   await page.getByLabel('Legal Jack destinations').getByRole('button').first().click()
   await page.getByRole('button', { name: 'Record move privately' }).click()
   await page.locator('.app-header').click()
-  await page.getByLabel('Jack maybes').check()
+  await page.getByLabel('maybes').check()
 
   const outcomeCount = page.locator('[aria-label^="Search outcome at 13:"]')
   await expect(outcomeCount).toHaveText('40/12')
