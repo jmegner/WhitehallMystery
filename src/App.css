@@ -558,7 +558,7 @@ button:disabled {
   cursor: help;
 }
 
-.map-hit-target.discovery-distance-hover-target {
+.map-hit-target.unrestricted-distance-hover-target {
   pointer-events: auto;
   cursor: help;
 }

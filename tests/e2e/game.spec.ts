@@ -137,8 +137,25 @@ test('Jack can preview investigator reach while choosing discovery locations', a
   await expect(hoveredCircles.first()).toHaveAttribute('r', '26')
 })
 
-test('Jack can preview unrestricted Street distances while choosing discovery locations', async ({ page }) => {
+test('Jack can preview unrestricted Street distances while choosing discovery and starting locations', async ({ page }) => {
   await page.goto('/')
+
+  for (const location of [33, 19, 138]) {
+    await page.getByLabel(`Location ${location}${location === 33 ? ', selectable' : ''}`, { exact: true }).hover()
+    await expect(page.locator('.route-turn-count')).toHaveCount(188)
+    await expect(page.locator(`[aria-label^="Location ${location}:"]`)).toHaveCount(0)
+    await expect(page.locator('.route-preview-line')).toHaveCount(0)
+    await expect(page.locator('.route-preview-location')).toHaveCount(0)
+  }
+
+  for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
+  await page.getByRole('button', { name: 'Lock in four locations' }).click()
+  const deployment = page.getByLabel('Available deployment crossings')
+  for (const crossing of ['FP', 'HP', 'HZ']) {
+    await deployment.getByRole('button', { name: crossing, exact: true }).click()
+  }
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await expect(page.getByRole('heading', { name: 'Jack: Choose the Starting Location' })).toBeVisible()
 
   for (const location of [33, 19, 138]) {
     await page.getByLabel(`Location ${location}${location === 33 ? ', selectable' : ''}`, { exact: true }).hover()
@@ -300,6 +317,16 @@ test('Jack can preview all shortest routes to a hovered future location', async 
   await jackMarker.hover()
   await expect(page.locator('.route-turn-count')).toHaveCount(188)
   await expect(page.locator('[aria-label^="Location 33:"]')).toHaveCount(0)
+  await expect(page.locator('.route-preview-line')).toHaveCount(0)
+  await expect(page.locator('.route-preview-location')).toHaveCount(0)
+
+  const legalDestination = page.locator('.map-hit-target.selectable[aria-label^="Location"]').first()
+  const legalDestinationId = (await legalDestination.getAttribute('aria-label'))?.match(/Location (\d+)/)?.[1]
+  expect(legalDestinationId).toBeDefined()
+  await expect(legalDestination).toHaveClass(/unrestricted-distance-hover-target/)
+  await legalDestination.hover()
+  await expect(page.locator('.route-turn-count')).toHaveCount(188)
+  await expect(page.locator(`[aria-label^="Location ${legalDestinationId}:"]`)).toHaveCount(0)
   await expect(page.locator('.route-preview-line')).toHaveCount(0)
   await expect(page.locator('.route-preview-location')).toHaveCount(0)
 

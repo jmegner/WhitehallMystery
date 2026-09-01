@@ -304,6 +304,17 @@ describe('Jack route previews', () => {
     expect([...coachLabels.values()].some((label) => label.includes('1b'))).toBe(true)
   })
 
+  test('labels Street distances from a proposed valid Jack destination', () => {
+    const state = setupGame()
+    const proposedStart = legalNormalDestinations(state)[0]
+    expect(proposedStart).toBeDefined()
+
+    const labels = jackRouteTurnLabels(state, 'normal', proposedStart)
+
+    expect(labels.has(proposedStart as number)).toBe(false)
+    expect(labels.size).toBe(circles.length - 1)
+  })
+
   test('shows every segment and turn label on shortest future Street routes', () => {
     const state = setupGame()
     const target = 159

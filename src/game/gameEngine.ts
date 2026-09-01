@@ -221,8 +221,14 @@ const routeTurnLabels = (search: JackRouteSearch, includedNodes = new Set(search
   return new Map([...labelSets].map(([circleId, labels]) => [circleId, [...labels].sort().join(',')]))
 }
 
-export const jackRouteTurnLabels = (state: GameState, firstMoveType: JackMoveType): Map<number, string> =>
-  state.currentJack === null ? new Map() : routeTurnLabels(searchJackRoutes(state, firstMoveType))
+export const jackRouteTurnLabels = (
+  state: GameState,
+  firstMoveType: JackMoveType,
+  start = state.currentJack,
+): Map<number, string> =>
+  start === null
+    ? new Map()
+    : routeTurnLabels(searchJackRoutes({ ...state, currentJack: start }, firstMoveType))
 
 export const unrestrictedJackStreetTurnLabels = (start: number): Map<number, string> => {
   if (!circlesById.has(start)) return new Map()

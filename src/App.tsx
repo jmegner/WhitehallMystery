@@ -316,7 +316,7 @@ function GameBoard({
   const [hoveredInvestigatorMoveChoice, setHoveredInvestigatorMoveChoice] = useState<string | null>(null)
   const [suppressedInvestigatorHoverCrossing, setSuppressedInvestigatorHoverCrossing] = useState<string | null>(null)
   const [hoveredJack, setHoveredJack] = useState(false)
-  const [hoveredDiscoveryRouteStart, setHoveredDiscoveryRouteStart] = useState<number | null>(null)
+  const [hoveredUnrestrictedRouteStart, setHoveredUnrestrictedRouteStart] = useState<number | null>(null)
   const clearCrossingHoverPreviews = () => {
     setHoveredInvestigatorStart(null)
     setHoveredInvestigatorRouteTarget(null)
@@ -331,13 +331,16 @@ function GameBoard({
   const jackHoverTurnLabels = hoveredJack && canPreviewJackDistances
     ? jackRouteTurnLabels(state, peekAtJack ? 'normal' : state.jackMoveSelection.type)
     : new Map<number, string>()
-  const previewDiscoveryDistances =
-    state.stage === 'jackDiscoverySetup' && hoveredDiscoveryRouteStart !== null
-  const discoveryHoverTurnLabels = previewDiscoveryDistances
-    ? unrestrictedJackStreetTurnLabels(hoveredDiscoveryRouteStart)
+  const previewUnrestrictedDistances =
+    (state.stage === 'jackDiscoverySetup' || state.stage === 'jackChooseStart' || state.stage === 'jackMove') &&
+    hoveredUnrestrictedRouteStart !== null
+  const unrestrictedHoverTurnLabels = previewUnrestrictedDistances
+    ? state.stage === 'jackMove'
+      ? jackRouteTurnLabels(state, 'normal', hoveredUnrestrictedRouteStart)
+      : unrestrictedJackStreetTurnLabels(hoveredUnrestrictedRouteStart)
     : new Map<number, string>()
-  const displayedTurnLabels = previewDiscoveryDistances
-    ? discoveryHoverTurnLabels
+  const displayedTurnLabels = previewUnrestrictedDistances
+    ? unrestrictedHoverTurnLabels
     : hoveredJack && canPreviewJackDistances
       ? jackHoverTurnLabels
       : routePreview.turnLabels
@@ -748,7 +751,8 @@ function GameBoard({
         const inferenceHoverTarget = showPossible && possibleOutcomes.has(circle.id)
         const routePreviewHoverTarget =
           state.stage === 'jackMove' && state.currentJack !== circle.id && !legalCircleIds.has(circle.id)
-        const discoveryDistanceHoverTarget = state.stage === 'jackDiscoverySetup'
+        const unrestrictedDistanceHoverTarget =
+          state.stage === 'jackDiscoverySetup' || state.stage === 'jackChooseStart' || (state.stage === 'jackMove' && legal)
         const selected = state.jackMoveSelection.path.includes(circle.id)
         return (
           <g key={`circle-target-${circle.id}`}>
@@ -771,7 +775,7 @@ function GameBoard({
             {legal && <circle className="legal-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
             {selected && <circle className="selected-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
             <circle
-              className={`map-hit-target${selectable ? ' selectable' : ''}${inferenceHoverTarget ? ' inference-hover-target' : ''}${routePreviewHoverTarget ? ' route-preview-hover-target' : ''}${discoveryDistanceHoverTarget ? ' discovery-distance-hover-target' : ''}`}
+              className={`map-hit-target${selectable ? ' selectable' : ''}${inferenceHoverTarget ? ' inference-hover-target' : ''}${routePreviewHoverTarget ? ' route-preview-hover-target' : ''}${unrestrictedDistanceHoverTarget ? ' unrestricted-distance-hover-target' : ''}`}
               cx={circle.x}
               cy={circle.y}
               r="18"
@@ -785,12 +789,12 @@ function GameBoard({
               onMouseEnter={() => {
                 if (inferenceHoverTarget) setHoveredMaybeId(circle.id)
                 if (routePreviewHoverTarget) setHoveredRouteTarget(circle.id)
-                if (discoveryDistanceHoverTarget) setHoveredDiscoveryRouteStart(circle.id)
+                if (unrestrictedDistanceHoverTarget) setHoveredUnrestrictedRouteStart(circle.id)
               }}
               onMouseLeave={() => {
                 if (inferenceHoverTarget) setHoveredMaybeId(null)
                 if (routePreviewHoverTarget) setHoveredRouteTarget(null)
-                if (discoveryDistanceHoverTarget) setHoveredDiscoveryRouteStart(null)
+                if (unrestrictedDistanceHoverTarget) setHoveredUnrestrictedRouteStart(null)
               }}
               aria-label={`Location ${circle.id}${selectable ? ', selectable' : ''}`}
             />
