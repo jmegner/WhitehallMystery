@@ -632,7 +632,7 @@ button:disabled {
 .possible-marker {
   fill: rgb(99 46 145 / 24%);
   stroke: #7a3caf;
-  stroke-width: 4;
+  stroke-width: 2.5;
   stroke-dasharray: 3 3;
   vector-effect: non-scaling-stroke;
 }
@@ -640,13 +640,13 @@ button:disabled {
 .possible-certainty-marker {
   fill: none;
   stroke: #ff03a7;
-  stroke-width: 4;
+  stroke-width: 2.5;
   vector-effect: non-scaling-stroke;
 }
 
 .possible-outcome-marker {
   fill: none;
-  stroke-width: 4;
+  stroke-width: 2.5;
   vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 2px rgb(255 250 235 / 90%));
 }
@@ -750,9 +750,13 @@ button:disabled {
 .hovered-investigator-maybe-circle,
 .hovered-investigator-maybe-crossing {
   fill: none;
-  stroke-width: 2;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
+}
+
+.investigator-maybe-circle,
+.hovered-investigator-maybe-circle {
+  stroke-width: 2;
 }
 
 .investigator-maybe-crossing,
@@ -762,7 +766,7 @@ button:disabled {
 
 .investigator-maybe-circle,
 .investigator-maybe-crossing {
-  stroke: #ff4d00;
+  stroke: #ff7a00;
   filter: drop-shadow(0 0 2px rgb(255 245 225 / 85%));
 }
 

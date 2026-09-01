@@ -84,9 +84,9 @@ const LOCATION_OUTLINES = {
   clue: { radius: 18, strokeWidth: 3 },
   clueOutsideLegal: { radius: 23, strokeWidth: 3 },
   discovery: { radius: 19, strokeWidth: 4 },
-  possible: { radius: 23, strokeWidth: 4 },
-  outcomeInner: { radius: 20.5, strokeWidth: 4 },
-  outcomeOuter: { radius: 26, strokeWidth: 4 },
+  possible: { radius: 23, strokeWidth: 2.5 },
+  outcomeInner: { radius: 20.5, strokeWidth: 2.5 },
+  outcomeOuter: { radius: 26, strokeWidth: 2.5 },
   investigatorMaybe: { radius: 21, strokeWidth: 2 },
   hoveredInvestigatorMaybe: { radius: 26, strokeWidth: 2 },
   routePreview: { strokeWidth: 2.5 },
@@ -101,6 +101,10 @@ const enclosingOutlineRadius = (
   enclosingStrokeWidth / 2
 const enclosingLocationOutlineRadius = (outlines: Array<{ radius: number; strokeWidth: number }>) =>
   enclosingOutlineRadius(outlines, LOCATION_OUTLINES.routePreview.strokeWidth)
+const nextLocationOutlineRadius = (
+  outlines: Array<{ radius: number; strokeWidth: number }>,
+  outline: { radius: number; strokeWidth: number },
+) => Math.max(outline.radius, enclosingOutlineRadius(outlines, outline.strokeWidth))
 const CROSSING_OUTLINES = {
   mapCrossing: { radius: 12, strokeWidth: 0 },
   legal: { radius: 12.5, strokeWidth: 2 },
@@ -110,13 +114,7 @@ const ROUTE_CIRCLE_RADIUS = LOCATION_OUTLINES.legal.radius
 const COACH_REACHABLE_CIRCLE_RADIUS = LOCATION_OUTLINES.legal.radius
 const CLUE_CIRCLE_RADIUS = LOCATION_OUTLINES.clue.radius
 const OVERLAPPING_CLUE_CIRCLE_RADIUS = LOCATION_OUTLINES.clueOutsideLegal.radius
-const POSSIBLE_CIRCLE_RADIUS = LOCATION_OUTLINES.possible.radius
-const OUTCOME_CIRCLE_RADIUS = LOCATION_OUTLINES.possible.radius
-const INNER_OUTCOME_CIRCLE_RADIUS = LOCATION_OUTLINES.outcomeInner.radius
-const OUTER_OUTCOME_CIRCLE_RADIUS = LOCATION_OUTLINES.outcomeOuter.radius
-const INVESTIGATOR_MAYBE_CIRCLE_RADIUS = LOCATION_OUTLINES.investigatorMaybe.radius
 const INVESTIGATOR_MAYBE_CROSSING_SIZE = 15
-const HOVERED_INVESTIGATOR_MAYBE_CIRCLE_RADIUS = LOCATION_OUTLINES.hoveredInvestigatorMaybe.radius
 
 type IndicatorAngle = 'above' | 'upper-right'
 
@@ -425,27 +423,80 @@ function GameBoard({
   for (const crossingId of hoveredInvestigatorMaybeCrossings) {
     for (const circleId of adjacentCirclesForCrossing(crossingId)) hoveredInvestigatorMaybeCircles.add(circleId)
   }
-  const routePreviewLocationRadius = (id: number) => {
+  const innerLocationOutlines = (id: number) => {
     const outlines: Array<{ radius: number; strokeWidth: number }> = [LOCATION_OUTLINES.mapLocation]
     const legal = legalCircleIds.has(id) || coachReachableCircleIds.has(id)
     if (legal || state.jackMoveSelection.path.includes(id)) outlines.push(LOCATION_OUTLINES.legal)
-    if (investigatorMaybeCircles.has(id)) outlines.push(LOCATION_OUTLINES.investigatorMaybe)
-    if (hoveredInvestigatorMaybeCircles.has(id)) outlines.push(LOCATION_OUTLINES.hoveredInvestigatorMaybe)
     if (state.clueLocations.includes(id)) {
       outlines.push(legal ? LOCATION_OUTLINES.clueOutsideLegal : LOCATION_OUTLINES.clue)
     }
-    if (state.reachedDiscoveries.includes(id) || privateSelections.has(id)) {
-      outlines.push(LOCATION_OUTLINES.discovery)
+    if (state.reachedDiscoveries.includes(id)) outlines.push(LOCATION_OUTLINES.discovery)
+    return outlines
+  }
+  const investigatorMaybeRadius = (id: number) =>
+    nextLocationOutlineRadius(innerLocationOutlines(id), LOCATION_OUTLINES.investigatorMaybe)
+  const investigatorMaybeLocationOutlines = (id: number) =>
+    investigatorMaybeCircles.has(id)
+      ? [{ ...LOCATION_OUTLINES.investigatorMaybe, radius: investigatorMaybeRadius(id) }]
+      : []
+  const hoveredInvestigatorMaybeRadius = (id: number) =>
+    nextLocationOutlineRadius(
+      [...innerLocationOutlines(id), ...investigatorMaybeLocationOutlines(id)],
+      LOCATION_OUTLINES.hoveredInvestigatorMaybe,
+    )
+  const baseLocationOutlines = (id: number) => {
+    const outlines = [...innerLocationOutlines(id), ...investigatorMaybeLocationOutlines(id)]
+    if (hoveredInvestigatorMaybeCircles.has(id)) {
+      outlines.push({ ...LOCATION_OUTLINES.hoveredInvestigatorMaybe, radius: hoveredInvestigatorMaybeRadius(id) })
     }
-    if (showPossible && !hoveredOutcome && possibleIds.has(id)) outlines.push(LOCATION_OUTLINES.possible)
+    return outlines
+  }
+  const possibleMarkerRadius = (id: number) =>
+    nextLocationOutlineRadius(baseLocationOutlines(id), LOCATION_OUTLINES.possible)
+  const outcomeMarkerRadii = (id: number, remainsIfNo: boolean, remainsIfYes: boolean) => {
+    const outlines = baseLocationOutlines(id)
+    if (!remainsIfNo || !remainsIfYes) {
+      return { single: nextLocationOutlineRadius(outlines, LOCATION_OUTLINES.possible) }
+    }
+    const inner = nextLocationOutlineRadius(outlines, LOCATION_OUTLINES.outcomeInner)
+    const outer = nextLocationOutlineRadius(
+      [...outlines, { ...LOCATION_OUTLINES.outcomeInner, radius: inner }],
+      LOCATION_OUTLINES.outcomeOuter,
+    )
+    return { single: inner, inner, outer }
+  }
+  const possibilityLocationOutlines = (id: number) => {
+    const outlines: Array<{ radius: number; strokeWidth: number }> = []
+    if (showPossible && !hoveredOutcome && possibleIds.has(id)) {
+      outlines.push({ ...LOCATION_OUTLINES.possible, radius: possibleMarkerRadius(id) })
+    }
     if (showPossible && hoveredOutcome) {
       const remainsIfNo = hoveredOutcome.ifNo.has(id)
       const remainsIfYes = hoveredOutcome.ifYes.has(id)
-      if (remainsIfNo && remainsIfYes) outlines.push(LOCATION_OUTLINES.outcomeOuter)
-      else if (remainsIfNo || remainsIfYes) outlines.push(LOCATION_OUTLINES.possible)
+      if (remainsIfNo || remainsIfYes) {
+        const radii = outcomeMarkerRadii(id, remainsIfNo, remainsIfYes)
+        outlines.push({
+          ...(remainsIfNo && remainsIfYes ? LOCATION_OUTLINES.outcomeOuter : LOCATION_OUTLINES.possible),
+          radius: remainsIfNo && remainsIfYes ? radii.outer ?? radii.single : radii.single,
+        })
+      }
     }
-    return enclosingLocationOutlineRadius(outlines)
+    return outlines
   }
+  const privateDiscoveryRadius = (id: number) =>
+    nextLocationOutlineRadius(
+      [...baseLocationOutlines(id), ...possibilityLocationOutlines(id)],
+      LOCATION_OUTLINES.discovery,
+    )
+  const displayedLocationOutlines = (id: number) => {
+    const outlines = [...baseLocationOutlines(id), ...possibilityLocationOutlines(id)]
+    if (privateSelections.has(id) && !state.reachedDiscoveries.includes(id)) {
+      outlines.push({ ...LOCATION_OUTLINES.discovery, radius: privateDiscoveryRadius(id) })
+    }
+    return outlines
+  }
+  const routePreviewLocationRadius = (id: number) =>
+    enclosingLocationOutlineRadius(displayedLocationOutlines(id))
   const investigatorRouteCrossingRadius = (id: string) =>
     enclosingOutlineRadius(
       [CROSSING_OUTLINES.mapCrossing, ...(legalCrossingIds.has(id) ? [CROSSING_OUTLINES.legal] : [])],
@@ -610,7 +661,7 @@ function GameBoard({
             className="investigator-maybe-circle"
             cx={circle.x}
             cy={circle.y}
-            r={INVESTIGATOR_MAYBE_CIRCLE_RADIUS}
+            r={investigatorMaybeRadius(id)}
           />
         ) : null
       })}
@@ -637,7 +688,7 @@ function GameBoard({
             className={`hovered-investigator-maybe-circle ${hoveredInvestigatorColor ?? ''}`}
             cx={circle.x}
             cy={circle.y}
-            r={HOVERED_INVESTIGATOR_MAYBE_CIRCLE_RADIUS}
+            r={hoveredInvestigatorMaybeRadius(id)}
           />
         ) : null
       })}
@@ -660,6 +711,7 @@ function GameBoard({
         [...possibleIds].map((id) => {
           const circle = circlesById.get(id)
           const outcome = possibleOutcomes.get(id)
+          const radius = possibleMarkerRadius(id)
           return circle ? (
             <g key={`possible-${id}`}>
               {outcome?.positiveMeansJackIsThereNow && (
@@ -667,10 +719,10 @@ function GameBoard({
                   className="possible-certainty-marker"
                   cx={circle.x}
                   cy={circle.y}
-                  r={POSSIBLE_CIRCLE_RADIUS}
+                  r={radius}
                 />
               )}
-              <circle className="possible-marker" cx={circle.x} cy={circle.y} r={POSSIBLE_CIRCLE_RADIUS} />
+              <circle className="possible-marker" cx={circle.x} cy={circle.y} r={radius} />
             </g>
           ) : null
         })}
@@ -681,6 +733,7 @@ function GameBoard({
           if (!circle) return null
           const remainsIfNo = hoveredOutcome.ifNo.has(id)
           const remainsIfYes = hoveredOutcome.ifYes.has(id)
+          const radii = outcomeMarkerRadii(id, remainsIfNo, remainsIfYes)
           return (
             <g key={`outcome-${id}`}>
               {remainsIfNo && (
@@ -688,7 +741,7 @@ function GameBoard({
                   className="possible-outcome-marker possible-outcome-no"
                   cx={circle.x}
                   cy={circle.y}
-                  r={remainsIfYes ? INNER_OUTCOME_CIRCLE_RADIUS : OUTCOME_CIRCLE_RADIUS}
+                  r={remainsIfYes ? radii.inner : radii.single}
                 />
               )}
               {remainsIfYes && (
@@ -696,7 +749,7 @@ function GameBoard({
                   className="possible-outcome-marker possible-outcome-yes"
                   cx={circle.x}
                   cy={circle.y}
-                  r={remainsIfNo ? OUTER_OUTCOME_CIRCLE_RADIUS : OUTCOME_CIRCLE_RADIUS}
+                  r={remainsIfNo ? radii.outer : radii.single}
                 />
               )}
             </g>
@@ -729,7 +782,13 @@ function GameBoard({
         .map((id) => {
           const circle = circlesById.get(id)
           return circle ? (
-            <circle key={`private-${id}`} className="private-discovery-marker" cx={circle.x} cy={circle.y} r="19" />
+            <circle
+              key={`private-${id}`}
+              className="private-discovery-marker"
+              cx={circle.x}
+              cy={circle.y}
+              r={privateDiscoveryRadius(id)}
+            />
           ) : null
         })}
 
@@ -780,7 +839,7 @@ function GameBoard({
               cy={circle.y}
               r="18"
               onClick={() => selectable && onCircle(circle.id)}
-              onAuxClick={(event) => {
+              onMouseDown={(event) => {
                 if (event.button === 1 && legal) {
                   event.preventDefault()
                   onCircleMiddleClick(circle.id)

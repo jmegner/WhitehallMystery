@@ -118,11 +118,11 @@ test('Jack can preview investigator reach while choosing discovery locations', a
 
   expect(await page.locator('.investigator-maybe-crossing').count()).toBeGreaterThan(6)
   expect(await page.locator('.investigator-maybe-circle').count()).toBeGreaterThan(0)
-  await expect(page.locator('.investigator-maybe-crossing').first()).toHaveCSS('stroke', 'rgb(255, 77, 0)')
+  await expect(page.locator('.investigator-maybe-crossing').first()).toHaveCSS('stroke', 'rgb(255, 122, 0)')
   const possibleStarts = page.locator('.investigator-maybe-crossing.possible-investigator-start')
   await expect(possibleStarts).toHaveCount(6)
   await expect(possibleStarts.first()).toHaveCSS('fill', 'rgb(255, 255, 0)')
-  await expect(possibleStarts.first()).toHaveCSS('stroke', 'rgb(255, 77, 0)')
+  await expect(possibleStarts.first()).toHaveCSS('stroke', 'rgb(255, 122, 0)')
 
   const allCrossingCount = await page.locator('.investigator-maybe-crossing').count()
   await page.getByLabel('Crossing FP, possible investigator start').hover()
@@ -230,7 +230,7 @@ test('Jack can preview investigator reach and reveal a handoff by clicking the c
   await expect(page.locator('.investigator-hover-turn-count', { hasText: /^1[ab]$/ })).toHaveCount(0)
   await expect(page.locator('.investigator-route-preview-line')).toHaveCount(0)
   const crossingMaybe = page.locator('.investigator-maybe-crossing').first()
-  await expect(crossingMaybe).toHaveCSS('stroke', 'rgb(255, 77, 0)')
+  await expect(crossingMaybe).toHaveCSS('stroke', 'rgb(255, 122, 0)')
   await expect(crossingMaybe).toHaveCSS('stroke-width', '3px')
   await expect(crossingMaybe).toHaveAttribute('width', '15')
   await expect(crossingMaybe).toHaveAttribute('height', '15')
@@ -277,6 +277,7 @@ test('Jack can preview investigator knowledge for the selected movement type', a
   const streetCount = await page.locator('.possible-marker').count()
   expect(streetCount).toBeGreaterThan(0)
   await expect(page.locator('.possible-marker').first()).toHaveCSS('stroke', 'rgb(122, 60, 175)')
+  await expect(page.locator('.possible-marker').first()).toHaveCSS('stroke-width', '2.5px')
   await expect(page.locator('.possible-certainty-marker').first()).toHaveCSS('stroke', 'rgb(176, 0, 104)')
   const projectedOutcomeCount = page.locator('.possible-outcome-count').first()
   await expect(projectedOutcomeCount).toHaveText(/\d+\/\d+/)
@@ -295,10 +296,83 @@ test('Jack can preview investigator knowledge for the selected movement type', a
   const coachCount = await page.locator('.possible-marker').count()
   expect(coachCount).toBeGreaterThan(streetCount)
   await expect(page.locator('.investigator-knowledge-toggle strong')).toHaveText(String(coachCount))
+  await page.getByLabel('inv future').check()
+  await expect(page.locator('.investigator-maybe-circle').first()).toHaveCSS('stroke-width', '2px')
+  const overlappingIndicatorGap = await page.locator('.possible-marker').evaluateAll((possibleMarkers) => {
+    const futureMarkers = [...document.querySelectorAll<SVGCircleElement>('.investigator-maybe-circle')]
+    for (const possible of possibleMarkers) {
+      if (!(possible instanceof SVGCircleElement)) continue
+      const future = futureMarkers.find(
+        (candidate) =>
+          candidate.getAttribute('cx') === possible.getAttribute('cx') &&
+          candidate.getAttribute('cy') === possible.getAttribute('cy'),
+      )
+      if (!future) continue
+      const possibleInnerEdge = Number(possible.getAttribute('r')) - Number.parseFloat(getComputedStyle(possible).strokeWidth) / 2
+      const futureOuterEdge = Number(future.getAttribute('r')) + Number.parseFloat(getComputedStyle(future).strokeWidth) / 2
+      return possibleInnerEdge - futureOuterEdge
+    }
+    return null
+  })
+  expect(overlappingIndicatorGap).not.toBeNull()
+  expect(overlappingIndicatorGap as number).toBeGreaterThanOrEqual(1)
+  const validChoiceGap = await page.locator('.investigator-maybe-circle').evaluateAll((futureMarkers) => {
+    const choiceMarkers = [
+      ...document.querySelectorAll<SVGCircleElement>('.legal-circle, .coach-reachable-circle'),
+    ]
+    for (const future of futureMarkers) {
+      if (!(future instanceof SVGCircleElement)) continue
+      const choice = choiceMarkers.find(
+        (candidate) =>
+          candidate.getAttribute('cx') === future.getAttribute('cx') &&
+          candidate.getAttribute('cy') === future.getAttribute('cy'),
+      )
+      if (!choice) continue
+      const futureInnerEdge = Number(future.getAttribute('r')) - Number.parseFloat(getComputedStyle(future).strokeWidth) / 2
+      const choiceOuterEdge = Number(choice.getAttribute('r')) + Number.parseFloat(getComputedStyle(choice).strokeWidth) / 2
+      return futureInnerEdge - choiceOuterEdge
+    }
+    return null
+  })
+  expect(validChoiceGap).not.toBeNull()
+  expect(validChoiceGap as number).toBeGreaterThanOrEqual(1)
 
   await page.reload()
   await expect(page.getByLabel('inv know')).toBeChecked()
   await expect(page.locator('.possible-marker')).toHaveCount(coachCount)
+})
+
+test('keeps unrevealed Discovery outlines outside inv future outlines', async ({ page }) => {
+  await page.goto('/')
+  for (const id of [71, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
+  await page.getByRole('button', { name: 'Lock in four locations' }).click()
+
+  const deployment = page.getByLabel('Available deployment crossings')
+  for (const crossing of ['FP', 'HP', 'HZ']) {
+    await deployment.getByRole('button', { name: crossing, exact: true }).click()
+  }
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '46', exact: true }).click()
+  await page.getByLabel('inv future').check()
+
+  const privateDiscoveryGap = await page.locator('.private-discovery-marker').evaluateAll((privateMarkers) => {
+    const futureMarkers = [...document.querySelectorAll<SVGCircleElement>('.investigator-maybe-circle')]
+    for (const discovery of privateMarkers) {
+      if (!(discovery instanceof SVGCircleElement)) continue
+      const future = futureMarkers.find(
+        (candidate) =>
+          candidate.getAttribute('cx') === discovery.getAttribute('cx') &&
+          candidate.getAttribute('cy') === discovery.getAttribute('cy'),
+      )
+      if (!future) continue
+      const discoveryInnerEdge = Number(discovery.getAttribute('r')) - Number.parseFloat(getComputedStyle(discovery).strokeWidth) / 2
+      const futureOuterEdge = Number(future.getAttribute('r')) + Number.parseFloat(getComputedStyle(future).strokeWidth) / 2
+      return discoveryInnerEdge - futureOuterEdge
+    }
+    return null
+  })
+  expect(privateDiscoveryGap).not.toBeNull()
+  expect(privateDiscoveryGap as number).toBeGreaterThanOrEqual(1)
 })
 
 test('Jack can preview all shortest routes to a hovered future location', async ({ page }) => {
@@ -383,6 +457,24 @@ test('Jack can preview all shortest routes to a hovered future location', async 
   await expect(page.locator('.possible-outcome-count .outcome-count-turn')).toHaveCount(0)
   await expect(page.locator('.possible-outcome-count').first()).toHaveText(/^\d+\/\d+$/)
   await expect(page.locator('.route-turn-count').first()).toBeVisible()
+})
+
+test('middle-clicking an unselected valid Jack destination selects and submits the move', async ({ page }) => {
+  await page.goto('/')
+  for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
+  await page.getByRole('button', { name: 'Lock in four locations' }).click()
+
+  const deployment = page.getByLabel('Available deployment crossings')
+  for (const crossing of ['FP', 'HP', 'HZ']) {
+    await deployment.getByRole('button', { name: crossing, exact: true }).click()
+  }
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
+
+  const destination = await page.getByLabel('Legal Jack destinations').getByRole('button').first().innerText()
+  await page.getByLabel(`Location ${destination}, selectable`).click({ button: 'middle' })
+
+  await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
 })
 
 test('Jack peek uses Street turn distances when hovering over Jack', async ({ page }) => {
@@ -779,7 +871,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await expect(page.locator('.track-location')).toHaveCount(0)
   await jackPeek.check()
 
-  await page.locator('[aria-label="Crossing FP, selectable"]').click()
+  await page.getByLabel('Yellow Investigator at crossing FP, selectable to stay').click()
   await expect(page.locator('.investigator-piece.blue .active-investigator-ring')).toBeVisible()
   await expect(page.locator('.board-scroll')).toHaveClass(/active-investigator-blue/)
   for (const crossing of ['HP', 'HZ']) await page.getByRole('button', { name: crossing, exact: true }).click()
@@ -1083,16 +1175,17 @@ test('previews positive and negative search outcomes for Jack maybes', async ({ 
     const noRing = ring('.possible-outcome-no')
     const yesRing = ring('.possible-outcome-yes')
     return {
-      noRadius: noRing?.getAttribute('r'),
       noStroke: noRing ? getComputedStyle(noRing).stroke : null,
-      yesRadius: yesRing?.getAttribute('r'),
       yesStroke: yesRing ? getComputedStyle(yesRing).stroke : null,
+      gap: noRing && yesRing
+        ? Number(yesRing.getAttribute('r')) - Number.parseFloat(getComputedStyle(yesRing).strokeWidth) / 2 -
+          (Number(noRing.getAttribute('r')) + Number.parseFloat(getComputedStyle(noRing).strokeWidth) / 2)
+        : null,
     }
   })
-  expect(dualOutcomeRings).toEqual({
-    noRadius: '20.5',
+  expect(dualOutcomeRings).toMatchObject({
     noStroke: 'rgb(18, 63, 104)',
-    yesRadius: '26',
     yesStroke: 'rgb(255, 3, 167)',
   })
+  expect(dualOutcomeRings.gap).toBeGreaterThanOrEqual(1)
 })
