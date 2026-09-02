@@ -63,7 +63,7 @@ const viewStartIndex = (history: GameHistory, owner: PlayerView, fromIndex = his
 }
 
 export const undoMode = (history: GameHistory): UndoMode => {
-  if (history.pendingReveal || history.cursor === 0) return 'disabled'
+  if (history.cursor === 0) return 'disabled'
   const state = currentHistoryState(history)
   const owner = playerViewForState(state)
   if (!owner) return state.stage === 'gameOver' ? 'undo' : 'cross-view'
@@ -74,11 +74,10 @@ export const undoMode = (history: GameHistory): UndoMode => {
 
 export const canRedo = (history: GameHistory) => {
   const next = history.entries[history.cursor + 1]
-  return history.pendingReveal === null && next !== undefined && next.action?.type !== 'continueHandoff'
+  return next !== undefined && next.action?.type !== 'continueHandoff'
 }
 
 const bigUndoTarget = (history: GameHistory): number | null => {
-  if (history.pendingReveal) return null
   for (let index = history.cursor; index >= 0; index -= 1) {
     const owner = playerViewForState(history.entries[index]!.state)
     if (!owner) continue
@@ -91,7 +90,7 @@ const bigUndoTarget = (history: GameHistory): number | null => {
 export const canBigUndo = (history: GameHistory) => bigUndoTarget(history) !== null
 
 export const canRedoAll = (history: GameHistory) =>
-  history.pendingReveal === null && history.cursor < history.entries.length - 1
+  history.cursor < history.entries.length - 1
 
 export const actionCount = (history: GameHistory) =>
   history.entries.slice(1, history.cursor + 1).filter((entry) => entry.counted).length
@@ -203,13 +202,19 @@ const redoAll = (history: GameHistory): GameHistory => {
   }
 }
 
+const dismissPendingRevealAfterNavigation = (before: GameHistory, after: GameHistory): GameHistory => {
+  if (!before.pendingReveal || after === before) return after
+  return { ...after, pendingReveal: null }
+}
+
 export const gameHistoryReducer = (history: GameHistory, command: HistoryCommand): GameHistory => {
   if (command.type === 'apply') return applyAction(history, command.action)
-  if (command.type === 'undo') return undo(history)
-  if (command.type === 'bigUndo') return bigUndo(history)
+  if (command.type === 'undo') return dismissPendingRevealAfterNavigation(history, undo(history))
+  if (command.type === 'bigUndo') return dismissPendingRevealAfterNavigation(history, bigUndo(history))
   if (command.type === 'redo') {
-    return canRedo(history) ? { ...history, cursor: history.cursor + 1, pendingReveal: null } : history
+    const next = canRedo(history) ? { ...history, cursor: history.cursor + 1, pendingReveal: null } : history
+    return dismissPendingRevealAfterNavigation(history, next)
   }
-  if (command.type === 'redoAll') return redoAll(history)
+  if (command.type === 'redoAll') return dismissPendingRevealAfterNavigation(history, redoAll(history))
   return history.pendingReveal ? { ...history, pendingReveal: null } : history
 }

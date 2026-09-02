@@ -74,10 +74,12 @@ describe('game action history', () => {
     expect(history.pendingReveal).toBe('jack')
     expect(currentHistoryState(history).stage).toBe('jackDiscoverySetup')
     expect(actionCount(history)).toBe(4)
+    expect(undoMode(history)).toBe('undo')
+    expect(canRedo(history)).toBe(true)
 
-    history = gameHistoryReducer(history, { type: 'revealUndo' })
     history = gameHistoryReducer(history, { type: 'redo' })
     expect(currentHistoryState(history).stage).toBe('handoffInspectorsSetup')
+    expect(history.pendingReveal).toBeNull()
     expect(actionCount(history)).toBe(5)
     expect(canRedo(history)).toBe(false)
     history = gameHistoryReducer(history, action({ type: 'continueHandoff' }))
@@ -109,7 +111,7 @@ describe('game action history', () => {
     expect(actionCount(history)).toBe(3)
   })
 
-  test('Undo Side removes the current side and Redo All restores the entire stack behind a privacy gate', () => {
+  test('Undo Side removes the current side and Redo All can restore it directly from the handoff', () => {
     let history = gameHistoryReducer(
       readyForInvestigatorView(),
       action({ type: 'placeInvestigator', crossingId: 'FP' }),
@@ -121,18 +123,14 @@ describe('game action history', () => {
     expect(history.pendingReveal).toBe('jack')
     expect(currentHistoryState(history).stage).toBe('jackDiscoverySetup')
     expect(actionCount(history)).toBe(4)
-    expect(canRedoAll(history)).toBe(false)
-
-    history = gameHistoryReducer(history, { type: 'revealUndo' })
     expect(canRedoAll(history)).toBe(true)
+
     history = gameHistoryReducer(history, { type: 'redoAll' })
-    expect(history.pendingReveal).toBe('investigators')
+    expect(history.pendingReveal).toBeNull()
     expect(currentHistoryState(history).stage).toBe('investigatorSetup')
     expect(currentHistoryState(history).investigatorPositions.yellow).toBe('FP')
     expect(actionCount(history)).toBe(6)
 
-    history = gameHistoryReducer(history, { type: 'revealUndo' })
-    expect(history.pendingReveal).toBeNull()
     expect(canRedoAll(history)).toBe(false)
   })
 

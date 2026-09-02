@@ -1080,7 +1080,12 @@ test('undoes and redoes actions across private-view handoffs', async ({ page }) 
 
   await page.getByRole('button', { name: 'Undo!', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
-  await page.getByRole('button', { name: /reveal the restored view/i }).click()
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
+  await expect(page.getByLabel('3 player actions')).toHaveText('Actions 3')
+  await page.getByRole('button', { name: 'Redo', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
   await expect(page.getByLabel('4 player actions')).toHaveText('Actions 4')
 
@@ -1090,7 +1095,7 @@ test('undoes and redoes actions across private-view handoffs', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeDisabled()
 })
 
-test('bulk undo and redo cross sides without exposing private views', async ({ page }) => {
+test('bulk redo from a handoff dismisses the handoff screen', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('button', { name: 'Undo Side', exact: true })).toBeDisabled()
 
@@ -1102,12 +1107,9 @@ test('bulk undo and redo cross sides without exposing private views', async ({ p
   await page.getByRole('button', { name: 'Undo Side', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
   await expect(page.getByText(/restored just before their last confirmed action/i)).toBeVisible()
-  await page.getByRole('button', { name: /reveal the restored view/i }).click()
-  await expect(page.getByLabel('4 player actions')).toHaveText('Actions 4')
-
+  await expect(page.getByRole('button', { name: 'Redo Side', exact: true })).toBeEnabled()
   await page.getByRole('button', { name: 'Redo Side', exact: true }).click()
   await expect(page.getByRole('heading', { name: /Deploy the Blue Investigator/i })).toBeVisible()
-  await expect(page.locator('.investigator-turn-announcement')).toHaveText('Investigators’ Turn')
   await expect(page.getByRole('heading', { name: /Pass the device to Investigators/i })).toHaveCount(0)
   await expect(page.getByLabel('6 player actions')).toHaveText('Actions 6')
   await expect(page.getByRole('button', { name: 'Redo Side', exact: true })).toBeDisabled()
