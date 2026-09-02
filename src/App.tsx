@@ -79,6 +79,11 @@ const BOARD_SIZE = 1200
 const BOARD_VIEWPORT = { x: 70, y: 10, width: 1100, height: 1090 } as const
 const EDGE_ARROW_LENGTH = 12
 const EDGE_ARROW_HALF_WIDTH = 10
+const INVESTIGATOR_PIECE_RADIUS = 9
+const ACTIVE_INVESTIGATOR_RING_RADIUS = 14
+const ACTIVE_INVESTIGATOR_GUIDE_RADIUS = 16
+const JACK_PIECE_RADIUS = 10
+const JACK_GUIDE_RADIUS = 12
 const LOCATION_OUTLINES = {
   mapLocation: { radius: 18, strokeWidth: 0 },
   legal: { radius: 18.5, strokeWidth: 2 },
@@ -519,7 +524,7 @@ function GameBoard({
         <BoardEdgeArrows
           x={activeInvestigator.x}
           y={activeInvestigator.y}
-          targetRadius={17}
+          targetRadius={ACTIVE_INVESTIGATOR_GUIDE_RADIUS}
           className="active-investigator-edge-arrows"
           label="Active investigator position guides"
         />
@@ -529,7 +534,7 @@ function GameBoard({
         <BoardEdgeArrows
           x={privateJackLocation.x}
           y={privateJackLocation.y}
-          targetRadius={13}
+          targetRadius={JACK_GUIDE_RADIUS}
           className="jack-location-edge-arrows"
           label="Jack position guides"
         />
@@ -1055,8 +1060,15 @@ function GameBoard({
             onClick={selectable ? () => onCrossing(crossing.id) : undefined}
             aria-label={`${displayColor(color)} Investigator at crossing ${crossing.id}${selectable ? ', selectable to stay' : ''}`}
           >
-            {active && <circle className="active-investigator-ring" cx={crossing.x} cy={crossing.y} r="15" />}
-            <circle cx={crossing.x} cy={crossing.y} r="10" />
+            {active && (
+              <circle
+                className="active-investigator-ring"
+                cx={crossing.x}
+                cy={crossing.y}
+                r={ACTIVE_INVESTIGATOR_RING_RADIUS}
+              />
+            )}
+            <circle cx={crossing.x} cy={crossing.y} r={INVESTIGATOR_PIECE_RADIUS} />
             <text x={crossing.x} y={crossing.y + 4} textAnchor="middle">
               {color[0]?.toUpperCase()}
             </text>
@@ -1074,7 +1086,7 @@ function GameBoard({
               onMouseEnter={() => canPreviewJackDistances && setHoveredJack(true)}
               onMouseLeave={() => setHoveredJack(false)}
             >
-              <circle cx={circle.x} cy={circle.y} r="11" />
+              <circle cx={circle.x} cy={circle.y} r={JACK_PIECE_RADIUS} />
               <text x={circle.x} y={circle.y + 4} textAnchor="middle">
                 J
               </text>

@@ -836,7 +836,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
       Math.hypot(x - Number(line.getAttribute('x2')), y - Number(line.getAttribute('y2'))),
     )
   })
-  expect(jackGuideClearances).toEqual([13, 13, 13, 13])
+  expect(jackGuideClearances).toEqual([12, 12, 12, 12])
   const discoveryList = page.getByLabel('Jack discovery locations')
   await expect(discoveryList.locator('li')).toHaveText(['33', '46', '147', '159'])
   await expect(page.getByLabel('33, completed')).toHaveClass(/completed/)
@@ -900,7 +900,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
       Math.hypot(x - Number(line.getAttribute('x2')), y - Number(line.getAttribute('y2'))),
     )
   })
-  expect(investigatorGuideClearances).toEqual([17, 17, 17, 17])
+  expect(investigatorGuideClearances).toEqual([16, 16, 16, 16])
 
   const jackPeek = page.getByRole('checkbox', { name: 'peek', exact: true })
   await jackPeek.check()
@@ -1055,6 +1055,46 @@ test('caps and aligns the map for single- and two-column layouts', async ({ page
   const leftGap = singleColumnMap!.x - boardPanel!.x
   const rightGap = boardPanel!.x + boardPanel!.width - (singleColumnMap!.x + singleColumnMap!.width)
   expect(Math.abs(leftGap - rightGap)).toBeLessThanOrEqual(1)
+})
+
+test('scales pieces and outline strokes with the map', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1400 })
+  await page.goto('/')
+  const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })
+  await randSide.click()
+  await randSide.click()
+  await page.getByRole('button', { name: /reveal my view/i }).click()
+  await page.getByLabel('Secret Discovery Locations').getByRole('button').first().click()
+
+  const board = page.locator('.game-board')
+  const investigator = page.locator('.investigator-piece circle:not(.active-investigator-ring)').first()
+  const jack = page.locator('.jack-marker circle')
+  const outline = page.locator('.legal-circle').first()
+  await expect(investigator).toHaveAttribute('r', '9')
+  await expect(jack).toHaveAttribute('r', '10')
+  await expect(outline).toHaveCSS('vector-effect', 'none')
+  await expect(investigator).toHaveCSS('vector-effect', 'none')
+
+  const large = {
+    board: await board.boundingBox(),
+    investigator: await investigator.boundingBox(),
+    jack: await jack.boundingBox(),
+  }
+  await page.setViewportSize({ width: 700, height: 1200 })
+  const small = {
+    board: await board.boundingBox(),
+    investigator: await investigator.boundingBox(),
+    jack: await jack.boundingBox(),
+  }
+  expect(large.board).not.toBeNull()
+  expect(large.investigator).not.toBeNull()
+  expect(large.jack).not.toBeNull()
+  expect(small.board).not.toBeNull()
+  expect(small.investigator).not.toBeNull()
+  expect(small.jack).not.toBeNull()
+  const mapScale = small.board!.width / large.board!.width
+  expect(small.investigator!.width / large.investigator!.width).toBeCloseTo(mapScale, 2)
+  expect(small.jack!.width / large.jack!.width).toBeCloseTo(mapScale, 2)
 })
 
 test('undoes and redoes actions across private-view handoffs', async ({ page }) => {

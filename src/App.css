@@ -474,7 +474,6 @@ button:disabled {
   stroke: currentcolor;
   stroke-width: 0.6;
   opacity: 0.4;
-  vector-effect: non-scaling-stroke;
 }
 
 .past-path-line {
@@ -482,7 +481,6 @@ button:disabled {
   stroke: #d31f26;
   stroke-width: 2;
   stroke-dasharray: 5 3;
-  vector-effect: non-scaling-stroke;
   pointer-events: none;
   filter: drop-shadow(0 0 2px rgb(255 250 235 / 90%));
 }
@@ -493,7 +491,6 @@ button:disabled {
   stroke: #0462c7;
   stroke-width: 3;
   stroke-dasharray: 7 5;
-  vector-effect: non-scaling-stroke;
   pointer-events: none;
   filter: drop-shadow(0 0 2px rgb(255 255 255 / 90%));
 }
@@ -503,7 +500,6 @@ button:disabled {
   fill: none;
   stroke: #0462c7;
   stroke-width: 2.5;
-  vector-effect: non-scaling-stroke;
   pointer-events: none;
   filter: drop-shadow(0 0 1px rgb(255 255 255 / 90%));
 }
@@ -527,7 +523,6 @@ button:disabled {
   fill: #fff5e3;
   stroke: #d31f26;
   stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
 }
 
 .past-path-step text {
@@ -575,7 +570,6 @@ button:disabled {
   fill: none;
   stroke: var(--action-green);
   stroke-width: 2;
-  vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 3px rgb(0 0 0 / 80%));
 }
 
@@ -587,7 +581,6 @@ button:disabled {
 .coach-reachable-circle {
   fill: none;
   stroke-width: 2;
-  vector-effect: non-scaling-stroke;
   pointer-events: none;
   filter: drop-shadow(0 0 3px rgb(255 255 255 / 70%));
 }
@@ -605,7 +598,6 @@ button:disabled {
   fill: none;
   stroke: #ff03a7;
   stroke-width: 2;
-  vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 4px #121212);
 }
 
@@ -613,14 +605,12 @@ button:disabled {
   fill: rgb(255 221 25 / 38%);
   stroke: #e1ad00;
   stroke-width: 3;
-  vector-effect: non-scaling-stroke;
 }
 
 .discovery-marker {
   fill: rgb(196 35 35 / 32%);
   stroke: #c52222;
   stroke-width: 4;
-  vector-effect: non-scaling-stroke;
 }
 
 .private-discovery-marker {
@@ -628,7 +618,6 @@ button:disabled {
   stroke: #961919;
   stroke-width: 4;
   stroke-dasharray: 7 4;
-  vector-effect: non-scaling-stroke;
 }
 
 .possible-marker {
@@ -636,20 +625,17 @@ button:disabled {
   stroke: #7a3caf;
   stroke-width: 2.5;
   stroke-dasharray: 3 3;
-  vector-effect: non-scaling-stroke;
 }
 
 .possible-certainty-marker {
   fill: none;
   stroke: #ff03a7;
   stroke-width: 2.5;
-  vector-effect: non-scaling-stroke;
 }
 
 .possible-outcome-marker {
   fill: none;
   stroke-width: 2.5;
-  vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 2px rgb(255 250 235 / 90%));
 }
 
@@ -695,13 +681,11 @@ button:disabled {
   stroke: #ff03a7;
   stroke-width: 5;
   stroke-dasharray: 9 7;
-  vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 4px black);
 }
 
 .investigator-piece circle,
 .jack-marker circle {
-  vector-effect: non-scaling-stroke;
   stroke-width: 2;
   stroke: white;
   filter: drop-shadow(0 1px 3px rgb(0 0 0 / 90%));
@@ -752,7 +736,6 @@ button:disabled {
 .hovered-investigator-maybe-circle,
 .hovered-investigator-maybe-crossing {
   fill: none;
-  vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
 
