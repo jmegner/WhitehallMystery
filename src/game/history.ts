@@ -53,6 +53,33 @@ export const currentHistoryState = (history: GameHistory): GameState =>
 const sameAction = (left: GameAction | null, right: GameAction) =>
   left !== null && JSON.stringify(left) === JSON.stringify(right)
 
+const isJackPlanningAction = (
+  action: GameAction,
+): action is Extract<GameAction, { type: 'setJackMoveType' | 'selectJackDestination' }> =>
+  action.type === 'setJackMoveType' || action.type === 'selectJackDestination'
+
+const compactJackPlanningHistory = (history: GameHistory, desiredState: GameState): GameHistory => {
+  let turnStart = history.cursor
+  while (turnStart > 0 && history.entries[turnStart - 1]?.state.stage === 'jackMove') turnStart -= 1
+
+  const entries = history.entries.slice(0, turnStart + 1)
+  let state = entries[turnStart]!.state
+  const desiredSelection = desiredState.jackMoveSelection
+  const planningActions: GameAction[] = []
+  if (desiredSelection.type !== state.jackMoveSelection.type) {
+    planningActions.push({ type: 'setJackMoveType', moveType: desiredSelection.type })
+  }
+  for (const circleId of desiredSelection.path) {
+    planningActions.push({ type: 'selectJackDestination', circleId })
+  }
+
+  for (const action of planningActions) {
+    state = gameReducer(state, action)
+    entries.push({ state, action, counted: true })
+  }
+  return { entries, cursor: entries.length - 1, pendingReveal: null }
+}
+
 const viewStartIndex = (history: GameHistory, owner: PlayerView, fromIndex = history.cursor): number => {
   for (let index = fromIndex; index > 0; index -= 1) {
     const entry = history.entries[index]
@@ -150,6 +177,10 @@ const applyAction = (history: GameHistory, action: GameAction): GameHistory => {
   const nextEntry = history.entries[history.cursor + 1]
   if (nextEntry && sameAction(nextEntry.action, action)) {
     return { ...history, cursor: history.cursor + 1, pendingReveal: null }
+  }
+
+  if (current.stage === 'jackMove' && nextState.stage === 'jackMove' && isJackPlanningAction(action)) {
+    return compactJackPlanningHistory(history, nextState)
   }
 
   return {

@@ -96,6 +96,93 @@ describe('game action history', () => {
     expect(actionCount(afterIntermediateReselect)).toBe(0)
   })
 
+  test('compacts Jack changing his move type and destination into the current turn plan', () => {
+    const initial = createInitialGame()
+    const investigatorState = {
+      ...initial,
+      stage: 'investigatorAction' as const,
+    }
+    const handoffState = {
+      ...initial,
+      stage: 'handoffJackTurn' as const,
+    }
+    const jackState = {
+      ...initial,
+      stage: 'jackMove' as const,
+      currentJack: 33,
+      roundTrail: [33],
+    }
+    let history: GameHistory = {
+      entries: [
+        { state: investigatorState, action: null, counted: false },
+        { state: handoffState, action: { type: 'continueHandoff' }, counted: false },
+        { state: jackState, action: { type: 'continueHandoff' }, counted: false },
+      ],
+      cursor: 2,
+      pendingReveal: null,
+    }
+
+    history = run(
+      history,
+      action({ type: 'setJackMoveType', moveType: 'alley' }),
+      action({ type: 'setJackMoveType', moveType: 'normal' }),
+      action({ type: 'setJackMoveType', moveType: 'alley' }),
+      action({ type: 'setJackMoveType', moveType: 'coach' }),
+    )
+    const coachFirst = legalJackDestinations(currentHistoryState(history))[0] as number
+    history = run(
+      history,
+      action({ type: 'selectJackDestination', circleId: coachFirst }),
+      action({ type: 'setJackMoveType', moveType: 'alley' }),
+    )
+    const [firstAlleyDestination, secondAlleyDestination] = legalJackDestinations(currentHistoryState(history))
+    expect(firstAlleyDestination).toBeDefined()
+    expect(secondAlleyDestination).toBeDefined()
+    history = run(
+      history,
+      action({ type: 'selectJackDestination', circleId: firstAlleyDestination as number }),
+      action({ type: 'selectJackDestination', circleId: secondAlleyDestination as number }),
+    )
+
+    expect(history.entries.slice(3).map((entry) => entry.action)).toEqual([
+      { type: 'setJackMoveType', moveType: 'alley' },
+      { type: 'selectJackDestination', circleId: secondAlleyDestination },
+    ])
+    expect(currentHistoryState(history).jackMoveSelection).toEqual({
+      type: 'alley',
+      path: [secondAlleyDestination],
+    })
+
+    history = gameHistoryReducer(history, { type: 'undo' })
+    expect(currentHistoryState(history).jackMoveSelection).toEqual({ type: 'alley', path: [] })
+    history = gameHistoryReducer(history, { type: 'undo' })
+    expect(currentHistoryState(history).jackMoveSelection).toEqual({ type: 'normal', path: [] })
+    history = gameHistoryReducer(history, { type: 'undo' })
+    expect(currentHistoryState(history).stage).toBe('investigatorAction')
+  })
+
+  test('keeps at most two destination entries for a Coach plan', () => {
+    const jackState = {
+      ...createInitialGame(),
+      stage: 'jackMove' as const,
+      currentJack: 33,
+    }
+    let history = gameHistoryReducer(
+      createGameHistory(jackState),
+      action({ type: 'setJackMoveType', moveType: 'coach' }),
+    )
+    const first = legalJackDestinations(currentHistoryState(history))[0] as number
+    history = gameHistoryReducer(history, action({ type: 'selectJackDestination', circleId: first }))
+    const second = legalJackDestinations(currentHistoryState(history))[0] as number
+    history = gameHistoryReducer(history, action({ type: 'selectJackDestination', circleId: second }))
+
+    expect(history.entries.slice(1).map((entry) => entry.action?.type)).toEqual([
+      'setJackMoveType',
+      'selectJackDestination',
+      'selectJackDestination',
+    ])
+  })
+
   test('undoes within a view, then uses Undo! to restore the prior private view', () => {
     let history = readyForInvestigatorView()
     expect(currentHistoryState(history).stage).toBe('investigatorSetup')

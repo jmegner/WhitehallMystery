@@ -759,7 +759,7 @@ test('undoes Coach route locations onto the redo stack', async ({ page }) => {
   await second.click()
   const undoSecond = page.getByRole('button', { name: 'Undo 2nd Loc.', exact: true })
   await expect(undoSecond).toBeVisible()
-  await expect(page.getByLabel('15 player actions')).toHaveText('Actions 15')
+  await expect(page.getByLabel('12 player actions')).toHaveText('Actions 12')
   await expect(page.locator('.private-route-summary strong')).toHaveText(`33 → ${firstId} → ${secondId}`)
   await expect(page.getByRole('button', { name: 'Record move privately' })).toBeEnabled()
   await expect(undoSecond.evaluate((button) => button.previousElementSibling?.textContent?.trim())).resolves.toBe(
@@ -768,7 +768,7 @@ test('undoes Coach route locations onto the redo stack', async ({ page }) => {
 
   await undoSecond.click()
   await expect(undoSecond).toHaveCount(0)
-  await expect(page.getByLabel('14 player actions')).toHaveText('Actions 14')
+  await expect(page.getByLabel('11 player actions')).toHaveText('Actions 11')
   await expect(page.locator('.private-route-summary strong')).toHaveText(`33 → ${firstId}`)
   await expect(page.getByRole('button', { name: 'Record move privately' })).toBeDisabled()
   await expect(destinations.getByRole('button', { name: secondId, exact: true })).toBeVisible()
@@ -776,17 +776,17 @@ test('undoes Coach route locations onto the redo stack', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Redo', exact: true }).click()
   await expect(undoSecond).toBeVisible()
-  await expect(page.getByLabel('15 player actions')).toHaveText('Actions 15')
+  await expect(page.getByLabel('12 player actions')).toHaveText('Actions 12')
   await expect(page.locator('.private-route-summary strong')).toHaveText(`33 → ${firstId} → ${secondId}`)
 
   await page.getByRole('button', { name: 'Undo route', exact: true }).click()
   await expect(page.locator('.private-route-summary strong')).toHaveText('33')
-  await expect(page.getByLabel('13 player actions')).toHaveText('Actions 13')
+  await expect(page.getByLabel('10 player actions')).toHaveText('Actions 10')
   await expect(page.getByRole('button', { name: 'Undo route', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeEnabled()
   await page.getByRole('button', { name: 'Redo', exact: true }).click()
   await expect(page.locator('.private-route-summary strong')).toHaveText(`33 → ${firstId}`)
-  await expect(page.getByLabel('14 player actions')).toHaveText('Actions 14')
+  await expect(page.getByLabel('11 player actions')).toHaveText('Actions 11')
 })
 
 test('plays a complete hot-seat turn without exposing Jack during handoffs', async ({ page }) => {
