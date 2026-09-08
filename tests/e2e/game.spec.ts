@@ -304,11 +304,12 @@ test('Jack can preview investigator knowledge for the selected movement type', a
   const streetCount = await page.locator('.possible-marker').count()
   expect(streetCount).toBeGreaterThan(0)
   await expect(page.locator('.possible-marker').first()).toHaveCSS('stroke', 'rgb(122, 60, 175)')
-  await expect(page.locator('.possible-marker').first()).toHaveCSS('stroke-width', '2.5px')
-  await expect(page.locator('.possible-certainty-marker').first()).toHaveCSS('stroke', 'rgb(176, 0, 104)')
+  await expect(page.locator('.possible-marker').first()).toHaveCSS('stroke-width', '3px')
+  await expect(page.locator('.possible-certainty-marker').first()).toHaveCSS('stroke', 'rgb(255, 0, 255)')
+  await expect(page.locator('.possible-certainty-marker').first()).toHaveCSS('stroke-width', '3px')
   const projectedOutcomeCount = page.locator('.possible-outcome-count').first()
   await expect(projectedOutcomeCount).toHaveText(/\d+\/\d+/)
-  await expect(projectedOutcomeCount.locator('.outcome-count-yes')).toHaveCSS('fill', 'rgb(176, 0, 104)')
+  await expect(projectedOutcomeCount.locator('.outcome-count-yes')).toHaveCSS('fill', 'rgb(255, 0, 255)')
   await expect(projectedOutcomeCount).not.toHaveAttribute('text-anchor', 'middle')
   await page.getByLabel('alt').check()
   await expect(projectedOutcomeCount).toHaveAttribute('text-anchor', 'middle')
@@ -316,7 +317,8 @@ test('Jack can preview investigator knowledge for the selected movement type', a
   await expect(page.locator('.investigator-knowledge-toggle strong')).toHaveText(String(streetCount))
 
   await page.locator('.map-hit-target.inference-hover-target').first().hover()
-  await expect(page.locator('.possible-outcome-yes').first()).toHaveCSS('stroke', 'rgb(176, 0, 104)')
+  await expect(page.locator('.possible-outcome-yes').first()).toHaveCSS('stroke', 'rgb(255, 0, 255)')
+  await expect(page.locator('.possible-outcome-yes').first()).toHaveCSS('stroke-width', '3px')
   await page.mouse.move(0, 0)
 
   await page.getByRole('button', { name: 'Coach (2)' }).click()
@@ -542,7 +544,8 @@ test('Jack peek uses Street turn distances when hovering over Jack', async ({ pa
   await expect(investigatorRouteTurn).toHaveAttribute('text-anchor', 'start')
   await page.getByLabel('alt').uncheck()
   await distantCrossing.hover()
-  await expect(page.locator('.investigator-route-turn-count', { hasText: /^1[ab]$/ })).toHaveCount(0)
+  await expect(page.locator('.investigator-route-turn-count', { hasText: /^1a$/ }).first()).toBeVisible()
+  await expect(page.locator('.investigator-route-turn-count', { hasText: /^1b$/ }).first()).toBeVisible()
   await page.mouse.move(0, 0)
   await expect(investigatorRouteLines).toHaveCount(0)
   await expect(page.locator('.crossing-id-label')).toHaveCount(174)
@@ -1235,6 +1238,7 @@ test('previews positive and negative search outcomes for Jack maybes', async ({ 
   await expect(page.locator('.possible-marker').first()).toBeVisible()
   const certaintyMarker = page.locator('.possible-certainty-marker').first()
   await expect(certaintyMarker).toHaveCSS('stroke', 'rgb(255, 3, 167)')
+  await expect(certaintyMarker).toHaveCSS('stroke-width', '3px')
   const certaintyPresentation = await certaintyMarker.evaluate((pinkRing) => {
     const purpleRing = pinkRing.nextElementSibling
     return {

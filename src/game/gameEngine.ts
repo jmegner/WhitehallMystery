@@ -458,7 +458,6 @@ export const shortestInvestigatorRoutePreview = (state: GameState, target: strin
         })
       }
       const arrivalStep = step + 1
-      if (arrivalStep <= 2) continue
       const labels = labelSets.get(to) ?? new Set<string>()
       labels.add(`${Math.ceil(arrivalStep / 2)}${arrivalStep % 2 === 1 ? 'a' : 'b'}`)
       labelSets.set(to, labels)
@@ -748,6 +747,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
     }
     case 'selectJackDestination': {
       if (state.stage !== 'jackMove') return state
+      if (state.jackMoveSelection.path.includes(action.circleId)) return state
       const legal = legalJackDestinations(state)
       if (!legal.includes(action.circleId)) return withNotice(state, 'That location is not legal for this movement.')
       const path =

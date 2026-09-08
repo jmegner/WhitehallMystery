@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { createInitialGame, gameReducer } from './gameEngine'
+import { createInitialGame, gameReducer, legalJackDestinations } from './gameEngine'
 import {
   actionCount,
   canBigUndo,
@@ -62,6 +62,38 @@ describe('game action history', () => {
       expect(afterReselect).toBe(history)
       expect(actionCount(afterReselect)).toBe(0)
     }
+  })
+
+  test('does not record reselecting a destination already in Jack’s route', () => {
+    const jackState = {
+      ...createInitialGame(),
+      stage: 'jackMove' as const,
+      currentJack: 33,
+    }
+
+    const destination = legalJackDestinations(jackState)[0] as number
+    const selected = gameReducer(jackState, { type: 'selectJackDestination', circleId: destination })
+    const history = createGameHistory(selected)
+    const afterReselect = gameHistoryReducer(
+      history,
+      action({ type: 'selectJackDestination', circleId: destination }),
+    )
+    expect(afterReselect).toBe(history)
+    expect(actionCount(afterReselect)).toBe(0)
+
+    const coach = gameReducer(jackState, { type: 'setJackMoveType', moveType: 'coach' })
+    const intermediate = legalJackDestinations(coach)[0] as number
+    const intermediateSelected = gameReducer(coach, {
+      type: 'selectJackDestination',
+      circleId: intermediate,
+    })
+    const coachHistory = createGameHistory(intermediateSelected)
+    const afterIntermediateReselect = gameHistoryReducer(
+      coachHistory,
+      action({ type: 'selectJackDestination', circleId: intermediate }),
+    )
+    expect(afterIntermediateReselect).toBe(coachHistory)
+    expect(actionCount(afterIntermediateReselect)).toBe(0)
   })
 
   test('undoes within a view, then uses Undo! to restore the prior private view', () => {

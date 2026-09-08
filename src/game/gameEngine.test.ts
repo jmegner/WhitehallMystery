@@ -196,7 +196,7 @@ describe('investigator movement previews', () => {
     expect(next.stage).toBe('investigatorMove')
   })
 
-  test('shows every shortest route to a crossing beyond one turn with labels beginning at 2a', () => {
+  test('shows every shortest route to a crossing beyond one turn with labels beginning at 1a', () => {
     const start = 'HJ'
     const state: GameState = {
       ...createInitialGame(),
@@ -211,7 +211,8 @@ describe('investigator movement previews', () => {
     expect(target).toBeDefined()
     expect(preview.segments.length).toBeGreaterThan(0)
     expect(preview.turnLabels.get(target)).toMatch(/^[2-9]\d*[ab](?:,[2-9]\d*[ab])?$/)
-    expect([...preview.turnLabels.values()].every((label) => !label.startsWith('1'))).toBe(true)
+    expect([...preview.turnLabels.values()].some((label) => label.split(',').includes('1a'))).toBe(true)
+    expect([...preview.turnLabels.values()].some((label) => label.split(',').includes('1b'))).toBe(true)
     expect(preview.turnLabels.has(start)).toBe(false)
     for (const segment of preview.segments) {
       expect(segment.throughLocationPaths).toEqual(investigatorTransitions.get(segment.from)?.get(segment.to))
