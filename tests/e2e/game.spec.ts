@@ -983,6 +983,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await page.getByLabel('xings').check()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'New game' }).click()
+  await page.getByRole('button', { name: 'Same device', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
   await expect(page.getByLabel('xings')).toBeChecked()
   await expect.poll(() => page.evaluate(() => ({
