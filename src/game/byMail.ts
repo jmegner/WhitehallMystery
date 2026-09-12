@@ -257,11 +257,13 @@ export function mailTurns(history: GameHistory): Array<{ owner: PlayerView; byte
   return turns
 }
 
-export function mailTurnTimestamp(endedAt: number | null): string {
+export function mailTurnTimestamp(endedAt: number | null, timeZone?: string): string {
   if (endedAt === null) return 'time unavailable'
-  const date = new Date(endedAt * 1000)
-  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][date.getUTCMonth()]
-  return `${month}${String(date.getUTCDate()).padStart(2, '0')} ${date.toISOString().slice(11, 19)} UTC`
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone, month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    second: '2-digit', hourCycle: 'h23', timeZoneName: 'short',
+  }).formatToParts(new Date(endedAt * 1000)).map(({ type, value }) => [type, value]))
+  return `${parts.month}${parts.day} ${parts.hour}:${parts.minute}:${parts.second} ${parts.timeZoneName}`
 }
 
 export function reviewMailCorrection(input: string, current: { id: number; role: PlayerView; history: GameHistory; turnStart: number }) {

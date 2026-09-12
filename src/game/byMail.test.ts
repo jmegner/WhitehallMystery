@@ -182,7 +182,12 @@ describe('By Mail v1', () => {
       h = randomSide(h, () => .95)
     }
     expect(decodeMail(encodeMail(id, 'jack', setup())).endedAt).toBeNull()
-    expect(mailTurnTimestamp(Date.UTC(2026, 8, 11, 13, 4, 5) / 1000)).toBe('Sep11 13:04:05 UTC')
+    const finishedAt = Date.UTC(2026, 8, 11, 13, 4, 5) / 1000
+    expect(mailTurnTimestamp(finishedAt, 'UTC')).toBe('Sep11 13:04:05 UTC')
+    expect(mailTurnTimestamp(finishedAt, 'America/Chicago')).toBe('Sep11 08:04:05 CDT')
+    expect(mailTurnTimestamp(Date.UTC(2026, 8, 12, 1, 25, 6) / 1000, 'America/Chicago')).toBe('Sep11 20:25:06 CDT')
+    expect(mailTurnTimestamp(Date.UTC(2026, 0, 12, 1, 25, 6) / 1000, 'America/Chicago')).toBe('Jan11 19:25:06 CST')
+    expect(mailTurnTimestamp(finishedAt)).toBe(mailTurnTimestamp(finishedAt, Intl.DateTimeFormat().resolvedOptions().timeZone))
     expect(mailTurnTimestamp(null)).toBe('time unavailable')
   })
   test('latest opponent corrections ignore and replace dependent local work', () => {

@@ -9,8 +9,9 @@ completed turn number and a hyphen: `01-…`, `02-…`, and so on. The prefix is
 required and checked against the replayed history. Unprefixed text and links
 are rejected; there is no legacy fallback or automatic conversion.
 During play, the heading shows `Turn N in progress` for the current turn.
-After completion it shows `Turn N, MMMDD HH:MM:SS UTC`, using the time that turn
-finished. When sharing during a turn, the previous completed turn and its
+After completion it shows `Turn N, MMMDD HH:MM:SS zone`, using the time that turn
+finished in the browser's local time zone, including daylight saving and local
+date changes. The stored finish timestamp remains Unix seconds. When sharing during a turn, the previous completed turn and its
 finish time are labeled separately alongside the outgoing text. Discovery setup is turn 1, investigator setup turn 2, Jack's first
 move turn 3, and so on. The game start time is displayed in the browser's local time zone with a zone
 label; its stored game ID remains Unix seconds. The turn finish time travels with the message and survives

@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+test.use({ timezoneId: 'America/Chicago' })
+
 test('By Mail exchanges turns between isolated devices and rejoins from a link', async ({ page: jack, browser }) => {
   const investigatorsContext = await browser.newContext()
   await investigatorsContext.addInitScript(() => localStorage.setItem('whitehall-mystery.show-jack-peek', 'true'))
@@ -165,7 +167,7 @@ test('turn timestamps and corrections work during a turn, with review for broade
     await jack.goto('/')
     const origin = jack.url()
     await startJack([33, 46, 147, 159])
-    await expect(jack.getByRole('heading', { name: 'Turn 1, Sep11 10:00:00 UTC', exact: true })).toBeVisible()
+    await expect(jack.getByRole('heading', { name: 'Turn 1, Sep11 05:00:00 CDT', exact: true })).toBeVisible()
     const initial = await jack.getByLabel('Outgoing game text').inputValue()
     await bob.goto(`${origin}#mail=${initial}`)
     await bob.getByRole('button', { name: 'Join existing game', exact: true }).click()
@@ -188,10 +190,10 @@ test('turn timestamps and corrections work during a turn, with review for broade
     await expect(bob.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
     await expect(bob.locator('.investigator-piece')).toHaveCount(0)
     await expect(bob.getByRole('heading', { name: 'Turn 2 in progress', exact: true })).toBeVisible()
-    await expect(bob.getByText('Completed turn 1, Sep11 11:00:00 UTC', { exact: true })).toHaveCount(1)
+    await expect(bob.getByText('Completed turn 1, Sep11 06:00:00 CDT', { exact: true })).toHaveCount(1)
     await bob.reload()
     await expect(bob.getByRole('heading', { name: 'Turn 2 in progress', exact: true })).toBeVisible()
-    await expect(bob.getByText('Completed turn 1, Sep11 11:00:00 UTC', { exact: true })).toHaveCount(1)
+    await expect(bob.getByText('Completed turn 1, Sep11 06:00:00 CDT', { exact: true })).toHaveCount(1)
     for (let i = 0; i < 3; i++) await bob.getByLabel('Available deployment crossings').getByRole('button').first().click()
     await expect(bob.getByRole('heading', { name: /^Turn 2,/ })).toBeVisible()
     const deployment = await bob.getByLabel('Outgoing game text').inputValue()
@@ -233,6 +235,6 @@ test('turn timestamps and corrections work during a turn, with review for broade
     await expect(review).toContainText('0 turns differ')
     await bob.getByRole('button', { name: 'Accept correction' }).click()
     await expect(bob.getByRole('heading', { name: 'Turn 2 in progress', exact: true })).toBeVisible()
-    await expect(bob.getByText('Completed turn 1, Sep12 10:00:00 UTC', { exact: true })).toHaveCount(1)
+    await expect(bob.getByText('Completed turn 1, Sep12 05:00:00 CDT', { exact: true })).toHaveCount(1)
   } finally { await context.close() }
 })
