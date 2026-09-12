@@ -128,3 +128,24 @@ The initial invitation is 26 characters. The deployment reply is 30 characters.
 V1 omits the four-byte finish time; v2 adds five or six text characters.
 For any host, exact link length is simply the current app URL plus `#mail=`
 plus the text length. The UI displays the actual text length for each message.
+
+## QR sharing
+
+The sharing screen remembers whether the QR code is expanded and whether it
+contains an app link (default) or compact binary in localStorage. Link codes use
+the current deployment URL, including the GitHub Pages path. Binary codes carry
+exactly the wire bytes described above, starting with the four-byte game ID;
+they omit Base64 and the text-only turn prefix. The reader validates the checksum
+and replays the history before reconstructing the prefixed text.
+
+Scan QR code uses the device camera to read links and binary codes and fill
+the partner-message field. Joining,
+reply validation, and correction review still require their usual load buttons.
+Binary codes require this app's reader; link codes also work with ordinary phone
+camera apps. Camera access requires HTTPS (or localhost) and browser permission.
+Camera tracks stop on success, cancellation, and leaving the reader screen.
+
+Generation and reading use zxing-wasm's prebuilt full module, loaded on demand
+and bundled as a same-origin Vite asset; no WASM build or CDN is required.
+Codes use QR byte mode for binary data and low error correction. A game that
+exceeds single-code capacity displays an error with the existing text/link options.

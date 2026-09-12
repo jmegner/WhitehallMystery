@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "zxing-wasm": "^3.1.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

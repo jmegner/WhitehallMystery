@@ -1,0 +1,11 @@
+.mail-qr { margin-block: 1rem; }
+.mail-qr label { display: block; margin-block: .7rem; }
+.mail-qr select { max-width: 100%; }
+.mail-qr-image { display: block; width: min(100%, 480px); height: auto; image-rendering: pixelated; }
+.mail-qr-video { display: block; width: min(100%, 640px); margin-top: 1rem; }
+.mail-share-feedback { margin: .4rem 0; padding: .3rem .5rem; border-radius: .3rem; width: fit-content; }
+.mail-copy-glow { animation: mail-copy-glow 1s ease-out; }
+@keyframes mail-copy-glow {
+  from { background-color: #ffe28a; box-shadow: 0 0 12px #e8b532; color: #211b0c; }
+  to { background-color: transparent; box-shadow: 0 0 0 transparent; }
+}

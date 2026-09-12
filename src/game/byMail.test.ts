@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { acceptMail, decodeMail, encodeMail, isMailBoundary, mailBytes, mailTimestamp, mailUrl, normalizeMailHistory, otherPlayer, mailHistoryReducer, mailBoardState, mailTurns, mailTurnTimestamp, reviewMailCorrection } from './byMail'
+import { acceptMail, decodeMail, encodeMail, isMailBoundary, mailBytes, mailTimestamp, mailUrl, normalizeMailHistory, otherPlayer, mailHistoryReducer, mailBoardState, mailTurns, mailTurnTimestamp, reviewMailCorrection, mailQrBytes, mailTextFromQr } from './byMail'
 import { createInitialGame, randomProgressActions, legalNormalDestinations, deploymentChoices } from './gameEngine'
 import { createGameHistory, currentHistoryState, gameHistoryReducer, playerViewForState, type GameHistory } from './history'
 import type { GameAction } from './types'
@@ -20,6 +20,21 @@ function randomSide(history: GameHistory, random: () => number) {
   throw new Error('Turn failed to finish')
 }
 describe('By Mail v1', () => {
+  test('QR binary carries raw wire bytes and validates corruption; links keep their mandatory prefix', () => {
+    const text = encodeMail(id, 'investigators', setup(), id + 60)
+    const bytes = mailQrBytes(text)
+    expect(bytes.length).toBe(17)
+    expect(new DataView(bytes.buffer).getUint32(0)).toBe(id)
+    expect(mailTextFromQr(bytes)).toBe(text)
+    for (const origin of ['https://whitehallmystery.pages.dev/', 'https://example.github.io/WhitehallMystery/']) {
+      expect(mailTextFromQr(new TextEncoder().encode(mailUrl(text, origin)))).toBe(text)
+    }
+    expect(() => mailTextFromQr(new TextEncoder().encode(text.slice(3)))).toThrow()
+    for (let i = 0; i < bytes.length; i++) {
+      const damaged = bytes.slice(); damaged[i] ^= 1
+      expect(() => mailTextFromQr(damaged)).toThrow()
+    }
+  })
   test('four discovery bytes, timestamp, recipient, checksum and URL-safe encoding', () => {
     const h = setup()
     const text = encodeMail(id, 'investigators', h)

@@ -266,6 +266,24 @@ export function mailTurnTimestamp(endedAt: number | null, timeZone?: string): st
   return `${parts.month}${parts.day} ${parts.hour}:${parts.minute}:${parts.second} ${parts.timeZoneName}`
 }
 
+/** QR byte mode carries the existing wire bytes, starting with the four-byte game ID. */
+export function mailQrBytes(text: string): Uint8Array {
+  decodeMail(text)
+  return Uint8Array.from(atob(mailTextFromInput(text).slice(3).replaceAll('-', '+').replaceAll('_', '/')), c => c.charCodeAt(0))
+}
+
+export function mailTextFromQr(bytes: Uint8Array): string {
+  if (bytes.length > 6144) fail()
+  const text = new TextDecoder().decode(bytes)
+  if (/^https?:\/\//i.test(text) || /^\d{2}-/.test(text)) {
+    decodeMail(text)
+    return mailTextFromInput(text)
+  }
+  const payload = btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+  const decoded = decodeMailPayload(payload)
+  return encodeMail(decoded.id, decoded.role, decoded.history, decoded.endedAt)
+}
+
 export function reviewMailCorrection(input: string, current: { id: number; role: PlayerView; history: GameHistory; turnStart: number }) {
   const incoming = decodeMail(input)
   if (incoming.role !== current.role) throw new Error('This correction is addressed to the other player. Ask for text addressed to your side.')

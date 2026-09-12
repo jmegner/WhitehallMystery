@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import App from './App'
+import { MailQrShare, MailQrReader } from './MailQr'
 import { acceptMail, decodeMail, encodeMail, MAIL_STORAGE_KEY, mailTimestamp, mailUrl, otherPlayer, mailTurnStart, isMailBoundary, mailTurns, mailTurnTimestamp, reviewMailCorrection, mailHistoryReducer, normalizeMailHistory } from './game/byMail'
 import { createGameHistory, currentHistoryState, playerViewForState, gameHistoryReducer, type GameHistory, type PlayerView } from './game/history'
 import { createInitialGame } from './game/gameEngine'
@@ -44,6 +45,7 @@ export default function GameApp() {
   const [activeSharing, setActiveSharing] = useState(() => readStorage(ACTIVE_SHARING_KEY) === 'true')
   const [correction, setCorrection] = useState<ReturnType<typeof reviewMailCorrection> | null>(null)
   const [feedback, setFeedback] = useState('')
+  const [shareFeedback, setShareFeedback] = useState<{ message: string; copied: boolean; sequence: number } | null>(null)
   const [generation, setGeneration] = useState(0)
   const save = (next: MailSession | null) => {
     writeStorage(MAIL_STORAGE_KEY, JSON.stringify(next ? {
@@ -53,7 +55,7 @@ export default function GameApp() {
     setSession(next)
   }
   const setSharing = (value: boolean) => { setActiveSharing(value); writeStorage(ACTIVE_SHARING_KEY, String(value)) }
-  const updateDraft = (value: string) => { setCorrection(null); setDraft(value); writeStorage(DRAFT_KEY, value); setFeedback('') }
+  const updateDraft = (value: string) => { setCorrection(null); setDraft(value); writeStorage(DRAFT_KEY, value); setFeedback(''); setShareFeedback(null) }
   const openMenu = () => { setMenu('choose'); setFeedback('') }
   const state = session ? currentHistoryState(session.history) : null
   const waiting = !!session && state?.stage !== 'gameOver' && playerViewForState(state!) !== session.role
@@ -80,21 +82,25 @@ export default function GameApp() {
       loadIncoming(next, updateNotice ? `Game loaded. ${updateNotice}` : 'Game loaded.')
     } catch (error) { setFeedback(error instanceof Error ? error.message : 'Could not load this message.') }
   }
-  const copy = async (text: string) => {
-    try { await navigator.clipboard.writeText(text); setFeedback('Copied.') }
-    catch { setFeedback('Copy is unavailable. Select and copy the game text below.') }
+  const reportShare = (message: string, copied = false) => {
+    setShareFeedback(previous => ({ message, copied, sequence: (previous?.sequence ?? 0) + 1 }))
+  }
+  const copy = async (text: string, kind: 'text' | 'link') => {
+    try { await navigator.clipboard.writeText(text); reportShare(`Game ${kind} copied.`, true) }
+    catch { reportShare('Copy is unavailable. Select and copy the game text above.') }
   }
   const share = async (url: boolean) => {
     if (!session?.outgoing) return
     const text = url ? mailUrl(session.outgoing) : session.outgoing
     try {
       if (navigator.share) await navigator.share({ title: 'Whitehall Mystery — By Mail', text })
-      else await copy(text)
+      else await copy(text, url ? 'link' : 'text')
     } catch (error) {
-      if (!(error instanceof DOMException && error.name === 'AbortError')) setFeedback('Sharing is unavailable. Use Copy text or Copy link.')
+      if (!(error instanceof DOMException && error.name === 'AbortError')) reportShare('Sharing is unavailable. Use Copy text or Copy link.')
     }
   }
   const importControls = (joining: boolean) => <>
+    {joining && <MailQrReader onRead={updateDraft} />}
     <label htmlFor="mail-input">Game text or link from your partner</label>
     <textarea id="mail-input" value={draft} onChange={event => updateDraft(event.target.value)} rows={3} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
     <button type="button" className="primary-button" disabled={!draft.trim() || (!joining && !waiting)} onClick={() => receive(joining)}>{joining ? 'Join existing game' : 'Load partner’s reply'}</button>
@@ -166,18 +172,18 @@ export default function GameApp() {
         {turnInProgress && message && <p>Completed turn {completedTurnNumber}, {mailTurnTimestamp(message.endedAt)}</p>}
         <p>This message opens the {otherPlayer(session.role) === 'jack' ? 'Jack' : 'investigator'} side, including on a new device.</p>
         <textarea aria-label="Outgoing game text" readOnly value={session.outgoing} rows={2} onFocus={event => event.target.select()} />
-        <div className="button-row">
-          <button onClick={() => void copy(session.outgoing)}>Copy text</button>
-          <button onClick={() => void copy(mailUrl(session.outgoing))}>Copy link</button>
+        <MailQrShare text={session.outgoing} feedback={shareFeedback && <p key={shareFeedback.sequence} role="status" className={`mail-share-feedback${shareFeedback.copied ? ' mail-copy-glow' : ''}`}>{shareFeedback.message}</p>}>
+          <button onClick={() => void copy(session.outgoing, 'text')}>Copy text</button>
+          <button onClick={() => void copy(mailUrl(session.outgoing), 'link')}>Copy link</button>
           <button onClick={() => void share(false)}>Share text</button>
           <button onClick={() => void share(true)}>Share link</button>
-        </div>
+        </MailQrShare>
       </details>}
       {sharingVisible && <>
-        <div className="button-row">
+        <MailQrReader onRead={updateDraft}>
           <button type="button" disabled={session.history.cursor <= session.turnStart} onClick={() => undoFromSharing(false)}>Undo</button>
           <button type="button" disabled={session.history.cursor <= session.turnStart} onClick={() => undoFromSharing(true)}>Undo side</button>
-        </div>
+        </MailQrReader>
         {importControls(false)}
       </>}
       </>}
