@@ -42,6 +42,7 @@ import {
   gameHistoryReducer,
   undoMode,
   type GameHistory,
+  type HistoryCommand,
   type PlayerView,
 } from './game/history'
 import {
@@ -1552,12 +1553,14 @@ function HandoffScreen({
 
 interface AppProps {
   mail?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; onChange: (history: GameHistory) => void }
+  online?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; onCommands: (commands: HistoryCommand[]) => void }
   onNewGame?: () => void
 }
-function App({ mail, onNewGame }: AppProps) {
+function App({ mail, online, onNewGame }: AppProps) {
   const [localHistory, setHistory] = useState(initializeHistory)
-  const history = mail?.history ?? localHistory
-  const state = mail ? mailBoardState(history, mail.role) : currentHistoryState(history)
+  const remote = mail ?? online
+  const history = remote?.history ?? localHistory
+  const state = remote ? mailBoardState(history, remote.role) : currentHistoryState(history)
   const recap = state.stage === 'gameOver' ? gameRecap(history) : []
   const displayedPublicLog = recap.length > 0 ? recap : currentRoundPublicLog(state.publicLog)
   const [showPossible, setShowPossible] = useState(() => {
@@ -1568,7 +1571,7 @@ function App({ mail, onNewGame }: AppProps) {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, JACK_PEEK_STORAGE_KEY) : false
   })
-  const showJackPeek = !mail && peekPreference
+  const showJackPeek = !remote && peekPreference
   const [showCrossingIds, setShowCrossingIds] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY) : false
@@ -1603,12 +1606,29 @@ function App({ mail, onNewGame }: AppProps) {
     runInvestigatorAuto = false,
   ) => {
     let next = history
+    const acceptedCommands: HistoryCommand[] = []
     for (const command of commands) {
-      next = mail ? mailHistoryReducer(next, command, mail.role, mail.turnStart) : gameHistoryReducer(next, command)
+      const previous = next
+      next = remote ? mailHistoryReducer(next, command, remote.role, remote.turnStart) : gameHistoryReducer(next, command)
+      if (online) next = normalizeMailHistory(next)
+      if (next !== previous) acceptedCommands.push(command)
     }
-    if (runInvestigatorAuto && (!mail || (mail.role === 'investigators' && !mail.waiting))) {
+    if (runInvestigatorAuto && (!remote || (remote.role === 'investigators' && !remote.waiting))) {
       const automatic = automaticInvestigatorActions(next)
-      next = automatic.next
+      if (remote) {
+        for (const command of automatic.commands) {
+          const previous = next
+          next = mailHistoryReducer(next, command, remote.role, remote.turnStart)
+          if (online) next = normalizeMailHistory(next)
+          if (next !== previous) acceptedCommands.push(command)
+        }
+      } else {
+        next = automatic.next
+      }
+    }
+    if (online) {
+      online.onCommands(acceptedCommands)
+      return
     }
     if (next.pendingReveal === 'investigators') {
       const revealCommand = { type: 'revealUndo' as const }
@@ -1617,7 +1637,7 @@ function App({ mail, onNewGame }: AppProps) {
       window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1000)
     }
     const nextStage = currentHistoryState(next).stage
-    if (!mail && (nextStage === 'handoffInspectorsSetup' || nextStage === 'handoffInspectorsTurn')) {
+    if (!remote && (nextStage === 'handoffInspectorsSetup' || nextStage === 'handoffInspectorsTurn')) {
       const continueCommand = { type: 'apply' as const, action: { type: 'continueHandoff' as const } }
       next = gameHistoryReducer(next, continueCommand)
       setShowInvestigatorTurnAnnouncement(true)
@@ -1757,9 +1777,9 @@ function App({ mail, onNewGame }: AppProps) {
   const showPossibilityMarkers =
     (showPossible && isInspectorInteraction(state.stage)) ||
     (showInvestigatorKnowledge && state.stage === 'jackMove')
-  if (mail?.waiting) { legalCircleIds.clear(); legalCrossingIds.clear(); coachReachableCircleIds.clear() }
+  if (remote?.waiting) { legalCircleIds.clear(); legalCrossingIds.clear(); coachReachableCircleIds.clear() }
   const handleCircle = (circleId: number) => {
-    if (mail?.waiting) return
+    if (remote?.waiting) return
     if (state.stage === 'jackDiscoverySetup') dispatch({ type: 'toggleDiscovery', circleId })
     else if (state.stage === 'jackChooseStart') dispatch({ type: 'chooseJackStart', circleId })
     else if (state.stage === 'jackMove') dispatch({ type: 'selectJackDestination', circleId })
@@ -1770,7 +1790,7 @@ function App({ mail, onNewGame }: AppProps) {
     }
   }
   const handleCircleMiddleClick = (circleId: number) => {
-    if (mail?.waiting) return
+    if (remote?.waiting) return
     if (state.stage === 'jackMove') {
       const select = { type: 'selectJackDestination' as const, circleId }
       const afterSelection = gameReducer(state, select)
@@ -1793,7 +1813,7 @@ function App({ mail, onNewGame }: AppProps) {
     }
   }
   const handleCrossing = (crossingId: string) => {
-    if (mail?.waiting) return
+    if (remote?.waiting) return
     if (state.stage === 'investigatorSetup') dispatch({ type: 'placeInvestigator', crossingId })
     else if (state.stage === 'investigatorMove') dispatch({ type: 'moveInvestigator', crossingId })
   }
@@ -1818,7 +1838,7 @@ function App({ mail, onNewGame }: AppProps) {
           >
             Rulebook
           </a>
-          {!mail && <button
+          {!remote && <button
             type="button"
             className="text-button"
             onClick={() => {
@@ -1839,7 +1859,7 @@ function App({ mail, onNewGame }: AppProps) {
           <div className="board-toolbar">
             <div className="board-options">
               <HistoryControls
-                mailControls={mail ? { canUndo: history.cursor > mail.turnStart, canRedo: history.cursor < history.entries.length - 1, waiting: mail.waiting || state.stage === 'gameOver' } : undefined}
+                mailControls={remote ? { canUndo: history.cursor > remote.turnStart, canRedo: history.cursor < history.entries.length - 1, waiting: remote.waiting || state.stage === 'gameOver' } : undefined}
                 history={history}
                 onUndo={handleUndo}
                 onBigUndo={handleBigUndo}
@@ -1963,7 +1983,7 @@ function App({ mail, onNewGame }: AppProps) {
                   {showPossible && <strong>{possibleIds.size}</strong>}
                 </label>
               )}
-              {!mail && isInspectorInteraction(state.stage) && (
+              {!remote && isInspectorInteraction(state.stage) && (
                 <label className="jack-peek-toggle" title="peek at Jack's current location and path this round">
                   <input
                     type="checkbox"
@@ -2006,7 +2026,7 @@ function App({ mail, onNewGame }: AppProps) {
                 onCircleMiddleClick={handleCircleMiddleClick}
                 onCrossing={handleCrossing}
                 onMapClick={() => {
-                  if (!mail?.waiting && (state.stage === 'investigatorTurnResult' || state.stage === 'investigatorSetupResult')) {
+                  if (!remote?.waiting && (state.stage === 'investigatorTurnResult' || state.stage === 'investigatorSetupResult')) {
                     dispatch({ type: 'continueHandoff' })
                   }
                 }}
@@ -2017,7 +2037,7 @@ function App({ mail, onNewGame }: AppProps) {
                 Investigators’ Turn
               </div>
             )}
-            {!mail?.waiting && (state.stage === 'investigatorTurnResult' || state.stage === 'investigatorSetupResult') && (
+            {!remote?.waiting && (state.stage === 'investigatorTurnResult' || state.stage === 'investigatorSetupResult') && (
               <div className="map-continue-prompt">Results shown · Click anywhere on the map to continue</div>
             )}
           </div>
@@ -2073,12 +2093,12 @@ function App({ mail, onNewGame }: AppProps) {
               </label>
             )}
           </div>
-          <h2>{mail?.waiting ? 'Waiting for your partner' : titleForStage(state)}</h2>
+          <h2>{remote?.waiting ? 'Waiting for your partner' : titleForStage(state)}</h2>
           <div className="notice" role="status">
             {state.notice}
           </div>
           <DiscoveryChecklist state={state} />
-          {!mail?.waiting && <GameControls
+          {!remote?.waiting && <GameControls
             state={state}
             dispatch={dispatch}
             onUndoRoute={handleUndoRoute}

@@ -6,6 +6,16 @@ import { createGameHistory, currentHistoryState, playerViewForState, gameHistory
 import { createInitialGame } from './game/gameEngine'
 import { loadStoredHistory } from './game/persistence'
 import type { GameAction } from './game/types'
+import OnlineGame from './online/OnlineGame'
+import {
+  configuredOnlineApi,
+  createOnlineGame,
+  loadOnlineSession,
+  onlineSessionFromInvite,
+  onlineSessionFromLocation,
+  saveOnlineSession,
+  type OnlineSession,
+} from './online/onlineSession'
 
 interface MailSession {
   id: number
@@ -38,15 +48,31 @@ function loadSession(): MailSession | null {
 const urlMessage = () => new URLSearchParams(window.location.hash.slice(1)).get('mail') ?? ''
 
 export default function GameApp() {
-  const [session, setSession] = useState(loadSession)
-  const [menu, setMenu] = useState<'choose' | 'mail' | null>(() => urlMessage() ? 'mail' : null)
+  const [onlineSession, setOnlineSession] = useState<OnlineSession | null>(() => {
+    if (urlMessage()) return null
+    const invited = onlineSessionFromLocation()
+    const loaded = invited ?? loadOnlineSession()
+    if (invited) {
+      saveOnlineSession(invited)
+      window.history.replaceState(null, '', window.location.pathname + window.location.search)
+    }
+    return loaded
+  })
+  const [session, setSession] = useState<MailSession | null>(() => onlineSession ? null : loadSession())
+  const [menu, setMenu] = useState<'choose' | 'mail' | 'online' | null>(() => urlMessage() ? 'mail' : null)
   const [draft, setDraft] = useState(() => urlMessage() || readStorage(DRAFT_KEY) || '')
+  const [onlineDraft, setOnlineDraft] = useState('')
+  const [onlineBusy, setOnlineBusy] = useState(false)
   const [showBoard, setShowBoard] = useState(() => readStorage(BOARD_VIEW_KEY) === 'true')
   const [activeSharing, setActiveSharing] = useState(() => readStorage(ACTIVE_SHARING_KEY) === 'true')
   const [correction, setCorrection] = useState<ReturnType<typeof reviewMailCorrection> | null>(null)
   const [feedback, setFeedback] = useState('')
   const [shareFeedback, setShareFeedback] = useState<{ message: string; copied: boolean; sequence: number } | null>(null)
   const [generation, setGeneration] = useState(0)
+  const saveOnline = (next: OnlineSession | null) => {
+    saveOnlineSession(next)
+    setOnlineSession(next)
+  }
   const save = (next: MailSession | null) => {
     writeStorage(MAIL_STORAGE_KEY, JSON.stringify(next ? {
       id: next.id, role: next.role, outgoing: next.outgoing, turnStart: next.turnStart, baselineEndedAt: next.baselineEndedAt, completedText: next.completedText, cursor: next.history.cursor,
@@ -60,6 +86,7 @@ export default function GameApp() {
   const state = session ? currentHistoryState(session.history) : null
   const waiting = !!session && state?.stage !== 'gameOver' && playerViewForState(state!) !== session.role
   const loadIncoming = (next: ReturnType<typeof decodeMail>, message: string) => {
+    saveOnline(null)
     save({ ...next, turnStart: next.history.cursor, baselineEndedAt: next.endedAt, outgoing: encodeMail(next.id, otherPlayer(next.role), next.history, next.endedAt) })
     updateDraft('')
     setMenu(null)
@@ -99,6 +126,32 @@ export default function GameApp() {
       if (!(error instanceof DOMException && error.name === 'AbortError')) reportShare('Sharing is unavailable. Use Copy text or Copy link.')
     }
   }
+  const startOnline = async () => {
+    setOnlineBusy(true)
+    setFeedback('')
+    try {
+      const next = await createOnlineGame()
+      save(null)
+      saveOnline(next)
+      setMenu(null)
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Could not create an online game.')
+    } finally {
+      setOnlineBusy(false)
+    }
+  }
+  const joinOnline = () => {
+    const next = onlineSessionFromInvite(onlineDraft)
+    if (!next) {
+      setFeedback('Paste a complete online investigator invitation link.')
+      return
+    }
+    save(null)
+    saveOnline(next)
+    setOnlineDraft('')
+    setFeedback('')
+    setMenu(null)
+  }
   const importControls = (joining: boolean) => <>
     {joining && <MailQrReader onRead={updateDraft} />}
     <label htmlFor="mail-input">Game text or link from your partner</label>
@@ -107,12 +160,13 @@ export default function GameApp() {
     {!joining && <button type="button" onClick={receiveCorrection}>Load partner’s correction</button>}
   </>
   if (menu) return <main className="mail-menu">
-    <h1>{menu === 'choose' ? 'New game' : 'By Mail'}</h1>
+    <h1>{menu === 'choose' ? 'New game' : menu === 'mail' ? 'By Mail' : 'Online'}</h1>
     {menu === 'choose' ? <>
       <p>Choose how to play this two-player game.</p>
-      <button className="primary-button" onClick={() => { save(null); setGeneration(generation + 1); writeStorage('whitehall-mystery.game.v1', ''); setMenu(null) }}>Same device</button>
-      <button className="primary-button" onClick={() => setMenu('mail')}>By Mail</button>
-    </> : <>
+      <button className="primary-button" onClick={() => { save(null); saveOnline(null); setGeneration(generation + 1); writeStorage('whitehall-mystery.game.v1', ''); setMenu(null) }}>Same device</button>
+      <button className="primary-button" onClick={() => { saveOnline(null); setMenu('mail') }}>By Mail</button>
+      <button className="primary-button" onClick={() => { setFeedback(''); setMenu('online') }}>Online</button>
+    </> : menu === 'mail' ? <>
       <p>Take turns on separate devices. Send the game text or a link through SMS, WhatsApp, or any messenger. Each message includes the history needed to rejoin on another device.</p>
       <button className="primary-button" onClick={() => {
         const id = Math.floor(Date.now() / 1000)
@@ -122,10 +176,24 @@ export default function GameApp() {
       }}>Start new game as Jack</button>
       <p>To play the investigators, ask Jack to start the game and send you the first message. To rejoin, paste the latest message addressed to your side.</p>
       {importControls(true)}
+    </> : <>
+      <p>Play on separate devices with live synchronization through the Cloudflare multiplayer service.</p>
+      <button className="primary-button" type="button" disabled={onlineBusy || !configuredOnlineApi()} onClick={() => void startOnline()}>
+        {onlineBusy ? 'Creating game…' : 'Start new game as Jack'}
+      </button>
+      {!configuredOnlineApi() && <p>Online multiplayer is not configured for this deployment.</p>}
+      <label htmlFor="online-invitation">Investigator invitation link</label>
+      <textarea id="online-invitation" value={onlineDraft} onChange={event => setOnlineDraft(event.target.value)} rows={3} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
+      <button type="button" disabled={!onlineDraft.trim()} onClick={joinOnline}>Join as investigators</button>
     </>}
     <button className="text-button" onClick={() => { setMenu(null); setFeedback('') }}>Cancel</button>
     <p role="status">{feedback}</p>
   </main>
+  if (onlineSession) return <OnlineGame
+    session={onlineSession}
+    onLeave={() => { saveOnline(null); setMenu('choose') }}
+    onChooseNewGame={() => setMenu('choose')}
+  />
   if (!session) return <App key={generation} onNewGame={openMenu} />
   const update = (history: GameHistory) => {
     const nextState = currentHistoryState(history)

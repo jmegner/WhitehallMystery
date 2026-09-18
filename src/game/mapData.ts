@@ -1,8 +1,10 @@
-import alleyGroupsRaw from '../data/whitehall/alley_groups.jsonl?raw'
-import circlesRaw from '../data/whitehall/circles.jsonl?raw'
-import connectionsRaw from '../data/whitehall/connections.jsonl?raw'
-import squaresRaw from '../data/whitehall/squares.jsonl?raw'
-import waterGroupsRaw from '../data/whitehall/water_groups.jsonl?raw'
+import {
+  alleyGroupsRaw,
+  circlesRaw,
+  connectionsRaw,
+  squaresRaw,
+  waterGroupsRaw,
+} from '../data/whitehall/generated'
 import type { CircleColor, CircleNode, CrossingNode, Quadrant } from './types'
 
 interface RawCircle {

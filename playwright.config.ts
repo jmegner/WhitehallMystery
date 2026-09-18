@@ -3,7 +3,9 @@ import { randomInt } from 'node:crypto'
 
 // Each QA run gets its own origin and persisted browser state. Workers inherit it.
 const port = process.env.PLAYWRIGHT_PORT ?? String(randomInt(42000, 60000))
+const workerPort = process.env.PLAYWRIGHT_WORKER_PORT ?? String(randomInt(30000, 41999))
 process.env.PLAYWRIGHT_PORT = port
+process.env.PLAYWRIGHT_WORKER_PORT = workerPort
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -19,9 +21,18 @@ export default defineConfig({
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
-  webServer: {
-    command: `npm run dev -- --host 127.0.0.1 --port ${port} --strictPort`,
-    url: `http://127.0.0.1:${port}`,
-    reuseExistingServer: false,
-  },
+  webServer: [
+    {
+      command: `npx wrangler dev --config worker/wrangler.jsonc --port ${workerPort}`,
+      url: `http://127.0.0.1:${workerPort}/v1/health`,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      command: `npm run dev -- --host 127.0.0.1 --port ${port} --strictPort`,
+      url: `http://127.0.0.1:${port}`,
+      reuseExistingServer: false,
+      env: { VITE_MULTIPLAYER_API: `http://127.0.0.1:${workerPort}` },
+    },
+  ],
 })
