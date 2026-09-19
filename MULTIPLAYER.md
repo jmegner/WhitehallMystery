@@ -44,6 +44,16 @@ The eventual deployment sequence is:
 
 A custom Worker domain is optional. No Turnstile setup or application secret is used. CI deployment would require a Cloudflare API token in the CI secret store, never in this repository.
 
+## Turn alerts
+
+The online game panel has independent **Flash screen**, **Chime**, and **System notification** checkboxes, remembered in local storage on each browser/site. Flash and chime default to enabled; system notifications default to disabled. **Test alerts** previews the enabled alerts.
+
+A turn alert fires when a newer verified game snapshot passes play from the other side to your role. Loading or refreshing a page, making your own moves, and reconnecting to the same revision do not ring again. A reconnect that reveals a newly arrived turn does alert.
+
+The viewport pulse lasts 500 milliseconds. The two-note chime is generated locally and requires a click or key press on the page after opening or refreshing it, as browsers may block audio until that interaction. Enabling system notifications asks for browser permission from the checkbox click; denied or unavailable notifications are explained beside the control. Notifications contain only the game name and which side has the turn, and clicking one focuses the game window.
+
+These are page-based desktop notifications, tested through the browser API; keep the game tab open to receive them. Delivery while backgrounded depends on browser/OS tab suspension and notification settings. This does not add push notifications for a closed browser or a mobile service worker. No Worker redeployment is needed for the alert UI.
+
 ## Authentication and stored data
 
 Room creation generates independent random 256-bit credentials for Jack and the investigator side. The Durable Object stores only SHA-256 credential hashes. The investigator credential is carried in the invitation URL fragment, which is not sent in the page's HTTP request, and is then saved locally on that player's device.

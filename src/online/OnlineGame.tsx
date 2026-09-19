@@ -3,6 +3,7 @@ import App from '../App'
 import { currentHistoryState, playerViewForState, type HistoryCommand } from '../game/history'
 import { onlineTurnStart } from '../game/onlineProtocol'
 import { OnlineSessionStore, onlineInviteUrl, type OnlineSession } from './onlineSession'
+import TurnAlerts from './TurnAlerts'
 
 interface OnlineGameProps {
   session: OnlineSession
@@ -54,6 +55,7 @@ export default function OnlineGame({ session, onLeave, onChooseNewGame }: Online
         Jack: {online.presence.jack ? 'connected' : 'offline'} · Investigators: {online.presence.investigators ? 'connected' : 'offline'}
         {online.pendingRequestId ? ' · Saving action…' : ''}
       </p>
+      <TurnAlerts store={store} />
       {invitation && <details open>
         <summary>Invite the investigator player</summary>
         <p>This link is the investigator’s private game credential. Send it only to that player.</p>
