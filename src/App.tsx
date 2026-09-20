@@ -1553,7 +1553,7 @@ function HandoffScreen({
 
 interface AppProps {
   mail?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; onChange: (history: GameHistory) => void }
-  online?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; onCommands: (commands: HistoryCommand[]) => void }
+  online?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; waitingMessage?: string; onCommands: (commands: HistoryCommand[]) => void }
   onNewGame?: () => void
 }
 function App({ mail, online, onNewGame }: AppProps) {
@@ -1605,6 +1605,7 @@ function App({ mail, online, onNewGame }: AppProps) {
     commands: Parameters<typeof gameHistoryReducer>[1][],
     runInvestigatorAuto = false,
   ) => {
+    if (online?.waiting) return
     let next = history
     const acceptedCommands: HistoryCommand[] = []
     for (const command of commands) {
@@ -1859,7 +1860,7 @@ function App({ mail, online, onNewGame }: AppProps) {
           <div className="board-toolbar">
             <div className="board-options">
               <HistoryControls
-                mailControls={remote ? { canUndo: history.cursor > remote.turnStart, canRedo: history.cursor < history.entries.length - 1, waiting: remote.waiting || state.stage === 'gameOver' } : undefined}
+                mailControls={remote ? { canUndo: !online?.waiting && history.cursor > remote.turnStart, canRedo: !online?.waiting && history.cursor < history.entries.length - 1, waiting: remote.waiting || state.stage === 'gameOver' } : undefined}
                 history={history}
                 onUndo={handleUndo}
                 onBigUndo={handleBigUndo}
@@ -2093,7 +2094,7 @@ function App({ mail, online, onNewGame }: AppProps) {
               </label>
             )}
           </div>
-          <h2>{remote?.waiting ? 'Waiting for your partner' : titleForStage(state)}</h2>
+          <h2>{remote?.waiting ? online?.waitingMessage ?? 'Waiting for your partner' : titleForStage(state)}</h2>
           <div className="notice" role="status">
             {state.notice}
           </div>

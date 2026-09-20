@@ -21,7 +21,9 @@ npm run build
 npm run test
 ```
 
-The Playwright configuration starts isolated Vite and Wrangler servers on fresh random ports. `npm run build:worker` performs a local Wrangler bundle without deploying anything.
+The Playwright configuration starts isolated Vite and Wrangler servers on fresh random ports. Wrangler uses explicit `--local` mode (remote bindings disabled) with a separate `.wrangler/qa-<port>` data directory, so automated games do not share your manual-development rooms. Durable Objects and rate limiters are simulated locally; tests do not use production anti-abuse quotas or deployed game storage. See [Cloudflare's development-mode binding support](https://developers.cloudflare.com/workers/local-development/bindings-per-env/). `npm run build:worker` performs a local Wrangler bundle without deploying anything.
+
+Run just the online browser tests with `npx playwright test tests/e2e/online.spec.ts`. They cover two-player sync, turn/undo alerts, approval, denial, cancellation, refresh, redo preservation, and server rejection of unauthorized or stale operations. Notification delivery is simulated through the browser API instead of producing real OS toasts during tests.
 
 ## Cloudflare configuration
 
@@ -53,6 +55,16 @@ A turn alert fires when a newer verified game snapshot passes play from the othe
 The viewport pulse lasts 500 milliseconds. The two-note chime is generated locally and requires a click or key press on the page after opening or refreshing it, as browsers may block audio until that interaction. Enabling system notifications asks for browser permission from the checkbox click; denied or unavailable notifications are explained beside the control. Notifications contain only the game name and which side has the turn, and clicking one focuses the game window.
 
 These are page-based desktop notifications, tested through the browser API; keep the game tab open to receive them. Delivery while backgrounded depends on browser/OS tab suspension and notification settings. This does not add push notifications for a closed browser or a mobile service worker. No Worker redeployment is needed for the alert UI.
+
+## Undo requests after a turn
+
+**Request undo** asks the other player to reopen your latest completed turn. The recipient gets the same enabled flash/chime/system-notification alerts and a small non-modal **Approve undo / Deny undo** panel. The panel can be minimized while inspecting the board and public log. The requester can cancel a pending request.
+
+While a request is pending, game-changing actions pause on both devices, but display controls, the board, and the log remain available for review. Approval rewinds to the last actionable position immediately before the requester ended their turn, undoing that final action and any subsequent opponent actions. The complete history/redo tail is retained. The requester can use the normal Undo controls to go back further within that turn or change their final action. Denial/cancellation leaves the game history unchanged. Requests and decisions survive refresh/reconnection; initial page loads do not repeat alerts.
+
+Only the authenticated opposite role can grant or deny. All requests/decisions/cancellations use the same per-role and per-IP rate limits, serialized processing, expected revision/history hash, and idempotency checks as moves. The server chooses the rollback target from replayed history: clients cannot submit arbitrary cursors, state, text, or files. Clients also validate the request against the full history and check consecutive request/decision transitions for inconsistencies.
+
+This feature requires **both** the updated Worker (`npm run deploy:worker`) and the updated static frontend. Deploy the Worker first, then the frontend, and refresh both players' tabs. Existing rooms and credentials remain valid; no new Cloudflare resources, secrets, or migrations are needed. A new frontend connected to an older Worker disables requests with an update-needed hint; old frontends need a refresh to display/answer requests.
 
 ## Authentication and stored data
 

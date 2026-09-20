@@ -1,5 +1,6 @@
 import { playerViewForState, type PlayerView } from '../game/history'
 import type { OnlineSnapshot } from '../game/onlineProtocol'
+import type { OnlineUndoState } from '../game/onlineUndo'
 
 export const TURN_ALERT_KEYS = {
   flash: 'whitehall-mystery.turn-alert.flash',
@@ -12,6 +13,30 @@ export const becameLocalTurn = (before: OnlineSnapshot | null, after: OnlineSnap
   !!before && !!after && before.roomId === after.roomId && after.revision > before.revision &&
   playerViewForState(before.history.state) !== role && playerViewForState(after.history.state) === role
 
+export interface OnlineAlert { title: string; body: string }
+
+export const turnAlert = (role: PlayerView): OnlineAlert => ({
+  title: 'Your turn', body: `It’s your turn as ${role === 'jack' ? 'Jack' : 'the investigators'}.`,
+})
+
+export function onlineUpdateAlert(
+  before: OnlineSnapshot | null, after: OnlineSnapshot | null, role: PlayerView,
+  previousUndo: OnlineUndoState | null, undo: OnlineUndoState | null,
+): OnlineAlert | null {
+  if (!before || !after || before.roomId !== after.roomId || after.revision <= before.revision) return null
+  if (undo && (undo.id !== previousUndo?.id || undo.status !== previousUndo.status)) {
+    if (undo.status === 'pending' && undo.requestedBy !== role) return {
+      title: 'Undo requested', body: 'Your partner asks to reopen their last turn. Review the board, then approve or deny the request.',
+    }
+    if (undo.requestedBy === role && (undo.status === 'approved' || undo.status === 'denied')) return {
+      title: undo.status === 'approved' ? 'Undo approved' : 'Undo denied',
+      body: undo.status === 'approved' ? 'Your partner approved your undo. Your last turn is open again.' : 'Your partner denied your undo. The game is unchanged.',
+    }
+    if (undo.status === 'cancelled' && undo.requestedBy !== role) return { title: 'Undo cancelled', body: 'Your partner cancelled the undo request. Play can continue.' }
+  }
+  return becameLocalTurn(before, after, role) ? turnAlert(role) : null
+}
+
 export type ChimeStatus = 'ready' | 'needs-gesture' | 'unavailable'
 export type NotificationStatus = NotificationPermission | 'unsupported'
 
@@ -21,7 +46,7 @@ export const notificationStatus = (): NotificationStatus =>
 export class TurnChime {
   private context: AudioContext | null = null
 
-  // Called directly from a click, key press or pointer event to satisfy autoplay rules.
+  // Called directly from a click or key press to satisfy autoplay rules.
   async unlock(): Promise<ChimeStatus> {
     if (typeof AudioContext !== 'function') return 'unavailable'
     try {

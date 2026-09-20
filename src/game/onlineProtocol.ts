@@ -10,6 +10,7 @@ import {
 } from './history'
 import { isStoredGameState } from './persistence'
 import type { GameAction, GameState, InspectorActionMode, JackMoveType } from './types'
+import type { OnlineUndoCommand, OnlineUndoState } from './onlineUndo'
 
 export const ONLINE_PROTOCOL_VERSION = 1
 export const ONLINE_RULES_VERSION = 'whitehall-2026-09-18'
@@ -33,23 +34,23 @@ export interface OnlineSnapshot {
   history: OnlineHistoryWire
 }
 
+export type OnlineMutation = {
+  protocolVersion: typeof ONLINE_PROTOCOL_VERSION
+  requestId: string
+  expectedRevision: number
+  expectedHistoryHash: string
+} & ({ type: 'command'; commands: HistoryCommand[] } | OnlineUndoCommand)
+
 export type OnlineClientMessage =
   | {
       type: 'authenticate'
       protocolVersion: typeof ONLINE_PROTOCOL_VERSION
       token: string
     }
-  | {
-      type: 'command'
-      protocolVersion: typeof ONLINE_PROTOCOL_VERSION
-      requestId: string
-      expectedRevision: number
-      expectedHistoryHash: string
-      commands: HistoryCommand[]
-    }
+  | OnlineMutation
 
 export type OnlineServerMessage =
-  | { type: 'snapshot'; requestId?: string; snapshot: OnlineSnapshot }
+  | { type: 'snapshot'; requestId?: string; snapshot: OnlineSnapshot; undo?: OnlineUndoState | null }
   | { type: 'presence'; jack: boolean; investigators: boolean }
   | {
       type: 'error'
@@ -145,20 +146,28 @@ export const parseOnlineClientMessage = (text: string): OnlineClientMessage | nu
       ? { type: 'authenticate', protocolVersion: ONLINE_PROTOCOL_VERSION, token: value.token }
       : null
   }
-  if (value.type !== 'command' || !hasOnlyKeys(value, [
-    'type',
-    'protocolVersion',
-    'requestId',
-    'expectedRevision',
-    'expectedHistoryHash',
-    'commands',
-  ])) return null
   if (
     typeof value.requestId !== 'string' || value.requestId.length < 8 || value.requestId.length > 80 ||
     !Number.isInteger(value.expectedRevision) || Number(value.expectedRevision) < 0 ||
-    typeof value.expectedHistoryHash !== 'string' || !/^[a-f0-9]{64}$/.test(value.expectedHistoryHash) ||
-    !Array.isArray(value.commands) || value.commands.length < 1 || value.commands.length > MAX_COMMANDS_PER_MESSAGE
+    typeof value.expectedHistoryHash !== 'string' || !/^[a-f0-9]{64}$/.test(value.expectedHistoryHash)
   ) return null
+  const common = {
+    protocolVersion: ONLINE_PROTOCOL_VERSION, requestId: value.requestId,
+    expectedRevision: Number(value.expectedRevision), expectedHistoryHash: value.expectedHistoryHash,
+  } as const
+  const commonKeys = ['type', ...Object.keys(common)]
+  if (value.type !== 'command') {
+    const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/
+    if (!uuid.test(value.requestId)) return null
+    if (value.type === 'request-undo' && hasOnlyKeys(value, commonKeys)) return { ...common, type: 'request-undo' }
+    if (typeof value.undoRequestId !== 'string' || !uuid.test(value.undoRequestId)) return null
+    if (value.type === 'cancel-undo' && hasOnlyKeys(value, [...commonKeys, 'undoRequestId'])) return { ...common, type: 'cancel-undo', undoRequestId: value.undoRequestId }
+    if (value.type === 'decide-undo' && hasOnlyKeys(value, [...commonKeys, 'undoRequestId', 'decision']) &&
+      (value.decision === 'approve' || value.decision === 'deny')) return { ...common, type: 'decide-undo', undoRequestId: value.undoRequestId, decision: value.decision }
+    return null
+  }
+  if (!hasOnlyKeys(value, [...commonKeys, 'commands']) || !Array.isArray(value.commands) ||
+    value.commands.length < 1 || value.commands.length > MAX_COMMANDS_PER_MESSAGE) return null
   const commands = value.commands.map(parseOnlineHistoryCommand)
   if (commands.some((command) => command === null)) return null
   return {

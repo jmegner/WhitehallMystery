@@ -1,4 +1,5 @@
 import type { GameHistory, HistoryCommand, PlayerView } from '../game/history'
+import { consistentUndoTransition, isOnlineUndoState, type OnlineUndoCommand, type OnlineUndoState } from '../game/onlineUndo'
 import {
   MAX_COMMANDS_PER_MESSAGE,
   ONLINE_PROTOCOL_VERSION,
@@ -21,6 +22,8 @@ export interface OnlineStoreState {
   status: 'connecting' | 'connected' | 'reconnecting' | 'error'
   history: GameHistory | null
   snapshot: OnlineSnapshot | null
+  undo: OnlineUndoState | null
+  undoSupported: boolean
   pendingRequestId: string | null
   error: string
   presence: { jack: boolean; investigators: boolean }
@@ -129,6 +132,8 @@ export class OnlineSessionStore {
     status: 'connecting',
     history: null,
     snapshot: null,
+    undo: null,
+    undoSupported: false,
     pendingRequestId: null,
     error: '',
     presence: { jack: false, investigators: false },
@@ -238,11 +243,18 @@ export class OnlineSessionStore {
     if (sequence !== this.snapshotSequence) return
     if (!verified || verified.snapshot.roomId !== this.session.roomId) return this.failCorruptMessage()
     if (this.state.snapshot && verified.snapshot.revision < this.state.snapshot.revision) return
+    const undoSupported = Object.hasOwn(message, 'undo')
+    const undo = undoSupported ? message.undo : null
+    if (!isOnlineUndoState(undo, verified.history, verified.snapshot.revision)) return this.failCorruptMessage()
+    if (this.state.snapshot && this.state.undoSupported &&
+      (!undoSupported || !consistentUndoTransition(this.state.snapshot, verified.snapshot, this.state.undo, undo))) return this.failCorruptMessage()
     const requestId = typeof message.requestId === 'string' ? message.requestId : null
     this.update({
       status: 'connected',
       history: verified.history,
       snapshot: verified.snapshot,
+      undo,
+      undoSupported,
       pendingRequestId: requestId && requestId !== this.state.pendingRequestId ? this.state.pendingRequestId : null,
       error: '',
     })
@@ -255,21 +267,29 @@ export class OnlineSessionStore {
   }
 
   sendCommands(commands: HistoryCommand[]) {
-    const socket = this.socket
-    const snapshot = this.state.snapshot
-    if (!commands.length || !snapshot || this.state.pendingRequestId || socket?.readyState !== WebSocket.OPEN) return
+    if (!commands.length || this.state.undo?.status === 'pending') return
     if (commands.length > MAX_COMMANDS_PER_MESSAGE) {
       this.update({ error: 'That operation produced too many commands. Make the moves in smaller steps.' })
       return
     }
+    this.sendMutation({ type: 'command', commands })
+  }
+
+  sendUndo(command: OnlineUndoCommand) {
+    if (this.state.undoSupported) this.sendMutation(command)
+  }
+
+  private sendMutation(command: { type: 'command'; commands: HistoryCommand[] } | OnlineUndoCommand) {
+    const socket = this.socket
+    const snapshot = this.state.snapshot
+    if (!snapshot || this.state.pendingRequestId || this.state.status !== 'connected' || socket?.readyState !== WebSocket.OPEN) return
     const requestId = crypto.randomUUID()
     socket.send(JSON.stringify({
-      type: 'command',
+      ...command,
       protocolVersion: ONLINE_PROTOCOL_VERSION,
       requestId,
       expectedRevision: snapshot.revision,
       expectedHistoryHash: snapshot.historyHash,
-      commands,
     }))
     this.update({ pendingRequestId: requestId, error: '' })
   }

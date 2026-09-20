@@ -23,7 +23,8 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `npx wrangler dev --config worker/wrangler.jsonc --port ${workerPort}`,
+      // Explicit local mode disables remote bindings. QA data never shares dev/production rooms.
+      command: `npx wrangler dev --local --config worker/wrangler.jsonc --port ${workerPort} --persist-to .wrangler/qa-${workerPort}`,
       url: `http://127.0.0.1:${workerPort}/v1/health`,
       reuseExistingServer: false,
       timeout: 120_000,

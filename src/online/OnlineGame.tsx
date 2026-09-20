@@ -4,6 +4,7 @@ import { currentHistoryState, playerViewForState, type HistoryCommand } from '..
 import { onlineTurnStart } from '../game/onlineProtocol'
 import { OnlineSessionStore, onlineInviteUrl, type OnlineSession } from './onlineSession'
 import TurnAlerts from './TurnAlerts'
+import OnlineUndoPanel from './OnlineUndoPanel'
 
 interface OnlineGameProps {
   session: OnlineSession
@@ -38,7 +39,8 @@ export default function OnlineGame({ session, onLeave, onChooseNewGame }: Online
   const state = currentHistoryState(online.history)
   const playerTurn = playerViewForState(state)
   const connected = online.status === 'connected'
-  const waiting = !connected || online.pendingRequestId !== null || (state.stage !== 'gameOver' && playerTurn !== session.role)
+  const undoPending = online.undo?.status === 'pending'
+  const waiting = !connected || online.pendingRequestId !== null || undoPending || (state.stage !== 'gameOver' && playerTurn !== session.role)
   const commands = (next: HistoryCommand[]) => store.sendCommands(next)
   const invitation = session.investigatorsToken ? onlineInviteUrl(session) : ''
 
@@ -56,6 +58,7 @@ export default function OnlineGame({ session, onLeave, onChooseNewGame }: Online
         {online.pendingRequestId ? ' · Saving action…' : ''}
       </p>
       <TurnAlerts store={store} />
+      <OnlineUndoPanel store={store} online={online} />
       {invitation && <details open>
         <summary>Invite the investigator player</summary>
         <p>This link is the investigator’s private game credential. Send it only to that player.</p>
@@ -70,6 +73,7 @@ export default function OnlineGame({ session, onLeave, onChooseNewGame }: Online
         role: session.role,
         turnStart: state.stage === 'gameOver' ? online.history.cursor : onlineTurnStart(online.history, session.role),
         waiting,
+        waitingMessage: undoPending ? 'Undo request pending' : undefined,
         onCommands: commands,
       }}
       onNewGame={onChooseNewGame}

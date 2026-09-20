@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { loadBooleanPreference, saveBooleanPreference } from '../game/persistence'
 import type { OnlineSessionStore } from './onlineSession'
-import { becameLocalTurn, notificationStatus, TurnChime, TURN_ALERT_KEYS, type ChimeStatus } from './turnAlertEffects'
+import { onlineUpdateAlert, turnAlert, notificationStatus, TurnChime, TURN_ALERT_KEYS, type ChimeStatus, type OnlineAlert } from './turnAlertEffects'
 import './TurnAlerts.css'
 
 function loadPreference(key: string, fallback: boolean) {
@@ -21,6 +21,7 @@ export default function TurnAlerts({ store }: { store: OnlineSessionStore }) {
   const [requestingPermission, setRequestingPermission] = useState(false)
   const [notificationIssue, setNotificationIssue] = useState('')
   const [soundStatus, setSoundStatus] = useState<ChimeStatus>('needs-gesture')
+  const [flashText, setFlashText] = useState('Your turn')
   const [chime] = useState(() => new TurnChime())
   const flashElement = useRef<HTMLDivElement>(null)
   const flashAnimation = useRef<Animation | null>(null)
@@ -32,11 +33,13 @@ export default function TurnAlerts({ store }: { store: OnlineSessionStore }) {
     const unlock = () => {
       void chime.unlock().then(status => { if (!disposed) setSoundStatus(status) })
     }
-    window.addEventListener('pointerdown', unlock)
+    // Wait for the completed click: removing the sound hint on pointerdown can
+    // move a button before mouseup and swallow its first click (e.g. Copy link).
+    window.addEventListener('click', unlock)
     window.addEventListener('keydown', unlock)
     return () => {
       disposed = true
-      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('click', unlock)
       window.removeEventListener('keydown', unlock)
       chime.dispose()
     }
@@ -52,7 +55,8 @@ export default function TurnAlerts({ store }: { store: OnlineSessionStore }) {
     }
   }, [])
 
-  const flash = () => {
+  const flash = (title: string) => {
+    setFlashText(title)
     flashAnimation.current?.cancel()
     flashAnimation.current = flashElement.current?.animate(
       [{ opacity: 0 }, { opacity: 1, offset: 0.15 }, { opacity: 0 }],
@@ -60,14 +64,14 @@ export default function TurnAlerts({ store }: { store: OnlineSessionStore }) {
     ) ?? null
   }
 
-  const notify = () => {
+  const notify = (alert: OnlineAlert) => {
     const status = notificationStatus()
     setPermission(status)
     if (status !== 'granted') return
     try {
       activeNotification.current?.close()
-      const notification = new Notification('Whitehall Mystery — Your turn', {
-        body: `It’s your turn as ${store.session.role === 'jack' ? 'Jack' : 'the investigators'}.`,
+      const notification = new Notification(`Whitehall Mystery — ${alert.title}`, {
+        body: alert.body,
         tag: `whitehall-turn-${store.session.roomId}-${store.session.role}`,
         icon: new URL(`${import.meta.env.BASE_URL}favicon.svg`, window.location.href).href,
         silent: true,
@@ -80,21 +84,21 @@ export default function TurnAlerts({ store }: { store: OnlineSessionStore }) {
     }
   }
 
-  const alertForTurn = useEffectEvent(() => {
-    if (flashEnabled) flash()
+  const alertForUpdate = useEffectEvent((alert: OnlineAlert) => {
+    if (flashEnabled) flash(alert.title)
     if (chimeEnabled) setSoundStatus(chime.play())
-    if (notificationEnabled) notify()
+    if (notificationEnabled) notify(alert)
   })
 
   // The subscription is to the external WebSocket store. Keep the last verified
   // snapshot across disconnects; initial loads and same-revision retries are silent.
   useEffect(() => {
-    let previous = store.getSnapshot().snapshot
+    let previous = store.getSnapshot()
     const unsubscribe = store.subscribe(() => {
-      const next = store.getSnapshot().snapshot
-      const alert = becameLocalTurn(previous, next, store.session.role)
+      const next = store.getSnapshot()
+      const alert = onlineUpdateAlert(previous.snapshot, next.snapshot, store.session.role, previous.undo, next.undo)
       previous = next
-      if (alert) alertForTurn()
+      if (alert) alertForUpdate(alert)
     })
     return () => { unsubscribe() }
   }, [store])
@@ -130,11 +134,12 @@ export default function TurnAlerts({ store }: { store: OnlineSessionStore }) {
   }
 
   const testAlerts = () => {
-    if (flashEnabled) flash()
+    const alert = turnAlert(store.session.role)
+    if (flashEnabled) flash(alert.title)
     if (chimeEnabled) {
       void chime.unlock().then(status => setSoundStatus(status === 'ready' ? chime.play() : status))
     }
-    if (notificationEnabled) notify()
+    if (notificationEnabled) notify(alert)
   }
 
   return <>
@@ -156,7 +161,7 @@ export default function TurnAlerts({ store }: { store: OnlineSessionStore }) {
           onChange={event => void enableNotifications(event.target.checked)} />System notification</label>
         <button type="button" onClick={testAlerts} disabled={!flashEnabled && !chimeEnabled && !notificationEnabled}>Test alerts</button>
       </div>
-      <p className="turn-alert-help">Alerts work while this game page is open, including in a background tab.</p>
+      <p className="turn-alert-help">Also used for undo requests and decisions. Alerts work while this game page is open, including in a background tab.</p>
       {chimeEnabled && soundStatus !== 'ready' && <p className="turn-alert-help" role="status">
         {soundStatus === 'unavailable' ? 'Sound is unavailable in this browser.' : 'Click Test alerts or interact with the page to enable sound after opening or refreshing it.'}
       </p>}
@@ -165,6 +170,6 @@ export default function TurnAlerts({ store }: { store: OnlineSessionStore }) {
       {permission === 'default' && notificationEnabled && <p className="turn-alert-help">Notification permission is needed. Uncheck and recheck System notification to allow it.</p>}
       {notificationIssue && <p className="turn-alert-help" role="status">{notificationIssue}</p>}
     </fieldset>
-    {createPortal(<div ref={flashElement} className="turn-alert-flash" aria-hidden="true"><span>Your turn</span></div>, document.body)}
+    {createPortal(<div ref={flashElement} className="turn-alert-flash" aria-hidden="true"><span>{flashText}</span></div>, document.body)}
   </>
 }

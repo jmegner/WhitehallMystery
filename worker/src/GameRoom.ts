@@ -1,18 +1,19 @@
 import { DurableObject } from 'cloudflare:workers'
 import { createInitialGame } from '../../src/game/gameEngine'
 import { normalizeRemoteHistory, remoteHistoryReducer } from '../../src/game/remoteHistory'
+import { applyOnlineUndo, isOnlineUndoState, type OnlineUndoState } from '../../src/game/onlineUndo'
 import {
   MAX_ONLINE_ACTIONS,
   ONLINE_PROTOCOL_VERSION,
   canonicalJson,
   createOnlineSnapshot,
-  onlineHistoryFromWire,
   onlineTurnStart,
   parseOnlineClientMessage,
   sha256Hex,
   verifyOnlineSnapshot,
   type OnlineServerMessage,
   type OnlineSnapshot,
+  type OnlineMutation,
 } from '../../src/game/onlineProtocol'
 import {
   createGameHistory,
@@ -39,6 +40,8 @@ interface RoomRecord {
   investigatorsTokenHash: string
   revision: number
   snapshot: OnlineSnapshot
+  // Optional so existing rooms remain usable without a migration or reset.
+  undo?: OnlineUndoState | null
   processedRequestIds: string[]
   recentCommands: Record<PlayerView, number[]>
   recentCommandsByIp: Record<string, number[]>
@@ -163,8 +166,12 @@ export class GameRoom extends DurableObject<WorkerEnv> {
     for (const { socket } of this.authenticatedSockets()) send(socket, message)
   }
 
-  private broadcastSnapshot(snapshot: OnlineSnapshot, requestId?: string) {
-    const message: OnlineServerMessage = { type: 'snapshot', ...(requestId ? { requestId } : {}), snapshot }
+  private snapshotMessage(record: RoomRecord, requestId?: string): OnlineServerMessage {
+    return { type: 'snapshot', ...(requestId ? { requestId } : {}), snapshot: record.snapshot, undo: record.undo ?? null }
+  }
+
+  private broadcastSnapshot(record: RoomRecord, requestId?: string) {
+    const message = this.snapshotMessage(record, requestId)
     for (const { socket } of this.authenticatedSockets()) send(socket, message)
   }
 
@@ -175,7 +182,8 @@ export class GameRoom extends DurableObject<WorkerEnv> {
       socket.close(4003, 'Authentication failed.')
       return
     }
-    if (!await verifyOnlineSnapshot(record.snapshot)) {
+    const verified = await verifyOnlineSnapshot(record.snapshot)
+    if (!verified || !isOnlineUndoState(record.undo ?? null, verified.history, record.revision)) {
       send(socket, { type: 'error', code: 'server-error', message: 'The stored game state failed its consistency check.' })
       socket.close(1011, 'Stored game is inconsistent.')
       return
@@ -196,7 +204,7 @@ export class GameRoom extends DurableObject<WorkerEnv> {
     }
     const previous = socket.deserializeAttachment() as SocketAttachment | null
     socket.serializeAttachment({ authenticated: true, ip: previous?.ip ?? 'unknown', role } satisfies SocketAttachment)
-    send(socket, { type: 'snapshot', snapshot: record.snapshot })
+    send(socket, this.snapshotMessage(record))
     this.broadcastPresence()
   }
 
@@ -217,8 +225,7 @@ export class GameRoom extends DurableObject<WorkerEnv> {
     return true
   }
 
-  private async applyCommands(socket: WebSocket, role: PlayerView, ip: string, message: Extract<ReturnType<typeof parseOnlineClientMessage>, { type: 'command' }>) {
-    if (!message) return
+  private async applyCommands(socket: WebSocket, role: PlayerView, ip: string, message: OnlineMutation) {
     const record = await this.room()
     if (!record || record.expiresAt <= Date.now()) {
       send(socket, { type: 'error', requestId: message.requestId, code: 'room-expired', message: 'This game has expired.' })
@@ -233,31 +240,53 @@ export class GameRoom extends DurableObject<WorkerEnv> {
       return
     }
     if (record.processedRequestIds.includes(message.requestId)) {
-      send(socket, { type: 'snapshot', requestId: message.requestId, snapshot: record.snapshot })
+      send(socket, this.snapshotMessage(record, message.requestId))
       return
     }
     if (message.expectedRevision !== record.revision || message.expectedHistoryHash !== record.snapshot.historyHash) {
       send(socket, { type: 'error', requestId: message.requestId, code: 'conflict', message: 'Your game was out of date and has been refreshed.' })
-      send(socket, { type: 'snapshot', snapshot: record.snapshot })
+      send(socket, this.snapshotMessage(record))
       return
     }
-    let history = onlineHistoryFromWire(record.snapshot.history)
-    if (!history || playerViewForState(currentHistoryState(history)) !== role) {
-      send(socket, { type: 'error', requestId: message.requestId, code: 'invalid-command', message: 'It is not your turn.' })
+    const verified = await verifyOnlineSnapshot(record.snapshot)
+    if (!verified || !isOnlineUndoState(record.undo ?? null, verified.history, record.revision)) {
+      send(socket, { type: 'error', requestId: message.requestId, code: 'server-error', message: 'The stored game state failed its consistency check.' })
       return
     }
-    const turnStart = onlineTurnStart(history, role)
-    for (const command of message.commands) {
-      if (forbiddenClientCommand(command)) {
-        send(socket, { type: 'error', requestId: message.requestId, code: 'invalid-command', message: 'That command is not available in an online game.' })
+    let history = verified.history
+    let undo = record.undo ?? null
+    if (message.type !== 'command') {
+      try {
+        const result = applyOnlineUndo(history, undo, role, message, message.requestId, record.revision + 1)
+        history = result.history
+        undo = result.undo
+      } catch (error) {
+        send(socket, { type: 'error', requestId: message.requestId, code: 'invalid-command', message: error instanceof Error ? error.message : 'Invalid undo request.' })
         return
       }
-      const next = normalizeRemoteHistory(remoteHistoryReducer(history, command, role, turnStart))
-      if (historiesEqual(history, next)) {
-        send(socket, { type: 'error', requestId: message.requestId, code: 'invalid-command', message: 'That command is not valid for the current game state.' })
+    } else {
+      if (undo?.status === 'pending' || playerViewForState(currentHistoryState(history)) !== role) {
+        send(socket, { type: 'error', requestId: message.requestId, code: 'invalid-command', message: undo?.status === 'pending' ? 'Resolve the undo request before making moves.' : 'It is not your turn.' })
         return
       }
-      history = next
+      const turnStart = onlineTurnStart(history, role)
+      for (const command of message.commands) {
+        // A batch may end a turn, but may not then undo across that boundary.
+        if (playerViewForState(currentHistoryState(history)) !== role) {
+          send(socket, { type: 'error', requestId: message.requestId, code: 'invalid-command', message: 'A command batch cannot continue after your turn ends.' })
+          return
+        }
+        if (forbiddenClientCommand(command)) {
+          send(socket, { type: 'error', requestId: message.requestId, code: 'invalid-command', message: 'That command is not available in an online game.' })
+          return
+        }
+        const next = normalizeRemoteHistory(remoteHistoryReducer(history, command, role, turnStart))
+        if (historiesEqual(history, next)) {
+          send(socket, { type: 'error', requestId: message.requestId, code: 'invalid-command', message: 'That command is not valid for the current game state.' })
+          return
+        }
+        history = next
+      }
     }
     if (history.entries.length - 1 > MAX_ONLINE_ACTIONS) {
       send(socket, { type: 'error', requestId: message.requestId, code: 'invalid-command', message: 'This game has reached its action limit.' })
@@ -270,11 +299,12 @@ export class GameRoom extends DurableObject<WorkerEnv> {
     }
     record.revision += 1
     record.snapshot = snapshot
+    record.undo = undo
     record.processedRequestIds = [...record.processedRequestIds, message.requestId].slice(-MAX_PROCESSED_REQUESTS)
     record.updatedAt = now
     record.expiresAt = now + this.roomLifetimeMs()
     await this.persist(record)
-    this.broadcastSnapshot(snapshot, message.requestId)
+    this.broadcastSnapshot(record, message.requestId)
   }
 
   override webSocketMessage(socket: WebSocket, rawMessage: string | ArrayBuffer) {
@@ -300,7 +330,7 @@ export class GameRoom extends DurableObject<WorkerEnv> {
       })
       return
     }
-    if (message.type !== 'command' || !attachment.role) {
+    if (message.type === 'authenticate' || !attachment.role) {
       socket.close(1008, 'Unexpected message.')
       return
     }

@@ -1,7 +1,16 @@
 import { expect, test } from '@playwright/test'
+import type { OnlineServerMessage, OnlineSnapshot } from '../../src/game/onlineProtocol'
+import type { OnlineUndoState } from '../../src/game/onlineUndo'
 
 declare global {
   interface Window {
+    onlineProbe: {
+      socket: WebSocket | null
+      snapshot: OnlineSnapshot | null
+      undo: OnlineUndoState | null
+      snapshotCount: number
+      errors: string[]
+    }
     turnAlertProbe: {
       flashes: number[]
       tones: number
@@ -10,6 +19,23 @@ declare global {
       notifications: Array<{ title: string; options?: NotificationOptions }>
     }
   }
+}
+
+function observeOnlineSocket() {
+  window.onlineProbe = { socket: null, snapshot: null, undo: null, snapshotCount: 0, errors: [] }
+  class ObservedWebSocket extends WebSocket {
+    constructor(url: string | URL, protocols?: string | string[]) {
+      if (new URL(url).hostname !== '127.0.0.1') throw new Error('Online QA must never connect to a deployed Worker.')
+      super(url, protocols)
+      window.onlineProbe.socket = this
+      this.addEventListener('message', event => {
+        const message = JSON.parse(String(event.data)) as OnlineServerMessage
+        if (message.type === 'snapshot') { window.onlineProbe.snapshot = message.snapshot; window.onlineProbe.undo = message.undo ?? null; window.onlineProbe.snapshotCount += 1 }
+        if (message.type === 'error') window.onlineProbe.errors.push(message.code)
+      })
+    }
+  }
+  window.WebSocket = ObservedWebSocket
 }
 
 function observeTurnAlerts() {
@@ -61,6 +87,21 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
     await expect(jack.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
     const invitation = await jack.getByLabel('Online investigator invitation').inputValue()
     expect(invitation).toMatch(/#online=[a-f0-9]{64}\.[A-Za-z0-9_-]{43}$/)
+    await jack.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    await jack.evaluate(() => navigator.clipboard.writeText('Clipboard before first click'))
+    // Keep the pointer down long enough for audio initialization to settle. The
+    // copy target must not move out from under the pointer before mouseup.
+    await jack.getByRole('button', { name: 'Copy invitation link', exact: true }).click({ delay: 200 })
+    expect(await jack.evaluate(() => navigator.clipboard.readText())).toBe(invitation)
+    await expect(jack.getByLabel('Online game')).toContainText('Investigator invitation copied.')
+    await jack.reload()
+    await expect(jack.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
+    await expect(jack.getByLabel('Online game')).toContainText('interact with the page to enable sound')
+    await jack.evaluate(() => navigator.clipboard.writeText('Clipboard before first click after refresh'))
+    await jack.getByRole('button', { name: 'Copy invitation link', exact: true }).click({ delay: 200 })
+    expect(await jack.evaluate(() => navigator.clipboard.readText())).toBe(invitation)
+    await expect(jack.getByLabel('Online game')).toContainText('Investigator invitation copied.')
+    await expect(jack.getByLabel('Online game')).not.toContainText('interact with the page to enable sound')
     const api = `http://127.0.0.1:${process.env.PLAYWRIGHT_WORKER_PORT}`
     const roomId = new URL(invitation).hash.match(/online=([a-f0-9]{64})\./)?.[1]
     expect(roomId).toBeTruthy()
@@ -188,4 +229,174 @@ test('turn alert controls explain blocked and unavailable notification permissio
   await expect(alerts.getByLabel('System notification')).toBeDisabled()
   await expect(alerts).toContainText('System notifications are unavailable')
   await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
+})
+
+test('online undo is non-modal, survives refresh, alerts both sides, and preserves the full redo history', async ({ page: jack, browser }) => {
+  const investigatorsContext = await browser.newContext()
+  const investigators = await investigatorsContext.newPage()
+  for (const page of [jack, investigators]) {
+    await page.addInitScript(observeTurnAlerts)
+    await page.addInitScript(observeOnlineSocket)
+  }
+  try {
+    await jack.goto('/')
+    await jack.getByRole('button', { name: 'New game', exact: true }).click()
+    await jack.getByRole('button', { name: 'Online', exact: true }).click()
+    await jack.getByRole('button', { name: 'Start new game as Jack' }).click()
+    await investigators.goto(await jack.getByLabel('Online investigator invitation').inputValue())
+    for (const page of [jack, investigators]) await page.getByLabel('System notification').check()
+    await jack.getByRole('button', { name: 'Rand Side', exact: true }).click()
+    await expect(investigators.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
+    await investigators.getByRole('button', { name: 'Rand Side', exact: true }).click()
+    await expect(jack.getByRole('heading', { name: 'Jack: Choose the Starting Location' })).toBeVisible()
+    await jack.getByRole('button', { name: 'Rand Side', exact: true }).click()
+    await expect(investigators.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
+    await investigators.getByLabel('Legal yellow Investigator destinations').getByRole('button').first().click()
+    await expect(investigators.getByRole('heading', { name: 'Blue Investigator: Move' })).toBeVisible()
+    const before = await investigators.evaluate(() => window.onlineProbe.snapshot!)
+    for (const page of [jack, investigators]) await page.evaluate(() => {
+      window.turnAlertProbe.flashes = []; window.turnAlertProbe.tones = 0; window.turnAlertProbe.notifications = []
+    })
+
+    await jack.getByRole('button', { name: 'Request undo', exact: true }).click()
+    const requestCard = investigators.getByRole('region', { name: 'Undo request', exact: true })
+    await expect(requestCard).toBeVisible()
+    await expect(investigators.getByRole('dialog')).toHaveCount(0)
+    await expect(investigators.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled()
+    await expect.poll(() => investigators.evaluate(() => window.turnAlertProbe.notifications.at(-1)?.title)).toBe('Whitehall Mystery — Undo requested')
+    expect(await investigators.evaluate(() => window.turnAlertProbe.flashes)).toEqual([500])
+    expect(await investigators.evaluate(() => window.turnAlertProbe.tones)).toBe(2)
+    await requestCard.getByRole('button', { name: 'Minimize request' }).click()
+    await investigators.getByLabel('xings', { exact: true }).check()
+    await expect(investigators.getByLabel('xings', { exact: true })).toBeChecked()
+    await requestCard.getByRole('button', { name: 'Show undo request' }).click()
+    await investigators.setViewportSize({ width: 390, height: 844 })
+    const box = await requestCard.boundingBox()
+    expect(box!.height).toBeLessThan(844 / 2)
+    expect(box!.width).toBeLessThan(390)
+    await investigators.screenshot({ path: 'test-results/online-undo-request-mobile.png' })
+
+    await investigators.reload()
+    await expect(requestCard).toBeVisible()
+    expect(await investigators.evaluate(() => window.turnAlertProbe.flashes)).toEqual([])
+    await requestCard.getByRole('button', { name: 'Deny undo' }).click()
+    await expect(jack.getByLabel('Online undo')).toContainText('Your undo request was denied.')
+    expect(await investigators.evaluate(() => window.onlineProbe.snapshot!.historyHash)).toBe(before.historyHash)
+    await expect.poll(() => jack.evaluate(() => window.turnAlertProbe.notifications.at(-1)?.title)).toBe('Whitehall Mystery — Undo denied')
+
+    await jack.getByRole('button', { name: 'Request undo', exact: true }).click()
+    await expect(requestCard).toBeVisible()
+    const pending = await investigators.evaluate(() => window.onlineProbe.undo!)
+    await requestCard.getByRole('button', { name: 'Approve undo' }).click()
+    await expect(jack.getByLabel('Online undo')).toContainText('Your undo request was approved.')
+    await expect(jack.getByRole('button', { name: 'Record move privately' })).toBeVisible()
+    const after = await jack.evaluate(() => window.onlineProbe.snapshot!)
+    expect(after.history.cursor).toBe(pending.targetCursor)
+    expect(after.history.state).toMatchObject({ stage: 'jackMove' })
+    expect(after.history.actions).toEqual(before.history.actions)
+    await expect.poll(() => jack.evaluate(() => window.turnAlertProbe.notifications.at(-1)?.title)).toBe('Whitehall Mystery — Undo approved')
+    expect(await jack.evaluate(() => window.turnAlertProbe.flashes)).toEqual([500, 500]) // no extra turn alert on approval
+    expect(await jack.evaluate(() => window.turnAlertProbe.tones)).toBe(4)
+    await jack.reload()
+    await expect(jack.getByLabel('Online undo')).toContainText('Your undo request was approved.')
+    expect(await jack.evaluate(() => window.turnAlertProbe.flashes)).toEqual([])
+
+    await jack.getByRole('button', { name: 'Redo', exact: true }).click()
+    await expect(investigators.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
+    for (const color of ['yellow', 'blue', 'red']) {
+      await investigators.getByLabel(`Legal ${color} Investigator destinations`).getByRole('button').first().click()
+    }
+    for (const color of ['Yellow', 'Blue', 'Red']) {
+      await expect(investigators.getByRole('heading', { name: `${color} Investigator: Clues and Suspicion` })).toBeVisible()
+      await investigators.getByRole('button', { name: 'Pass', exact: true }).click()
+    }
+    await expect(jack.getByRole('heading', { name: 'Jack: Escape in the Night' })).toBeVisible()
+    const investigatorBefore = await jack.evaluate(() => window.onlineProbe.snapshot!)
+    await investigators.getByRole('button', { name: 'Request undo', exact: true }).click()
+    await jack.getByRole('button', { name: 'Approve undo' }).click()
+    await expect(investigators.getByLabel('Online undo')).toContainText('Your undo request was approved.')
+    const investigatorAfter = await investigators.evaluate(() => window.onlineProbe.snapshot!)
+    expect(investigatorAfter.history.state.stage).toBe('investigatorAction')
+    expect(investigatorAfter.history.actions).toEqual(investigatorBefore.history.actions)
+    expect(investigatorAfter.history.cursor).toBeLessThan(investigatorBefore.history.cursor)
+  } finally {
+    await investigatorsContext.close()
+  }
+})
+
+test('online undo rejects self-approval, stale revisions and moves while pending; cancellation releases play', async ({ page: jack, browser }) => {
+  const investigatorsContext = await browser.newContext()
+  const investigators = await investigatorsContext.newPage()
+  for (const page of [jack, investigators]) await page.addInitScript(observeOnlineSocket)
+  try {
+    await jack.goto('/')
+    await jack.getByRole('button', { name: 'New game', exact: true }).click()
+    await jack.getByRole('button', { name: 'Online', exact: true }).click()
+    await jack.getByRole('button', { name: 'Start new game as Jack' }).click()
+    await investigators.goto(await jack.getByLabel('Online investigator invitation').inputValue())
+    await expect(jack.getByRole('button', { name: 'Rand Side', exact: true })).toBeEnabled()
+    await jack.evaluate(() => {
+      const probe = window.onlineProbe
+      probe.socket!.send(JSON.stringify({ type: 'command', protocolVersion: 1, requestId: crypto.randomUUID(),
+        expectedRevision: probe.snapshot!.revision, expectedHistoryHash: probe.snapshot!.historyHash,
+        commands: [
+          ...[33, 46, 147, 159].map(circleId => ({ type: 'apply', action: { type: 'toggleDiscovery', circleId } })),
+          { type: 'apply', action: { type: 'confirmDiscoveries' } }, { type: 'undo' },
+        ] }))
+    })
+    await expect(jack.getByLabel('Online game')).toContainText('A command batch cannot continue after your turn ends.')
+    expect(await jack.evaluate(() => window.onlineProbe.snapshot!.revision)).toBe(0)
+    await jack.getByRole('button', { name: 'Rand Side', exact: true }).click()
+    await expect(investigators.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
+    await jack.getByRole('button', { name: 'Request undo', exact: true }).click()
+    await expect(investigators.getByRole('button', { name: 'Approve undo' })).toBeVisible()
+    const pending = await jack.evaluate(() => window.onlineProbe.snapshot!)
+
+    const count = await jack.evaluate(() => {
+      const probe = window.onlineProbe
+      // A retry of the accepted request must not create a second request/revision.
+      probe.socket!.send(JSON.stringify({ type: 'request-undo', protocolVersion: 1, requestId: probe.undo!.id,
+        expectedRevision: probe.snapshot!.revision - 1, expectedHistoryHash: probe.snapshot!.historyHash }))
+      return probe.snapshotCount
+    })
+    await expect.poll(() => jack.evaluate(() => window.onlineProbe.snapshotCount)).toBeGreaterThan(count)
+    expect(await jack.evaluate(() => window.onlineProbe.snapshot)).toEqual(pending)
+
+    await jack.evaluate(() => {
+      const probe = window.onlineProbe
+      probe.socket!.send(JSON.stringify({ type: 'decide-undo', protocolVersion: 1, requestId: crypto.randomUUID(),
+        expectedRevision: probe.snapshot!.revision, expectedHistoryHash: probe.snapshot!.historyHash,
+        undoRequestId: probe.undo!.id, decision: 'approve' }))
+    })
+    await expect(jack.getByLabel('Online game')).toContainText('Only your partner can approve')
+    await investigators.evaluate(() => {
+      const probe = window.onlineProbe
+      probe.socket!.send(JSON.stringify({ type: 'command', protocolVersion: 1, requestId: crypto.randomUUID(),
+        expectedRevision: probe.snapshot!.revision, expectedHistoryHash: probe.snapshot!.historyHash, commands: [{ type: 'undo' }] }))
+    })
+    await expect(investigators.getByLabel('Online game')).toContainText('Resolve the undo request')
+    await investigators.evaluate(() => {
+      const probe = window.onlineProbe
+      probe.socket!.send(JSON.stringify({ type: 'decide-undo', protocolVersion: 1, requestId: crypto.randomUUID(),
+        expectedRevision: probe.snapshot!.revision - 1, expectedHistoryHash: probe.snapshot!.historyHash,
+        undoRequestId: probe.undo!.id, decision: 'approve' }))
+    })
+    await expect.poll(() => investigators.evaluate(() => window.onlineProbe.errors)).toContain('conflict')
+    expect(await investigators.evaluate(() => window.onlineProbe.snapshot)).toEqual(pending)
+    await expect(investigators.getByRole('button', { name: 'Approve undo' })).toBeVisible()
+    await jack.getByRole('button', { name: 'Cancel undo request' }).click()
+    await expect(investigators.getByRole('button', { name: 'Approve undo' })).toHaveCount(0)
+    await expect(investigators.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
+    expect(await investigators.evaluate(() => window.onlineProbe.snapshot!.historyHash)).toBe(pending.historyHash)
+    await investigators.getByLabel('Available deployment crossings').getByRole('button').first().click()
+    await expect(investigators.getByRole('heading', { name: 'Deploy the Blue Investigator' })).toBeVisible()
+    await investigators.evaluate(() => {
+      const probe = window.onlineProbe
+      for (let index = 0; index < 25; index++) probe.socket!.send(JSON.stringify({ type: 'request-undo', protocolVersion: 1,
+        requestId: crypto.randomUUID(), expectedRevision: probe.snapshot!.revision, expectedHistoryHash: probe.snapshot!.historyHash }))
+    })
+    await expect.poll(() => investigators.evaluate(() => window.onlineProbe.errors)).toContain('rate-limited')
+  } finally {
+    await investigatorsContext.close()
+  }
 })
