@@ -888,7 +888,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await expect(page.getByRole('checkbox', { name: 'past', exact: true })).toHaveCount(0)
   await expect(page.locator('.possible-marker').first()).toBeVisible()
   await expect(page.locator('.investigator-piece.yellow .active-investigator-ring')).toBeVisible()
-  await expect(page.locator('.board-scroll')).toHaveClass(/active-investigator-yellow/)
+  await expect(page.locator('.board-frame')).toHaveClass(/active-investigator-yellow/)
   const positionGuides = page.locator('.active-investigator-edge-arrows')
   await expect(positionGuides.locator('polygon')).toHaveCount(4)
   await expect(positionGuides).toHaveCSS('color', 'rgb(136, 255, 51)')
@@ -925,7 +925,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
 
   await page.getByLabel('Yellow Investigator at crossing FP, selectable to stay').click()
   await expect(page.locator('.investigator-piece.blue .active-investigator-ring')).toBeVisible()
-  await expect(page.locator('.board-scroll')).toHaveClass(/active-investigator-blue/)
+  await expect(page.locator('.board-frame')).toHaveClass(/active-investigator-blue/)
   for (const crossing of ['HP', 'HZ']) await page.getByRole('button', { name: crossing, exact: true }).click()
   await expect(page.getByRole('button', { name: 'Search for clues' })).toHaveClass(/primary-button/)
   const arrestTargetId = await page.locator('.map-hit-target.selectable').evaluateAll((targets, jackId) =>
@@ -1029,12 +1029,12 @@ test('keeps the mobile layout within the viewport', async ({ page }) => {
   expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport)
 })
 
-test('caps and aligns the map for single- and two-column layouts', async ({ page }) => {
+test('caps and aligns the map without an internal scrollbar', async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1200 })
   await page.goto('/')
 
   const mapBounds = await page.locator('.game-board').boundingBox()
-  const viewportBounds = await page.locator('.board-scroll').boundingBox()
+  const viewportBounds = await page.locator('.board-frame').boundingBox()
   const controlBounds = await page.locator('.control-panel').boundingBox()
   const layoutBounds = await page.locator('.game-layout').boundingBox()
   const trackBounds = await page.locator('.move-track').boundingBox()
@@ -1052,13 +1052,25 @@ test('caps and aligns the map for single- and two-column layouts', async ({ page
   expect(trackBounds!.width).toBe(layoutBounds!.width)
 
   await page.setViewportSize({ width: 1000, height: 1200 })
-  const singleColumnMap = await page.locator('.board-scroll').boundingBox()
+  const singleColumnMap = await page.locator('.board-frame').boundingBox()
   const boardPanel = await page.locator('.board-panel').boundingBox()
   expect(singleColumnMap).not.toBeNull()
   expect(boardPanel).not.toBeNull()
   const leftGap = singleColumnMap!.x - boardPanel!.x
   const rightGap = boardPanel!.x + boardPanel!.width - (singleColumnMap!.x + singleColumnMap!.width)
   expect(Math.abs(leftGap - rightGap)).toBeLessThanOrEqual(1)
+
+  await page.setViewportSize({ width: 1600, height: 500 })
+  const shortViewportDimensions = await page.locator('.board-frame').evaluate((element) => ({
+    overflowY: getComputedStyle(element).overflowY,
+    mapClientHeight: element.clientHeight,
+    mapScrollHeight: element.scrollHeight,
+    pageClientHeight: document.documentElement.clientHeight,
+    pageScrollHeight: document.documentElement.scrollHeight,
+  }))
+  expect(shortViewportDimensions.overflowY).toBe('visible')
+  expect(shortViewportDimensions.mapScrollHeight).toBeLessThanOrEqual(shortViewportDimensions.mapClientHeight)
+  expect(shortViewportDimensions.pageScrollHeight).toBeGreaterThan(shortViewportDimensions.pageClientHeight)
 })
 
 test('scales pieces and outline strokes with the map', async ({ page }) => {

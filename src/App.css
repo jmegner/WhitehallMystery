@@ -376,30 +376,27 @@ button:disabled {
   margin-left: auto;
 }
 
-.board-scroll {
+.board-frame {
   width: 100%;
   max-width: 900px;
-  max-height: calc(100vh - 265px);
   box-sizing: border-box;
-  overflow: auto;
   border: 2px solid #49351f;
   background: #a98964;
-  scrollbar-color: #62492f #d6c1a1;
 }
 
-.board-scroll[class*='active-investigator-'] {
+.board-frame[class*='active-investigator-'] {
   border-width: 5px;
 }
 
-.board-scroll.active-investigator-yellow {
+.board-frame.active-investigator-yellow {
   border-color: #ffff00;
 }
 
-.board-scroll.active-investigator-blue {
+.board-frame.active-investigator-blue {
   border-color: #36a9ff;
 }
 
-.board-scroll.active-investigator-red {
+.board-frame.active-investigator-red {
   border-color: #ff4545;
 }
 
@@ -1203,10 +1200,6 @@ button:disabled {
     max-height: none;
     border-left: 0;
     border-top: 1px solid #bfa783;
-  }
-
-  .board-scroll {
-    max-height: 72vh;
   }
 
   .board-stage {

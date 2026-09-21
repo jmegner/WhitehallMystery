@@ -2005,8 +2005,8 @@ function App({ mail, online, onNewGame }: AppProps) {
             <div
               className={
                 isInspectorInteraction(state.stage)
-                  ? `board-scroll active-investigator-${activeInvestigatorColor(state)}`
-                  : 'board-scroll'
+                  ? `board-frame active-investigator-${activeInvestigatorColor(state)}`
+                  : 'board-frame'
               }
             >
               <GameBoard
