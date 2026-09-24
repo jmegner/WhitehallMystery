@@ -9,9 +9,11 @@ import SavedGamesMenu from './SavedGamesMenu'
 import OnlineGame from './online/OnlineGame'
 import { confirmLeaveGame, leaveSavedGame } from './game/leaveGame'
 import { MAX_GAME_NAME_LENGTH } from './game/gameName'
+import { copyInvitationWhenReady, type InvitationCopyStatus } from './online/invitationClipboard'
 import {
   configuredOnlineApi,
   createOnlineGame,
+  onlineInviteUrl,
   onlineSessionFromInvite,
   onlineSessionFromLocation,
   type OnlineSession,
@@ -41,6 +43,19 @@ export default function GameApp() {
   const [leaving, setLeaving] = useState(false)
   const [leaveError, setLeaveError] = useState('')
   const [leaveIds] = useState(() => new Map<string, string>())
+  const [invitationCopy, setInvitationCopy] = useState<{ gameId: string; status: InvitationCopyStatus } | null>(null)
+  const startOnline = async (role: PlayerView, name: string) => {
+    const creation = createOnlineGame({ role, name })
+    const copied = copyInvitationWhenReady(creation.then(session => onlineInviteUrl(session)))
+    const session = await creation
+    // Save and open the room independently of clipboard permissions. This state
+    // lives above the keyed workspace so feedback survives switching to it.
+    const next = library.saveOnline(session)
+    setInvitationCopy({ gameId: next.id, status: 'copying' })
+    library.activate(next.id)
+    setMenu(null)
+    void copied.then(success => setInvitationCopy(previous => previous?.gameId === next.id ? { ...previous, status: success ? 'copied' : 'unavailable' } : previous))
+  }
   const leaveAndNew = async () => {
     if (!game || leaving || !confirmLeaveGame(game, true)) return
     setLeaving(true)
@@ -59,13 +74,16 @@ export default function GameApp() {
     {leaving && <p className="storage-warning" role="status">Leaving the current game…</p>}
     {leaveError && <p className="storage-warning" role="alert">{leaveError}</p>}
     <div inert={leaving}>
-      <GameWorkspace key={game?.id ?? 'no-game'} game={game} library={library} menu={menu} setMenu={next => { setLeaveError(''); setMenu(next) }} onLeaveNewGame={() => void leaveAndNew()} />
+      <GameWorkspace key={game?.id ?? 'no-game'} game={game} library={library} menu={menu}
+        setMenu={next => { setLeaveError(''); if (next !== null) setInvitationCopy(null); setMenu(next) }} onLeaveNewGame={() => void leaveAndNew()}
+        onStartOnline={startOnline} invitationCopyStatus={invitationCopy?.gameId === game?.id ? invitationCopy?.status : undefined} />
     </div>
   </>
 }
 
-function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame }: {
+function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame, onStartOnline, invitationCopyStatus }: {
   game: SavedGame | null; library: SavedGameLibrary; menu: GameMenu; setMenu: (menu: GameMenu) => void; onLeaveNewGame: () => void
+  onStartOnline: (role: PlayerView, name: string) => Promise<void>; invitationCopyStatus?: InvitationCopyStatus
 }) {
   const onlineSession = game?.mode === 'online' ? game.session : null
   const session = game?.mode === 'by-mail' ? game.session : null
@@ -144,9 +162,7 @@ function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame }: {
     setOnlineBusy(true)
     setFeedback('')
     try {
-      const next = await createOnlineGame({ role, name: onlineName.trim() })
-      saveOnline(next)
-      setMenu(null)
+      await onStartOnline(role, onlineName.trim())
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : 'Could not create an online game.')
     } finally {
@@ -196,6 +212,7 @@ function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame }: {
       <label htmlFor="online-game-name">Game name (optional)</label>
       <input id="online-game-name" className="game-name-input" value={onlineName} maxLength={MAX_GAME_NAME_LENGTH} disabled={onlineBusy} onChange={event => updateOnlineName(event.target.value)} />
       <p className="game-name-hint">Shared with your partner. You can change it in Resume game.</p>
+      <p>Your partner’s invitation link will be copied automatically when the game is created.</p>
       <button className="primary-button" type="button" disabled={onlineBusy || !configuredOnlineApi()} onClick={() => void startOnline('jack')}>Start new game as Jack</button>
       <button className="primary-button" type="button" disabled={onlineBusy || !configuredOnlineApi()} onClick={() => void startOnline('investigators')}>Start new game as Investigators</button>
       {onlineBusy && <p role="status">Creating game…</p>}
@@ -209,6 +226,7 @@ function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame }: {
   </main>
   if (onlineSession && game) return <OnlineGame
     session={onlineSession}
+    invitationCopyStatus={invitationCopyStatus}
     onChooseNewGame={() => setMenu('choose')}
     onResumeGame={openResume}
     onLeaveNewGame={onLeaveNewGame}

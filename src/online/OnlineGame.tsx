@@ -6,9 +6,11 @@ import { OnlineSessionStore, inviteOnlineReplacement, onlineInviteUrl, type Onli
 import { opponentRole, type OnlineSeats } from '../game/onlineSeats'
 import TurnAlerts from './TurnAlerts'
 import OnlineUndoPanel from './OnlineUndoPanel'
+import type { InvitationCopyStatus } from './invitationClipboard'
 
 interface OnlineGameProps {
   session: OnlineSession
+  invitationCopyStatus?: InvitationCopyStatus
   onChooseNewGame: () => void
   onResumeGame: () => void
   onLeaveNewGame: () => void
@@ -16,12 +18,15 @@ interface OnlineGameProps {
   onInvitation: (invitation: NonNullable<OnlineSession['opponentInvitation']>) => void
 }
 
-export default function OnlineGame({ session, onChooseNewGame, onResumeGame, onLeaveNewGame, onProgress, onInvitation }: OnlineGameProps) {
+export default function OnlineGame({ session, invitationCopyStatus, onChooseNewGame, onResumeGame, onLeaveNewGame, onProgress, onInvitation }: OnlineGameProps) {
   const [store] = useState(() => new OnlineSessionStore(session))
   const online = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const [copyFeedback, setCopyFeedback] = useState('')
   const [inviting, setInviting] = useState(false)
   const [inviteId, setInviteId] = useState(() => crypto.randomUUID())
+  const automaticCopyFeedback = invitationCopyStatus === 'copying' ? 'Game created. Copying your partner’s invitation link…'
+    : invitationCopyStatus === 'copied' ? `Game created. ${session.role === 'jack' ? 'Investigator' : 'Jack'} invitation copied automatically. Send it to your partner.`
+      : invitationCopyStatus === 'unavailable' ? 'Game created, but automatic copying was unavailable. Use Copy invitation link, or select and copy the link.' : ''
 
   const reportProgress = useEffectEvent(onProgress)
   useEffect(() => {
@@ -67,6 +72,7 @@ export default function OnlineGame({ session, onChooseNewGame, onResumeGame, onL
     return <main className="mail-menu online-menu">
       <h1>Online game</h1>
       <p>{online.status === 'error' ? online.error : 'Connecting securely to the game…'}</p>
+      {automaticCopyFeedback && <p role="status">{automaticCopyFeedback}</p>}
       {navigation}
     </main>
   }
@@ -108,7 +114,7 @@ export default function OnlineGame({ session, onChooseNewGame, onResumeGame, onL
         <textarea aria-label={opponent === 'jack' ? 'Online Jack invitation' : 'Online investigator invitation'} readOnly value={invitation} rows={2} onFocus={event => event.target.select()} />
         <button type="button" onClick={() => void copyInvitation()}>Copy invitation link</button>
       </details>}
-      <p role="status">{online.error || copyFeedback}</p>
+      <p role="status">{online.error || copyFeedback || automaticCopyFeedback}</p>
     </section>
     <App
       online={{

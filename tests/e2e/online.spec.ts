@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test'
 import type { OnlineServerMessage, OnlineSnapshot } from '../../src/game/onlineProtocol'
 import type { OnlineUndoState } from '../../src/game/onlineUndo'
+import { observeInvitationClipboard } from './invitationClipboard'
+
+test.beforeEach(async ({ page }) => { await observeInvitationClipboard(page) })
 
 declare global {
   interface Window {
@@ -79,6 +82,7 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
   await jack.addInitScript(observeOnlineSocket)
   await investigatorsContext.addInitScript(observeOnlineSocket)
   const investigators = await investigatorsContext.newPage()
+  await observeInvitationClipboard(investigators)
   try {
     await jack.goto('/')
     await jack.getByRole('button', { name: 'New game', exact: true }).click()
@@ -89,8 +93,10 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
     await expect(jack.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
     const invitation = await jack.getByLabel('Online investigator invitation').inputValue()
     expect(invitation).toMatch(/#online=[a-f0-9]{64}\.[A-Za-z0-9_-]{43}$/)
-    await jack.context().grantPermissions(['clipboard-read', 'clipboard-write'])
-    await jack.evaluate(() => navigator.clipboard.writeText('Clipboard before first click'))
+    await expect(jack.getByLabel('Online game')).toContainText('Investigator invitation copied automatically.')
+    expect(await jack.evaluate(() => navigator.clipboard.readText())).toBe(invitation)
+    expect(await jack.evaluate(() => window.invitationClipboardProbe.gestures)).toEqual([true])
+    await jack.evaluate(() => { window.invitationClipboardProbe.text = 'Clipboard before first click' })
     // Keep the pointer down long enough for audio initialization to settle. The
     // copy target must not move out from under the pointer before mouseup.
     await jack.getByRole('button', { name: 'Copy invitation link', exact: true }).click({ delay: 200 })
@@ -98,8 +104,10 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
     await expect(jack.getByLabel('Online game')).toContainText('Investigator invitation copied.')
     await jack.reload()
     await expect(jack.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
+    expect(await jack.evaluate(() => window.invitationClipboardProbe.writes)).toBe(0)
+    expect(await jack.evaluate(() => navigator.clipboard.readText())).toBe('Clipboard before creation')
     await expect(jack.getByLabel('Online game')).toContainText('interact with the page to enable sound')
-    await jack.evaluate(() => navigator.clipboard.writeText('Clipboard before first click after refresh'))
+    await jack.evaluate(() => { window.invitationClipboardProbe.text = 'Clipboard before first click after refresh' })
     await jack.getByRole('button', { name: 'Copy invitation link', exact: true }).click({ delay: 200 })
     expect(await jack.evaluate(() => navigator.clipboard.readText())).toBe(invitation)
     await expect(jack.getByLabel('Online game')).toContainText('Investigator invitation copied.')
@@ -125,6 +133,7 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
     await investigators.goto(invitation)
     await expect(investigators.getByLabel('Online game')).toContainText('Online · Investigators')
     await expect(investigators.getByRole('heading', { name: 'Waiting for your partner' })).toBeVisible()
+    expect(await investigators.evaluate(() => window.invitationClipboardProbe.writes)).toBe(0)
     await expect(jack.getByLabel('Online game')).toContainText('Investigators: connected')
 
     const alerts = investigators.getByRole('group', { name: 'When it’s your turn' })
@@ -210,6 +219,7 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
     await alerts.getByLabel('Flash screen').uncheck()
 
     // Switch to another saved game while the partner advances this online room.
+    await jack.evaluate(() => { window.invitationClipboardProbe.text = 'Keep clipboard when resuming' })
     await jack.getByRole('button', { name: 'New game', exact: true }).click()
     await jack.getByRole('button', { name: 'Same device', exact: true }).click()
     await jack.getByLabel('Location 147, selectable', { exact: true }).click()
@@ -221,6 +231,7 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
     await expect(onlineSaved).not.toContainText('unknown')
     await onlineSaved.click()
     await expect(jack.getByLabel('Online investigator invitation')).toHaveValue(invitation)
+    expect(await jack.evaluate(() => navigator.clipboard.readText())).toBe('Keep clipboard when resuming')
     await expect.poll(() => jack.evaluate(() => window.onlineProbe.snapshot?.history.state.activeInvestigator)).toBe(1)
     await expect(jack.locator('.public-log')).toHaveText(await investigators.locator('.public-log').textContent() ?? '')
     await jack.getByRole('button', { name: 'Resume game', exact: true }).click()
@@ -234,6 +245,29 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
   } finally {
     await investigatorsContext.close()
   }
+})
+
+test('failed online creation does not copy placeholder text or create a saved room', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.route('**/v1/games', route => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'Test creation failure' }) }))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'New game', exact: true }).click()
+  await page.getByRole('button', { name: 'Online', exact: true }).click()
+  await page.getByRole('button', { name: 'Start new game as Jack', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('Could not create an online game.')
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Clipboard before creation')
+  // A refused clipboard write must also handle creation failing later, even
+  // when the browser never asks the ClipboardItem for its promised data.
+  await page.evaluate(() => { window.invitationClipboardProbe.blockAutomatic = true })
+  await page.getByRole('button', { name: 'Start new game as Jack', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('Could not create an online game.')
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Clipboard before creation')
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await page.getByRole('button', { name: 'Resume game', exact: true }).click()
+  await expect(page.locator('.saved-game-resume')).toHaveCount(1)
+  await expect(page.locator('.saved-game-resume')).toContainText('Same device')
+  expect(errors).toEqual([])
 })
 
 test('turn alert controls explain blocked and unavailable notification permissions', async ({ page }) => {

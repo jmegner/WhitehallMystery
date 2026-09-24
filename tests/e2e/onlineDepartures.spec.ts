@@ -1,5 +1,8 @@
 import { expect, test, type Page, type APIRequestContext } from '@playwright/test'
 import type { OnlineSession } from '../../src/online/onlineSession'
+import { observeInvitationClipboard } from './invitationClipboard'
+
+test.beforeEach(async ({ page }) => { await observeInvitationClipboard(page) })
 
 // Run this suite in its own local Worker invocation (npm run test:e2e) so it
 // doesn't share the simulated per-IP connection quota with the other suites.
@@ -7,8 +10,9 @@ const onlineEntry = (page: Page) => page.locator('.saved-game-list li').filter({
 async function sessionFor(page: Page): Promise<OnlineSession> {
   return page.evaluate(() => JSON.parse(localStorage.getItem('whitehall-mystery.saved-game.v1.' + localStorage.getItem('whitehall-mystery.active-game.v1'))!).session)
 }
-async function start(page: Page) {
+async function start(page: Page, blockAutomatic = false) {
   await page.goto('/')
+  await page.evaluate(block => { window.invitationClipboardProbe.blockAutomatic = block }, blockAutomatic)
   await page.getByRole('button', { name: 'New game', exact: true }).click()
   await page.getByRole('button', { name: 'Online', exact: true }).click()
   await page.getByRole('button', { name: 'Start new game as Jack' }).click()
@@ -42,8 +46,13 @@ test('online departures: create as Investigators, share and edit names, then Lea
     expect(new URL(session.apiBase).hostname).toBe('127.0.0.1')
     expect(session.role).toBe('investigators')
     const invitation = await investigators.getByLabel('Online Jack invitation').inputValue()
+    await expect(investigators.getByLabel('Online game')).toContainText('Jack invitation copied automatically.')
+    expect(await investigators.evaluate(() => navigator.clipboard.readText())).toBe(invitation)
+    expect(await investigators.evaluate(() => window.invitationClipboardProbe.gestures)).toEqual([true])
     await investigators.reload()
     await expect(investigators.getByLabel('Online Jack invitation')).toHaveValue(invitation)
+    expect(await investigators.evaluate(() => window.invitationClipboardProbe.writes)).toBe(0)
+    expect(await investigators.evaluate(() => navigator.clipboard.readText())).toBe('Clipboard before creation')
     await jack.goto(invitation)
     await expect(jack.getByRole('heading', { name: 'Friday mystery', exact: true })).toBeVisible()
     const jackSession = await sessionFor(jack)
@@ -126,7 +135,12 @@ test('online departures: create as Investigators, share and edit names, then Lea
 })
 
 test('online departures: Leave+New Game keeps the current entry on failure and retries safely', async ({ page, request }) => {
-  const session = await start(page)
+  const session = await start(page, true)
+  await expect(page.getByLabel('Online game')).toContainText('automatic copying was unavailable')
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Clipboard before creation')
+  await page.getByRole('button', { name: 'Copy invitation link', exact: true }).click()
+  await expect(page.getByLabel('Online game')).toContainText('Investigator invitation copied.')
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(await page.getByLabel('Online investigator invitation').inputValue())
   const origin = new URL(page.url()).origin
   let fail = true
   const ids: string[] = []
