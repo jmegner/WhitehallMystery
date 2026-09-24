@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useState, useSyncExternalStore } from 'react'
 import App from '../App'
+import { mailTimestamp } from '../game/byMail'
 import { currentHistoryState, playerViewForState, type GameHistory, type HistoryCommand } from '../game/history'
 import { onlineTurnStart } from '../game/onlineProtocol'
 import { OnlineSessionStore, inviteOnlineReplacement, onlineInviteUrl, type OnlineSession } from './onlineSession'
@@ -99,6 +100,7 @@ export default function OnlineGame({ session, invitationCopyStatus, onChooseNewG
   const hasInvitation = session.opponentInvitation ? session.opponentInvitation.generation === (seat?.generation ?? 0) :
     session.role === 'jack' && !!session.investigatorsToken && (!seat || seat.generation === 0)
   const invitation = hasInvitation ? onlineInviteUrl(session) : ''
+  const startedAt = online.createdAt ?? session.startedAt
 
   return <>
     <section className="mail-panel online-panel" aria-label="Online game">
@@ -110,6 +112,7 @@ export default function OnlineGame({ session, invitationCopyStatus, onChooseNewG
       {online.name && <h2 className="online-game-name">{online.name}</h2>}
       <p>
         Jack: {online.presence.jack ? 'connected' : 'offline'} · Investigators: {online.presence.investigators ? 'connected' : 'offline'}
+        {startedAt !== undefined && <> · Started <time aria-label="Game start time" dateTime={new Date(startedAt).toISOString()}>{mailTimestamp(startedAt / 1000)}</time></>}
         {online.pendingRequestId ? ' · Saving action…' : ''}
       </p>
       {opponentLeft && <p className="online-departure" role="status">Your opponent ({opponent === 'jack' ? 'Jack' : 'the investigators'}) left the game. Invite a replacement below. This notice clears after that side completes a turn.</p>}

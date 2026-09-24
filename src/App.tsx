@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import './App.css'
 import { normalizeMailHistory, mailHistoryReducer, mailBoardState } from './game/byMail'
-import { isInvestigatorReview, onlineBoardState, onlineHistoryReducer } from './game/remoteHistory'
+import { isInvestigatorReview, onlineBoardState, onlineHistoryReducer, onlineInvestigatorActionCount } from './game/remoteHistory'
 import { SECRET_INFO_UNDO_WARNING, undoIncludesSecretInfo } from './game/undoWarning'
 import { contrastingBlackOrWhite } from './colorContrast'
 import {
@@ -357,6 +357,7 @@ function GameBoard({
       ? jackHoverTurnLabels
       : routePreview.turnLabels
   const showJack = isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
+  const selectedJackDestinations = new Set(showJack ? state.jackMoveSelection.path : [])
   const activeInvestigatorStartId = !suppressTurnIndicators && isInspectorInteraction(state.stage)
     ? state.investigatorPositions[activeInvestigatorColor(state)]
     : undefined
@@ -440,7 +441,7 @@ function GameBoard({
   const innerLocationOutlines = (id: number) => {
     const outlines: Array<{ radius: number; strokeWidth: number }> = [LOCATION_OUTLINES.mapLocation]
     const legal = legalCircleIds.has(id) || coachReachableCircleIds.has(id)
-    if (legal || state.jackMoveSelection.path.includes(id)) outlines.push(LOCATION_OUTLINES.legal)
+    if (legal || selectedJackDestinations.has(id)) outlines.push(LOCATION_OUTLINES.legal)
     if (state.clueLocations.includes(id)) {
       outlines.push(legal ? LOCATION_OUTLINES.clueOutsideLegal : LOCATION_OUTLINES.clue)
     }
@@ -525,6 +526,7 @@ function GameBoard({
       role="img"
       aria-label="Whitehall game board"
       onClick={onMapClick}
+      onMouseLeave={() => setHoveredMaybeId(null)}
     >
       <image href={boardImage} x="0" y="0" width={BOARD_SIZE} height={BOARD_SIZE} />
 
@@ -826,7 +828,7 @@ function GameBoard({
           state.stage === 'jackMove' && state.currentJack !== circle.id && !legalCircleIds.has(circle.id)
         const unrestrictedDistanceHoverTarget =
           state.stage === 'jackDiscoverySetup' || state.stage === 'jackChooseStart' || (state.stage === 'jackMove' && legal)
-        const selected = state.jackMoveSelection.path.includes(circle.id)
+        const selected = selectedJackDestinations.has(circle.id)
         return (
           <g key={`circle-target-${circle.id}`}>
             {coachReachable && (
@@ -860,12 +862,14 @@ function GameBoard({
                 }
               }}
               onMouseEnter={() => {
-                if (inferenceHoverTarget) setHoveredMaybeId(circle.id)
                 if (routePreviewHoverTarget) setHoveredRouteTarget(circle.id)
                 if (unrestrictedDistanceHoverTarget) setHoveredUnrestrictedRouteStart(circle.id)
               }}
+              // A rerender under a stationary pointer is not a request to
+              // preview an outcome. Require actual movement over the target.
+              onMouseMove={() => setHoveredMaybeId(inferenceHoverTarget ? circle.id : null)}
               onMouseLeave={() => {
-                if (inferenceHoverTarget) setHoveredMaybeId(null)
+                setHoveredMaybeId(null)
                 if (routePreviewHoverTarget) setHoveredRouteTarget(null)
                 if (unrestrictedDistanceHoverTarget) setHoveredUnrestrictedRouteStart(null)
               }}
@@ -1169,6 +1173,7 @@ function TargetButtons<T extends number | string>({
 
 interface HistoryControlsProps {
   history: GameHistory
+  publicActionCount?: number
   onUndo: () => void
   onBigUndo: () => void
   onRedo: () => void
@@ -1178,8 +1183,9 @@ interface HistoryControlsProps {
   mailControls?: { canUndo: boolean; canRequestUndo?: boolean; canRedo: boolean; waiting: boolean }
 }
 
-function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand, onRandSide, mailControls }: HistoryControlsProps) {
+function HistoryControls({ history, publicActionCount, onUndo, onBigUndo, onRedo, onRedoAll, onRand, onRandSide, mailControls }: HistoryControlsProps) {
   const mode = mailControls ? mailControls.canUndo || mailControls.canRequestUndo ? 'undo' : 'disabled' : undoMode(history)
+  const count = publicActionCount ?? actionCount(history)
   return (
     <div className="history-controls" aria-label="Action history controls">
       <button className="side-history-button" type="button" disabled={mailControls ? !mailControls.canUndo : !canBigUndo(history)} onClick={onBigUndo}>
@@ -1200,8 +1206,8 @@ function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand
       <button type="button" disabled={mailControls?.waiting} onClick={onRandSide}>
         Rand Side
       </button>
-      <span className="action-counter" aria-label={`${actionCount(history)} player actions`}>
-        Actions {actionCount(history)}
+      <span className="action-counter" aria-label={`${count} ${publicActionCount === undefined ? 'player' : 'public'} actions`}>
+        {publicActionCount === undefined ? 'Actions' : 'Public actions'} {count}
       </span>
     </div>
   )
@@ -1705,7 +1711,9 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
     // or future game states cannot lock up the UI.
     for (let actionCount = 0; actionCount < 100; actionCount += 1) {
       const nextState = currentHistoryState(next)
-      if (online && isInvestigatorReview(nextState)) break
+      // Rand Side includes result confirmation, but must never play the
+      // opponent's turn after the online reducer normalizes the handoff.
+      if (online && playerViewForState(nextState) !== side) break
       if (
         side === 'jack' &&
         (nextState.stage === 'handoffInspectorsSetup' || nextState.stage === 'handoffInspectorsTurn')
@@ -1888,11 +1896,12 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
           <div className="board-toolbar">
             <div className="board-options">
               <HistoryControls
+                publicActionCount={online?.role === 'investigators' && state.stage !== 'gameOver' ? onlineInvestigatorActionCount(history) : undefined}
                 mailControls={remote ? {
                   canUndo: !online?.waiting && history.cursor > remote.turnStart,
                   canRequestUndo: online?.requestUndo?.canRequest,
                   canRedo: !online?.waiting && !(online && isInvestigatorReview(state)) && history.cursor < history.entries.length - 1,
-                  waiting: remote.waiting || state.stage === 'gameOver' || (!!online && isInvestigatorReview(state)),
+                  waiting: remote.waiting || state.stage === 'gameOver',
                 } : undefined}
                 history={history}
                 onUndo={handleUndo}
@@ -2043,6 +2052,13 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
               }
             >
               <GameBoard
+                // Reset transient previews when public evidence/turn changes,
+                // not on private Jack updates or on every received snapshot.
+                key={online?.role === 'investigators' ? JSON.stringify([
+                  state.stage, state.round, state.moveSlot, waitingForJack,
+                  state.publicRound, state.investigatorPositions, state.activeInvestigator,
+                  showPossibilityMarkers,
+                ]) : undefined}
                 state={state}
                 suppressTurnIndicators={waitingForJack}
                 legalCircleIds={legalCircleIds}

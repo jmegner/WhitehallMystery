@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test'
+import { mailTimestamp } from '../../src/game/byMail'
 import type { OnlineServerMessage, OnlineSnapshot } from '../../src/game/onlineProtocol'
 import type { OnlineUndoState } from '../../src/game/onlineUndo'
 import { observeInvitationClipboard } from './invitationClipboard'
 
+test.use({ timezoneId: 'America/Chicago' })
 test.beforeEach(async ({ page }) => { await observeInvitationClipboard(page) })
 
 declare global {
@@ -10,6 +12,7 @@ declare global {
     onlineProbe: {
       socket: WebSocket | null
       snapshot: OnlineSnapshot | null
+      createdAt: number | null
       undo: OnlineUndoState | null
       snapshotCount: number
       errors: string[]
@@ -25,7 +28,7 @@ declare global {
 }
 
 function observeOnlineSocket() {
-  window.onlineProbe = { socket: null, snapshot: null, undo: null, snapshotCount: 0, errors: [] }
+  window.onlineProbe = { socket: null, snapshot: null, createdAt: null, undo: null, snapshotCount: 0, errors: [] }
   class ObservedWebSocket extends WebSocket {
     constructor(url: string | URL, protocols?: string | string[]) {
       if (new URL(url).hostname !== '127.0.0.1') throw new Error('Online QA must never connect to a deployed Worker.')
@@ -33,7 +36,12 @@ function observeOnlineSocket() {
       window.onlineProbe.socket = this
       this.addEventListener('message', event => {
         const message = JSON.parse(String(event.data)) as OnlineServerMessage
-        if (message.type === 'snapshot') { window.onlineProbe.snapshot = message.snapshot; window.onlineProbe.undo = message.undo ?? null; window.onlineProbe.snapshotCount += 1 }
+        if (message.type === 'snapshot') {
+          window.onlineProbe.snapshot = message.snapshot
+          window.onlineProbe.createdAt = message.createdAt ?? null
+          window.onlineProbe.undo = message.undo ?? null
+          window.onlineProbe.snapshotCount += 1
+        }
         if (message.type === 'error') window.onlineProbe.errors.push(message.code)
       })
     }
@@ -76,7 +84,7 @@ function observeTurnAlerts() {
 }
 
 test('Online mode synchronizes authenticated Jack and investigator devices', async ({ page: jack, browser, request }) => {
-  const investigatorsContext = await browser.newContext()
+  const investigatorsContext = await browser.newContext({ timezoneId: 'Asia/Tokyo' })
   await jack.addInitScript(observeTurnAlerts)
   await investigatorsContext.addInitScript(observeTurnAlerts)
   await jack.addInitScript(observeOnlineSocket)
@@ -91,6 +99,13 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
 
     await expect(jack.getByLabel('Online game')).toContainText('Online · Jack')
     await expect(jack.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
+    const createdAt = await jack.evaluate(() => window.onlineProbe.createdAt!)
+    expect(createdAt).toBeGreaterThan(0)
+    const startIso = new Date(createdAt).toISOString()
+    const jackStartTime = mailTimestamp(createdAt / 1000, 'America/Chicago')
+    const investigatorStartTime = mailTimestamp(createdAt / 1000, 'Asia/Tokyo')
+    await expect(jack.getByLabel('Game start time')).toHaveText(jackStartTime)
+    await expect(jack.getByLabel('Game start time')).toHaveAttribute('datetime', startIso)
     const invitation = await jack.getByLabel('Online investigator invitation').inputValue()
     expect(invitation).toMatch(/#online=[a-f0-9]{64}\.[A-Za-z0-9_-]{43}$/)
     await expect(jack.getByLabel('Online game')).toContainText('Investigator invitation copied automatically.')
@@ -104,6 +119,8 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
     await expect(jack.getByLabel('Online game')).toContainText('Investigator invitation copied.')
     await jack.reload()
     await expect(jack.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
+    await expect(jack.getByLabel('Game start time')).toHaveText(jackStartTime)
+    await expect(jack.getByLabel('Game start time')).toHaveAttribute('datetime', startIso)
     expect(await jack.evaluate(() => window.invitationClipboardProbe.writes)).toBe(0)
     expect(await jack.evaluate(() => navigator.clipboard.readText())).toBe('Clipboard before creation')
     await expect(jack.getByLabel('Online game')).toContainText('interact with the page to enable sound')
@@ -135,6 +152,9 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
     await expect(investigators.getByRole('heading', { name: 'Waiting for your partner' })).toBeVisible()
     expect(await investigators.evaluate(() => window.invitationClipboardProbe.writes)).toBe(0)
     await expect(jack.getByLabel('Online game')).toContainText('Investigators: connected')
+    await expect(jack.getByLabel('Online game').locator('p').filter({ hasText: 'Jack: connected' })).toHaveText(`Jack: connected · Investigators: connected · Started ${jackStartTime}`)
+    await expect(investigators.getByLabel('Game start time')).toHaveText(investigatorStartTime)
+    await expect(investigators.getByLabel('Game start time')).toHaveAttribute('datetime', startIso)
 
     const alerts = investigators.getByRole('group', { name: 'When it’s your turn' })
     await expect(alerts.getByLabel('Flash screen')).toBeChecked()
@@ -166,6 +186,8 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
     expect(await investigators.evaluate(() => window.turnAlertProbe.flashes)).toEqual([500])
     await investigators.reload()
     await expect(investigators.getByRole('heading', { name: 'Deploy the Blue Investigator' })).toBeVisible()
+    await expect(investigators.getByLabel('Game start time')).toHaveText(investigatorStartTime)
+    await expect(investigators.getByLabel('Game start time')).toHaveAttribute('datetime', startIso)
     await expect(alerts.getByLabel('System notification')).toBeChecked()
     expect(await investigators.evaluate(() => window.turnAlertProbe.permissionRequests)).toBe(0)
     expect(await investigators.evaluate(() => window.turnAlertProbe.flashes)).toEqual([])
@@ -320,7 +342,6 @@ test('online undo is non-modal, survives refresh, alerts both sides, and preserv
     await jack.getByRole('button', { name: 'Rand Side', exact: true }).click()
     await expect(investigators.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
     await investigators.getByRole('button', { name: 'Rand Side', exact: true }).click()
-    await investigators.getByRole('button', { name: 'Confirm deployment' }).click()
     await expect(jack.getByRole('heading', { name: 'Jack: Choose the Starting Location' })).toBeVisible()
     await jack.getByRole('button', { name: 'Rand Side', exact: true }).click()
     await expect(investigators.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()

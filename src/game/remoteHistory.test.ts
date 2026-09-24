@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { createInitialGame, deploymentChoices, legalInspectorActionCircles, legalNormalDestinations } from './gameEngine'
+import { createInitialGame, deploymentChoices, legalInspectorActionCircles, legalNormalDestinations, legalJackDestinations } from './gameEngine'
 import { createGameHistory, currentHistoryState, gameHistoryReducer, playerViewForState, type GameHistory, type HistoryCommand } from './history'
-import { normalizeRemoteHistory, onlineBoardState, onlineHistoryReducer } from './remoteHistory'
+import { normalizeRemoteHistory, onlineBoardState, onlineHistoryReducer, onlineInvestigatorActionCount } from './remoteHistory'
 import { onlineHistoryFromWire, onlineHistoryToWire, onlineTurnStart } from './onlineProtocol'
 import { automaticInvestigatorActions } from './investigatorAuto'
 import { undoIncludesSecretInfo } from './undoWarning'
@@ -17,6 +17,69 @@ const deployed = () => {
 }
 
 describe('online board privacy', () => {
+  it('exposes only public locations during setup and on the investigator turn, without changing the verified history', () => {
+    let history = createGameHistory(createInitialGame())
+    const empty = onlineBoardState(history, 'investigators')
+    for (const circleId of [33, 46, 147, 159]) history = apply(history, { type: 'toggleDiscovery', circleId })
+    expect(onlineBoardState(history, 'investigators')).toEqual(empty)
+    expect(onlineInvestigatorActionCount(history)).toBe(0)
+    history = apply(deployed(), { type: 'chooseJackStart', circleId: 33 })
+    history = apply(history, { type: 'selectJackDestination', circleId: legalNormalDestinations(currentHistoryState(history))[0]! })
+    history = apply(history, { type: 'confirmJackMove' })
+    const before = structuredClone(history)
+    const board = onlineBoardState(history, 'investigators')
+    expect(board).toMatchObject({ currentJack: null, roundTrail: [], discoveryLocations: [33], reachedDiscoveries: [33], jackMoveSelection: { type: 'normal', path: [] } })
+    expect(board.publicRound).toEqual(currentHistoryState(history).publicRound)
+    expect(history).toEqual(before)
+    expect(onlineHistoryFromWire(onlineHistoryToWire(history))).toEqual(history)
+    expect(onlineInvestigatorActionCount(history)).toBe(5) // Lock discoveries, 3 deployments, 1 recorded move.
+  })
+
+  it.each(['normal', 'coach', 'alley', 'boat'] as const)('hides draft %s moves, their outline inputs and action counts after the first turn, including undo/redo', moveType => {
+    let history = apply(deployed(), { type: 'chooseJackStart', circleId: moveType === 'alley' ? 33 : 159 })
+    const start = currentHistoryState(history)
+    const firstDestination = legalNormalDestinations(start).find(id => !start.discoveryLocations.includes(id) &&
+      legalJackDestinations({ ...start, currentJack: id, moveSlot: 1, jackMoveSelection: { type: moveType, path: [] } }).length > 0)
+    expect(firstDestination).toBeDefined()
+    history = apply(history, { type: 'selectJackDestination', circleId: firstDestination! })
+    history = apply(history, { type: 'confirmJackMove' })
+    for (const color of ['yellow', 'blue', 'red'] as const) {
+      history = apply(history, { type: 'moveInvestigator', crossingId: currentHistoryState(history).investigatorPositions[color]! })
+    }
+    for (let i = 0; i < 3; i++) history = apply(history, { type: 'passInspectorAction' })
+    expect(currentHistoryState(history).stage).toBe('jackMove')
+    const beforePlanning = history.cursor
+    const publicBoard = onlineBoardState(history, 'investigators')
+    const publicCount = onlineInvestigatorActionCount(history)
+    history = apply(history, { type: 'setJackMoveType', moveType })
+    const steps = moveType === 'coach' ? 2 : 1
+    for (let i = 0; i < steps; i++) {
+      const destination = legalJackDestinations(currentHistoryState(history))[0]
+      expect(destination).toBeDefined()
+      history = apply(history, { type: 'selectJackDestination', circleId: destination! })
+      expect(currentHistoryState(history).jackMoveSelection.path).toHaveLength(i + 1)
+      expect(onlineBoardState(history, 'investigators')).toEqual(publicBoard)
+      expect(onlineInvestigatorActionCount(history)).toBe(publicCount)
+    }
+    const draft = structuredClone(history)
+    expect(onlineBoardState(history, 'jack').jackMoveSelection).toEqual(currentHistoryState(history).jackMoveSelection)
+    expect(onlineBoardState({ ...history, cursor: beforePlanning }, 'investigators')).toEqual(publicBoard)
+    expect(onlineBoardState(history, 'investigators')).toEqual(publicBoard)
+    expect(history).toEqual(draft)
+    history = apply(history, { type: 'confirmJackMove' })
+    const published = onlineBoardState(history, 'investigators')
+    expect(published.currentJack).toBeNull()
+    expect(published.roundTrail).toEqual([])
+    expect(published.jackMoveSelection).toEqual({ type: 'normal', path: [] })
+    expect(published.publicRound?.moves.at(-1)?.type).toBe(moveType)
+    expect(onlineInvestigatorActionCount(history)).toBe(publicCount + 1)
+  })
+
+  it('retains the intended full reveal after the game ends', () => {
+    const state = { ...currentHistoryState(deployed()), stage: 'gameOver' as const, result: { winner: 'jack' as const, reason: 'Jack escaped.' } }
+    expect(onlineBoardState(createGameHistory(state), 'investigators')).toBe(state)
+  })
+
   it('hides tentative starts, logs and paths until the first move is committed, including undo/redo', () => {
     const setup = deployed()
     let history = apply(setup, { type: 'chooseJackStart', circleId: 33 })

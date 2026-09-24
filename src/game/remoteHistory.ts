@@ -80,23 +80,60 @@ export function remoteBoardState(history: GameHistory, role: PlayerView) {
   }
 }
 
+// A display-only allowlist: never pass hidden locations or draft moves to the
+// investigator's board/controls. Reducers and consistency checks still use the
+// full verified history, and the finished-game recap can reveal that history.
+function investigatorPublicState(state: GameState): GameState {
+  return {
+    stage: state.stage,
+    round: state.round,
+    moveSlot: state.moveSlot,
+    discoveryLocations: state.reachedDiscoveries,
+    reachedDiscoveries: state.reachedDiscoveries,
+    currentJack: null,
+    roundTrail: [],
+    investigatorPositions: state.investigatorPositions,
+    activeInvestigator: state.activeInvestigator,
+    jackMoveSelection: { type: 'normal', path: [] },
+    specialRemaining: state.specialRemaining,
+    publicRound: state.publicRound,
+    clueLocations: state.clueLocations,
+    inspectorActionMode: state.inspectorActionMode,
+    checkedThisAction: state.checkedThisAction,
+    publicLog: state.publicLog,
+    notice: state.notice,
+    result: state.result,
+  }
+}
+
+// Private planning must not leak via the displayed action count either (for
+// example, a second Coach destination). Count only public, committed actions.
+export function onlineInvestigatorActionCount(history: GameHistory): number {
+  return history.entries.slice(1, history.cursor + 1).filter((entry, index) => entry.counted &&
+    (playerViewForState(history.entries[index]!.state) === 'investigators' ||
+      entry.action?.type === 'confirmDiscoveries' || entry.action?.type === 'confirmJackMove')).length
+}
+
 // Keep the verified wire history intact; only project the investigator's UI.
 // A tentative start (including one restored by undo) is not public until the
 // first move is committed. Jack still sees investigator actions immediately.
 export function onlineBoardState(history: GameHistory, role: PlayerView) {
   const state = currentHistoryState(history)
-  if (role === 'investigators' && state.stage === 'investigatorSetupResult') {
-    return { ...state, notice: 'Deployment complete. Review the starting positions, then confirm deployment.' }
-  }
+  if (state.stage === 'gameOver') return state
   if (role === 'jack' && state.notice === 'The starting location is public. Make Jack’s first secret move.') {
     return { ...state, notice: 'Your starting location stays private until you record your first move.' }
   }
-  if (role === 'investigators' && state.stage !== 'gameOver' && state.round === 1) {
+  if (role === 'investigators' && state.round === 1) {
     const played = history.entries.slice(0, history.cursor + 1)
     if (!played.some(entry => entry.action?.type === 'confirmJackMove')) {
       const start = played.findIndex(entry => entry.action?.type === 'chooseJackStart')
-      if (start > 0) return remoteBoardState({ ...history, cursor: start - 1 }, role)
+      if (start > 0) return investigatorPublicState(remoteBoardState({ ...history, cursor: start - 1 }, role))
     }
   }
-  return remoteBoardState(history, role)
+  const board = remoteBoardState(history, role)
+  if (role === 'jack') return board
+  const publicState = investigatorPublicState(board)
+  return state.stage === 'investigatorSetupResult'
+    ? { ...publicState, notice: 'Deployment complete. Review the starting positions, then confirm deployment.' }
+    : publicState
 }

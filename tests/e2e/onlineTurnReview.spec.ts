@@ -34,7 +34,7 @@ async function moveInvestigators(page: Page) {
 
 // Isolated local Worker invocation: these real two-device tests don't consume
 // production quotas or share the other suites' simulated per-IP creation quota.
-test('online turn review: auto actions wait for confirmation, with no active-piece indicators while waiting for Jack', async ({ page: jack, browser }) => {
+test('online turn review: auto actions wait for confirmation, Rand can confirm, and waiting has no active-piece indicators', async ({ page: jack, browser }) => {
   const context = await browser.newContext()
   const investigators = await context.newPage()
   try {
@@ -54,7 +54,15 @@ test('online turn review: auto actions wait for confirmation, with no active-pie
     // Clicking the board cannot accidentally confirm the last placement.
     await investigators.getByLabel('Whitehall game board').click({ position: { x: 10, y: 10 } })
     await expect(investigators.getByRole('button', { name: 'Confirm deployment' })).toBeVisible()
-    await investigators.getByRole('button', { name: 'Confirm deployment' }).click()
+    for (const name of ['Rand', 'Rand Side']) await expect(investigators.getByRole('button', { name, exact: true })).toBeEnabled()
+    const deploymentReview = await snapshot(investigators)
+    await investigators.getByRole('button', { name: 'Rand', exact: true }).click()
+    await expect(jack.getByRole('heading', { name: 'Jack: Choose the Starting Location' })).toBeVisible()
+    await expect.poll(() => snapshot(investigators)).toEqual(await snapshot(jack))
+    expect((await snapshot(investigators)).history.actions.slice(deploymentReview.history.cursor)).toEqual([
+      { type: 'continueHandoff' }, { type: 'continueHandoff' },
+    ])
+    for (const name of ['Rand', 'Rand Side']) await expect(investigators.getByRole('button', { name, exact: true })).toBeDisabled()
     await expect(investigators.locator('.board-frame')).toHaveCSS('border-top-color', 'rgb(0, 0, 0)')
     await expect(investigators.locator('.active-investigator-ring, .edge-guide-line')).toHaveCount(0)
     await investigators.locator('.investigator-piece').first().hover({ force: true })
@@ -77,8 +85,15 @@ test('online turn review: auto actions wait for confirmation, with no active-pie
     await expect(investigators.getByRole('button', { name: 'Redo Side', exact: true })).toBeEnabled()
     await investigators.getByRole('button', { name: 'Redo Side', exact: true }).click()
     await expect(investigators.getByRole('button', { name: 'End investigator turn' })).toBeVisible()
-    await investigators.getByRole('button', { name: 'End investigator turn' }).click()
+    for (const name of ['Rand', 'Rand Side']) await expect(investigators.getByRole('button', { name, exact: true })).toBeEnabled()
+    const turnReview = await snapshot(investigators)
+    await investigators.getByRole('button', { name: 'Rand', exact: true }).click()
     await expect(jack.getByRole('heading', { name: 'Jack: Escape in the Night' })).toBeVisible()
+    await expect.poll(() => snapshot(investigators)).toEqual(await snapshot(jack))
+    expect((await snapshot(investigators)).history.actions.slice(turnReview.history.cursor)).toEqual([
+      { type: 'continueHandoff' }, { type: 'continueHandoff' },
+    ])
+    for (const name of ['Rand', 'Rand Side']) await expect(investigators.getByRole('button', { name, exact: true })).toBeDisabled()
     await expect(investigators.locator('.board-frame')).toHaveCSS('border-top-color', 'rgb(0, 0, 0)')
     await expect(investigators.locator('.active-investigator-ring, .edge-guide-line, .active-investigator-edge-arrows, .jack-location-edge-arrows')).toHaveCount(0)
     for (const piece of await investigators.locator('.investigator-piece').all()) {
@@ -88,6 +103,74 @@ test('online turn review: auto actions wait for confirmation, with no active-pie
     await expect(investigators.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled()
     await expect(investigators.getByRole('button', { name: 'Undo Side', exact: true })).toBeDisabled()
     await investigators.screenshot({ path: 'test-results/online-waiting-for-jack.png', fullPage: true })
+  } finally { await context.close() }
+})
+
+test('online turn review: Rand Side completes turns and pending reviews without another confirmation', async ({ page: jack, browser }) => {
+  const context = await browser.newContext()
+  const investigators = await context.newPage()
+  try {
+    await watchSnapshots(jack)
+    await watchSnapshots(investigators)
+    // Choose legal random moves and passes, avoiding accidental arrests that
+    // would end the game before all handoff paths have been exercised.
+    await investigators.addInitScript(() => { Math.random = () => 0.95 })
+    await jack.goto('/')
+    await jack.getByRole('button', { name: 'New game', exact: true }).click()
+    await jack.getByRole('button', { name: 'Online', exact: true }).click()
+    await jack.getByRole('button', { name: 'Start new game as Jack' }).click()
+    await investigators.goto(await jack.getByLabel('Online investigator invitation').inputValue())
+    for (const circleId of [33, 46, 147, 159]) await jack.getByLabel(`Location ${circleId}, selectable`, { exact: true }).click()
+    await jack.getByRole('button', { name: 'Rand Side', exact: true }).click()
+    await expect(investigators.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
+
+    const finishReview = async (reviewLabel: string, nextStage: string) => {
+      await expect(investigators.getByRole('button', { name: reviewLabel, exact: true })).toBeVisible()
+      for (const name of ['Rand', 'Rand Side']) await expect(investigators.getByRole('button', { name, exact: true })).toBeEnabled()
+      const before = await snapshot(investigators)
+      await investigators.getByRole('button', { name: 'Rand Side', exact: true }).click()
+      await expect.poll(async () => (await snapshot(jack)).history.state.stage).toBe(nextStage)
+      await expect.poll(() => snapshot(investigators)).toEqual(await snapshot(jack))
+      const after = await snapshot(investigators)
+      expect(after.revision).toBe(before.revision + 1)
+      expect(after.history.actions.slice(before.history.cursor)).toEqual([
+        { type: 'continueHandoff' }, { type: 'continueHandoff' },
+      ]) // Confirm results and normalize handoff; no Jack actions.
+      await expect(investigators.getByRole('button', { name: reviewLabel, exact: true })).toHaveCount(0)
+      for (const name of ['Rand', 'Rand Side']) await expect(investigators.getByRole('button', { name, exact: true })).toBeDisabled()
+    }
+    for (let i = 0; i < 3; i++) await investigators.getByLabel('Available deployment crossings').getByRole('button').first().click()
+    await finishReview('Confirm deployment', 'jackChooseStart')
+    await jack.getByLabel('Secret Discovery Locations').getByRole('button').first().click()
+
+    const finishJackMove = async () => {
+      await jack.getByLabel('Legal Jack destinations').getByRole('button').first().click()
+      await jack.getByRole('button', { name: 'Rand Side', exact: true }).click()
+      await expect(investigators.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
+      await expect(jack.getByRole('button', { name: 'Record move privately' })).toHaveCount(0)
+    }
+    await finishJackMove()
+    await investigators.getByLabel('inv auto', { exact: true }).uncheck()
+    const before = await snapshot(investigators)
+    await investigators.getByRole('button', { name: 'Rand Side', exact: true }).click()
+    await expect(jack.getByRole('heading', { name: 'Jack: Escape in the Night' })).toBeVisible()
+    await expect.poll(() => snapshot(investigators)).toEqual(await snapshot(jack))
+    const completed = await snapshot(investigators)
+    expect(completed.revision).toBe(before.revision + 1)
+    expect(completed.history.actions.slice(before.history.cursor).map(action => action.type)).toEqual([
+      'moveInvestigator', 'moveInvestigator', 'moveInvestigator',
+      'passInspectorAction', 'passInspectorAction', 'passInspectorAction',
+      'continueHandoff', 'continueHandoff',
+    ])
+    await expect(investigators.getByRole('button', { name: 'End investigator turn' })).toHaveCount(0)
+    await investigators.reload()
+    await expect(investigators.getByRole('heading', { name: 'Waiting for your partner' })).toBeVisible()
+    expect((await snapshot(investigators)).historyHash).toBe(completed.historyHash)
+
+    await finishJackMove()
+    await investigators.getByLabel('inv auto', { exact: true }).check()
+    await moveInvestigators(investigators)
+    await finishReview('End investigator turn', 'jackMove')
   } finally { await context.close() }
 })
 
@@ -151,7 +234,6 @@ test('online turn review: investigators can cancel warned undos and request a wa
     await jack.getByRole('button', { name: 'Rand Side', exact: true }).click()
     await expect(investigators.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
     await investigators.getByRole('button', { name: 'Rand Side', exact: true }).click()
-    await investigators.getByRole('button', { name: 'Confirm deployment' }).click()
     await expect(jack.getByRole('heading', { name: 'Jack: Choose the Starting Location' })).toBeVisible()
     await jack.getByRole('button', { name: 'Rand Side', exact: true }).click()
     await moveInvestigators(investigators)
