@@ -76,6 +76,8 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
   const investigatorsContext = await browser.newContext()
   await jack.addInitScript(observeTurnAlerts)
   await investigatorsContext.addInitScript(observeTurnAlerts)
+  await jack.addInitScript(observeOnlineSocket)
+  await investigatorsContext.addInitScript(observeOnlineSocket)
   const investigators = await investigatorsContext.newPage()
   try {
     await jack.goto('/')
@@ -151,6 +153,7 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
 
     await investigators.getByLabel('Available deployment crossings').getByRole('button').first().click()
     await expect(investigators.getByRole('heading', { name: 'Deploy the Blue Investigator' })).toBeVisible()
+    await expect(jack.locator('.investigator-piece')).toHaveCount(1)
     expect(await investigators.evaluate(() => window.turnAlertProbe.flashes)).toEqual([500])
     await investigators.reload()
     await expect(investigators.getByRole('heading', { name: 'Deploy the Blue Investigator' })).toBeVisible()
@@ -160,9 +163,6 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
     expect(await investigators.evaluate(() => window.turnAlertProbe.tones)).toBe(0)
 
     for (const control of ['Flash screen', 'Chime', 'System notification']) await alerts.getByLabel(control, { exact: true }).uncheck()
-    await investigators.reload()
-    await expect(investigators.getByRole('heading', { name: 'Deploy the Blue Investigator' })).toBeVisible()
-    for (const control of ['Flash screen', 'Chime', 'System notification']) await expect(alerts.getByLabel(control, { exact: true })).not.toBeChecked()
     for (const color of ['Blue', 'Red']) {
       await expect(investigators.getByRole('heading', { name: `Deploy the ${color} Investigator` })).toBeVisible()
       await investigators.getByLabel('Available deployment crossings').getByRole('button').first().click()
@@ -172,9 +172,23 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
     expect(await jack.evaluate(() => window.turnAlertProbe.tones)).toBe(2)
     expect(await jack.evaluate(() => window.turnAlertProbe.notifications)).toHaveLength(0)
     await jack.getByLabel('Secret Discovery Locations').getByRole('button').first().click()
+    // The full verified history is trusted between players, but the normal UI
+    // must not leak a tentative public start, even after refresh or undo.
+    await expect.poll(() => investigators.evaluate(() => window.onlineProbe.snapshot?.history.state.currentJack)).toBe(33)
+    await expect(investigators.locator('.public-log')).not.toContainText('began the hunt')
+    await investigators.reload()
+    await expect(investigators.getByRole('heading', { name: 'Waiting for your partner' })).toBeVisible()
+    for (const control of ['Flash screen', 'Chime', 'System notification']) await expect(alerts.getByLabel(control, { exact: true })).not.toBeChecked()
+    await expect(investigators.locator('.public-log')).not.toContainText('Discovery Location 33')
+    await jack.getByRole('button', { name: 'Undo', exact: true }).click()
+    await jack.getByLabel('Secret Discovery Locations').getByRole('button').nth(1).click()
+    await expect.poll(() => investigators.evaluate(() => window.onlineProbe.snapshot?.history.state.currentJack)).toBe(46)
+    await expect(investigators.locator('.public-log')).not.toContainText('began the hunt')
     await jack.getByLabel('Legal Jack destinations').getByRole('button').first().click()
     await jack.getByRole('button', { name: 'Record move privately' }).click()
     await expect(investigators.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
+    await expect(investigators.locator('.public-log')).toContainText('Jack began the hunt at Discovery Location 46.')
+    await expect(investigators.locator('.public-log')).not.toContainText('Discovery Location 33')
     expect(await investigators.evaluate(() => window.turnAlertProbe.flashes)).toEqual([])
     expect(await investigators.evaluate(() => window.turnAlertProbe.tones)).toBe(0)
     expect(await investigators.evaluate(() => window.turnAlertProbe.notifications)).toHaveLength(0)
@@ -194,6 +208,23 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
     expect(await investigators.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await investigators.screenshot({ path: 'test-results/online-turn-alert-mobile.png' })
     await alerts.getByLabel('Flash screen').uncheck()
+
+    // Switch to another saved game while the partner advances this online room.
+    await jack.getByRole('button', { name: 'New game', exact: true }).click()
+    await jack.getByRole('button', { name: 'Same device', exact: true }).click()
+    await jack.getByLabel('Location 147, selectable', { exact: true }).click()
+    await investigators.getByLabel('Legal yellow Investigator destinations').getByRole('button').first().click()
+    await expect(investigators.getByRole('heading', { name: 'Blue Investigator: Move' })).toBeVisible()
+    await jack.getByRole('button', { name: 'Resume game', exact: true }).click()
+    const onlineSaved = jack.locator('.saved-game-list button').filter({ hasText: 'Online · Jack' })
+    await expect(onlineSaved).toContainText('Round 1 · Move 1 · Investigators’ turn (last known)')
+    await expect(onlineSaved).not.toContainText('unknown')
+    await onlineSaved.click()
+    await expect(jack.getByLabel('Online investigator invitation')).toHaveValue(invitation)
+    await expect.poll(() => jack.evaluate(() => window.onlineProbe.snapshot?.history.state.activeInvestigator)).toBe(1)
+    await expect(jack.locator('.public-log')).toHaveText(await investigators.locator('.public-log').textContent() ?? '')
+    await jack.getByRole('button', { name: 'Resume game', exact: true }).click()
+    await expect(jack.locator('.saved-game-list button').filter({ hasText: 'Online · Jack' })).toHaveCount(1)
 
     const bodyResponse = await request.post(`${api}/v1/games`, {
       headers: { Origin: jack.url().replace(/\/$/, '') },

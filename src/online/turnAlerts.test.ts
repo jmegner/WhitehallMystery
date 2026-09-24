@@ -5,11 +5,22 @@ import { createGameHistory } from '../game/history'
 import { becameLocalTurn, onlineUpdateAlert } from './turnAlertEffects'
 import type { OnlineUndoState } from '../game/onlineUndo'
 import type { GameStage } from '../game/types'
+import { initialOnlineSeats } from '../game/onlineSeats'
 
 const snapshot = (stage: GameStage, revision: number, roomId = 'a'.repeat(64)) =>
   createOnlineSnapshot(roomId, revision, createGameHistory({ ...createInitialGame(), stage }))
 
 describe('turn alert detection', () => {
+  it('alerts once on an opponent departure, not on own departure, refresh, or invitation replacement', async () => {
+    const before = await snapshot('investigatorMove', 5)
+    const after = await snapshot('investigatorMove', 6)
+    const initial = initialOnlineSeats()
+    const left = { ...initial, investigators: { leftAt: 6, generation: 6 } }
+    expect(onlineUpdateAlert(before, after, 'jack', null, null, initial, left)?.title).toBe('Opponent left')
+    expect(onlineUpdateAlert(before, after, 'investigators', null, null, initial, left)).toBeNull()
+    expect(onlineUpdateAlert(null, after, 'jack', null, null, null, left)).toBeNull()
+    expect(onlineUpdateAlert(after, await snapshot('investigatorMove', 7), 'jack', null, null, left, { ...left, investigators: { leftAt: 6, generation: 7 } })).toBeNull()
+  })
   it('alerts each role when a newer verified snapshot passes play to them', async () => {
     const jack = await snapshot('jackMove', 5)
     const investigators = await snapshot('investigatorMove', 6)

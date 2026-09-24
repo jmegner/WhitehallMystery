@@ -23,8 +23,11 @@ import {
   type HistoryCommand,
   type PlayerView,
 } from '../../src/game/history'
-import { fixedTimeEqual } from './security'
+import { createRoleToken, fixedTimeEqual, replacementToken } from './security'
+import { initialOnlineSeats, isOnlineSeats, opponentRole, parseOnlineSessionRequest, seatsAfterTurn, type OnlineSeats, type OnlineSessionRequest } from '../../src/game/onlineSeats'
 import type { WorkerEnv } from './env'
+import { isGameName } from '../../src/game/gameName'
+import { boundedRequestText } from './requestBody'
 
 const ROOM_KEY = 'room'
 const ROOM_SCHEMA_VERSION = 1
@@ -42,6 +45,10 @@ interface RoomRecord {
   snapshot: OnlineSnapshot
   // Optional so existing rooms remain usable without a migration or reset.
   undo?: OnlineUndoState | null
+  name?: string
+  seats?: OnlineSeats
+  lastLeave?: Partial<Record<PlayerView, { tokenHash: string; requestId: string }>>
+  lastInvitation?: Partial<Record<PlayerView, { requestId: string; generation: number; derivedFromGeneration: number }>>
   processedRequestIds: string[]
   recentCommands: Record<PlayerView, number[]>
   recentCommandsByIp: Record<string, number[]>
@@ -54,6 +61,7 @@ interface SocketAttachment {
   authenticated: boolean
   ip: string
   role?: PlayerView
+  generation?: number
 }
 
 const json = (value: unknown, status = 200): Response =>
@@ -105,8 +113,8 @@ export class GameRoom extends DurableObject<WorkerEnv> {
       typeof (value as Record<string, unknown>).jackTokenHash !== 'string' ||
       typeof (value as Record<string, unknown>).investigatorsTokenHash !== 'string'
     ) return json({ error: 'Invalid initialization.' }, 400)
-    const { roomId, jackTokenHash, investigatorsTokenHash } = value as Record<string, string>
-    if (!/^[a-f0-9]{64}$/.test(roomId) || !/^[a-f0-9]{64}$/.test(jackTokenHash) || !/^[a-f0-9]{64}$/.test(investigatorsTokenHash)) {
+    const { roomId, jackTokenHash, investigatorsTokenHash, name = '' } = value as Record<string, string>
+    if (!isGameName(name) || !/^[a-f0-9]{64}$/.test(roomId) || !/^[a-f0-9]{64}$/.test(jackTokenHash) || !/^[a-f0-9]{64}$/.test(investigatorsTokenHash)) {
       return json({ error: 'Invalid initialization.' }, 400)
     }
     const now = Date.now()
@@ -114,6 +122,7 @@ export class GameRoom extends DurableObject<WorkerEnv> {
     const record: RoomRecord = {
       schemaVersion: ROOM_SCHEMA_VERSION,
       roomId,
+      name,
       jackTokenHash,
       investigatorsTokenHash,
       revision: 0,
@@ -126,7 +135,7 @@ export class GameRoom extends DurableObject<WorkerEnv> {
       expiresAt: now + this.roomLifetimeMs(),
     }
     await this.persist(record)
-    return json({ ok: true }, 201)
+    return json({ ok: true, createdAt: now }, 201)
   }
 
   private async openSocket(request: Request): Promise<Response> {
@@ -146,6 +155,18 @@ export class GameRoom extends DurableObject<WorkerEnv> {
     const pathname = new URL(request.url).pathname
     if (pathname === '/initialize' && request.method === 'POST') return this.initialize(request)
     if (pathname === '/connect' && request.method === 'GET') return this.openSocket(request)
+    if (pathname === '/session' && request.method === 'POST') {
+      // Two bounded names (new and expected) plus the credential/request ID.
+      const text = await boundedRequestText(request, 768)
+      if (text === null) return json({ error: 'Session request too large or invalid UTF-8.' }, 413)
+      let message: OnlineSessionRequest | null
+      try { message = parseOnlineSessionRequest(JSON.parse(text)) } catch { message = null }
+      if (!message) return json({ error: 'Invalid session request.' }, 400)
+      const parsed = message
+      const result = this.commandQueue.then(() => this.sessionRequest(parsed, request.headers.get('X-Whitehall-Client-IP') ?? 'unknown'))
+      this.commandQueue = result.then(() => {}, () => {})
+      return result.catch(() => json({ error: 'Could not update the game.' }, 500))
+    }
     return new Response('Not found.', { status: 404 })
   }
 
@@ -167,7 +188,7 @@ export class GameRoom extends DurableObject<WorkerEnv> {
   }
 
   private snapshotMessage(record: RoomRecord, requestId?: string): OnlineServerMessage {
-    return { type: 'snapshot', ...(requestId ? { requestId } : {}), snapshot: record.snapshot, undo: record.undo ?? null }
+    return { type: 'snapshot', ...(requestId ? { requestId } : {}), snapshot: record.snapshot, undo: record.undo ?? null, createdAt: record.createdAt, seats: record.seats ?? initialOnlineSeats(), name: record.name ?? '' }
   }
 
   private broadcastSnapshot(record: RoomRecord, requestId?: string) {
@@ -183,7 +204,7 @@ export class GameRoom extends DurableObject<WorkerEnv> {
       return
     }
     const verified = await verifyOnlineSnapshot(record.snapshot)
-    if (!verified || !isOnlineUndoState(record.undo ?? null, verified.history, record.revision)) {
+    if (!verified || !isGameName(record.name ?? '') || !isOnlineUndoState(record.undo ?? null, verified.history, record.revision) || !isOnlineSeats(record.seats ?? initialOnlineSeats(), record.revision)) {
       send(socket, { type: 'error', code: 'server-error', message: 'The stored game state failed its consistency check.' })
       socket.close(1011, 'Stored game is inconsistent.')
       return
@@ -203,7 +224,7 @@ export class GameRoom extends DurableObject<WorkerEnv> {
       if (attachment.role === role && existing !== socket) existing.close(4001, 'This role connected on another tab or device.')
     }
     const previous = socket.deserializeAttachment() as SocketAttachment | null
-    socket.serializeAttachment({ authenticated: true, ip: previous?.ip ?? 'unknown', role } satisfies SocketAttachment)
+    socket.serializeAttachment({ authenticated: true, ip: previous?.ip ?? 'unknown', role, generation: (record.seats ?? initialOnlineSeats())[role].generation } satisfies SocketAttachment)
     send(socket, this.snapshotMessage(record))
     this.broadcastPresence()
   }
@@ -225,6 +246,77 @@ export class GameRoom extends DurableObject<WorkerEnv> {
     return true
   }
 
+  private async sessionRequest(message: OnlineSessionRequest, ip: string): Promise<Response> {
+    const record = await this.room()
+    const denied = () => json({ error: 'The game credential is invalid or the game has expired.' }, 401)
+    if (!record || record.expiresAt <= Date.now()) return denied()
+    const hash = await sha256Hex(message.token)
+    // A leave retry may acknowledge its own earlier departure, but never read
+    // new state or evict the replacement player using a revoked credential.
+    if (message.type === 'leave' && Object.values(record.lastLeave ?? {}).some(left => left.requestId === message.requestId && fixedTimeEqual(left.tokenHash, hash))) return json({ ok: true })
+    const role: PlayerView | null = fixedTimeEqual(hash, record.jackTokenHash) ? 'jack' : fixedTimeEqual(hash, record.investigatorsTokenHash) ? 'investigators' : null
+    if (!role) return denied()
+    const verified = await verifyOnlineSnapshot(record.snapshot)
+    const seats = record.seats ?? initialOnlineSeats()
+    if (!verified || !isGameName(record.name ?? '') || !isOnlineSeats(seats, record.revision) || !isOnlineUndoState(record.undo ?? null, verified.history, record.revision)) return json({ error: 'The stored game failed its consistency check.' }, 500)
+    if (message.type === 'status') return json({ ...this.snapshotMessage(record), role })
+    const now = Date.now()
+    const allowed = this.rateAllowed(record, role, await sha256Hex(ip), now)
+    await this.persist(record)
+    if (!allowed) return json({ error: 'Too many game commands. Wait a few seconds.' }, 429)
+    if (message.type === 'rename') {
+      if (record.processedRequestIds.includes(message.requestId)) return json({ ...this.snapshotMessage(record), role })
+      if ((record.name ?? '') !== message.expectedName) return json({ error: 'The name changed. Cancel editing, refresh status, and try again.' }, 409)
+      if (record.undo?.status === 'pending') return json({ error: 'Resolve the undo request before renaming the game.' }, 409)
+      record.name = message.name
+      record.revision += 1
+      record.snapshot = await createOnlineSnapshot(record.roomId, record.revision, verified.history)
+      record.processedRequestIds = [...record.processedRequestIds, message.requestId].slice(-MAX_PROCESSED_REQUESTS)
+      record.updatedAt = now
+      record.expiresAt = now + this.roomLifetimeMs()
+      await this.persist(record)
+      this.broadcastSnapshot(record, message.requestId)
+      return json({ ...this.snapshotMessage(record), role })
+    }
+    const opponent = opponentRole(role)
+    const previousInvite = record.lastInvitation?.[role]
+    const retryingInvite = message.type === 'invite' && previousInvite?.requestId === message.requestId
+    const derivedFromGeneration = retryingInvite ? previousInvite.derivedFromGeneration : seats[opponent].generation
+    const token = message.type === 'invite' ? await replacementToken(message.token, record.roomId, message.requestId, derivedFromGeneration) : null
+    const opponentHash = opponent === 'jack' ? record.jackTokenHash : record.investigatorsTokenHash
+    if (message.type === 'invite' && (retryingInvite || record.processedRequestIds.includes(message.requestId))) {
+      return retryingInvite && previousInvite.generation === seats[opponent].generation && fixedTimeEqual(await sha256Hex(token!), opponentHash)
+        ? json({ token, role: opponent, generation: seats[opponent].generation })
+        : json({ error: 'That invitation has been superseded.' }, 409)
+    }
+    if (message.type === 'invite' && seats[opponent].leftAt === null) return json({ error: 'Only a side that left can be replaced.' }, 409)
+    const revision = record.revision + 1
+    const target = message.type === 'leave' ? role : opponent
+    const nextHash = await sha256Hex(token ?? createRoleToken())
+    if (target === 'jack') record.jackTokenHash = nextHash
+    else record.investigatorsTokenHash = nextHash
+    record.seats = { ...seats, [target]: { leftAt: message.type === 'leave' ? revision : seats[target].leftAt, generation: revision } }
+    if (message.type === 'leave') {
+      record.lastLeave = { ...record.lastLeave, [role]: { tokenHash: hash, requestId: message.requestId } }
+      if (record.undo?.status === 'pending') record.undo = { ...record.undo, status: 'cancelled', resolvedRevision: revision }
+    } else {
+      record.lastInvitation = { ...record.lastInvitation, [role]: { requestId: message.requestId, generation: revision, derivedFromGeneration } }
+    }
+    record.revision = revision
+    record.snapshot = await createOnlineSnapshot(record.roomId, revision, verified.history)
+    record.processedRequestIds = [...record.processedRequestIds, message.requestId].slice(-MAX_PROCESSED_REQUESTS)
+    record.updatedAt = now
+    record.expiresAt = now + this.roomLifetimeMs()
+    await this.persist(record)
+    for (const { socket, attachment } of this.authenticatedSockets()) if (attachment.role === target) {
+      socket.serializeAttachment({ ...attachment, authenticated: false })
+      socket.close(4005, message.type === 'leave' ? 'You left this game.' : 'This invitation was replaced.')
+    }
+    this.broadcastSnapshot(record)
+    this.broadcastPresence()
+    return message.type === 'leave' ? json({ ok: true }) : json({ token, role: opponent, generation: revision })
+  }
+
   private async applyCommands(socket: WebSocket, role: PlayerView, ip: string, message: OnlineMutation) {
     const record = await this.room()
     if (!record || record.expiresAt <= Date.now()) {
@@ -233,6 +325,12 @@ export class GameRoom extends DurableObject<WorkerEnv> {
       return
     }
     const now = Date.now()
+    const seats = record.seats ?? initialOnlineSeats()
+    const attachment = socket.deserializeAttachment() as SocketAttachment | null
+    if (!attachment?.authenticated || (attachment.generation ?? 0) !== seats[role].generation) {
+      socket.close(4005, 'This game credential was revoked.')
+      return
+    }
     const rateAllowed = this.rateAllowed(record, role, await sha256Hex(ip), now)
     await this.persist(record)
     if (!rateAllowed) {
@@ -249,13 +347,17 @@ export class GameRoom extends DurableObject<WorkerEnv> {
       return
     }
     const verified = await verifyOnlineSnapshot(record.snapshot)
-    if (!verified || !isOnlineUndoState(record.undo ?? null, verified.history, record.revision)) {
+    if (!verified || !isGameName(record.name ?? '') || !isOnlineUndoState(record.undo ?? null, verified.history, record.revision) || !isOnlineSeats(seats, record.revision)) {
       send(socket, { type: 'error', requestId: message.requestId, code: 'server-error', message: 'The stored game state failed its consistency check.' })
       return
     }
     let history = verified.history
     let undo = record.undo ?? null
     if (message.type !== 'command') {
+      if (message.type === 'request-undo' && (seats.jack.leftAt !== null || seats.investigators.leftAt !== null)) {
+        send(socket, { type: 'error', requestId: message.requestId, code: 'invalid-command', message: 'Wait for the replacement player to complete a turn before requesting an undo.' })
+        return
+      }
       try {
         const result = applyOnlineUndo(history, undo, role, message, message.requestId, record.revision + 1)
         history = result.history
@@ -299,6 +401,7 @@ export class GameRoom extends DurableObject<WorkerEnv> {
     }
     record.revision += 1
     record.snapshot = snapshot
+    if (message.type === 'command') record.seats = seatsAfterTurn(seats, role, verified.history, history)
     record.undo = undo
     record.processedRequestIds = [...record.processedRequestIds, message.requestId].slice(-MAX_PROCESSED_REQUESTS)
     record.updatedAt = now

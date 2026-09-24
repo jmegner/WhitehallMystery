@@ -1,6 +1,8 @@
 import { createRoleToken, hashRoleToken, allowedOrigin, requestIp, withCors } from './security'
 import { GameRoom } from './GameRoom'
 import type { WorkerEnv } from './env'
+import { parseGameCreation } from '../../src/game/gameName'
+import { boundedRequestText } from './requestBody'
 
 export { GameRoom }
 
@@ -14,16 +16,6 @@ const rateLimited = () => new Response('Too many requests.', {
 
 const gameSocketMatch = (pathname: string) => pathname.match(/^\/v1\/games\/([a-f0-9]{64})\/connect$/)
 
-const requestHasBody = async (request: Request): Promise<boolean> => {
-  const contentLength = Number(request.headers.get('Content-Length') ?? 0)
-  if (Number.isFinite(contentLength) && contentLength > 0) return true
-  if (!request.body) return false
-  const reader = request.body.getReader()
-  const first = await reader.read()
-  await reader.cancel()
-  return !first.done || Boolean(first.value?.byteLength)
-}
-
 export default {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url)
@@ -35,7 +27,11 @@ export default {
     if (request.method === 'POST' && url.pathname === '/v1/games') {
       const limit = await env.CREATE_GAME_LIMITER.limit({ key: requestIp(request) })
       if (!limit.success) return withCors(rateLimited(), origin)
-      if (await requestHasBody(request)) return withCors(json({ error: 'Game creation does not accept a request body.' }, 400), origin)
+      const text = await boundedRequestText(request, 512)
+      if (text === null) return withCors(json({ error: 'Game creation request too large or invalid UTF-8.' }, 413), origin)
+      let creation
+      try { creation = parseGameCreation(text ? JSON.parse(text) : {}) } catch { creation = null }
+      if (!creation) return withCors(json({ error: 'Only an optional game name of up to 80 characters is accepted.' }, 400), origin)
 
       const objectId = env.GAME_ROOMS.newUniqueId()
       const roomId = objectId.toString()
@@ -46,20 +42,35 @@ export default {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           roomId,
+          name: creation.name,
           jackTokenHash: await hashRoleToken(jackToken),
           investigatorsTokenHash: await hashRoleToken(investigatorsToken),
         }),
       })
       if (!response.ok) return withCors(json({ error: 'Could not create the game.' }, 500), origin)
+      const initialized = await response.json() as { createdAt: number }
       return withCors(json({
         protocolVersion: 1,
         roomId,
         jackToken,
         investigatorsToken,
+        createdAt: initialized.createdAt,
       }, 201), origin)
     }
 
     const match = gameSocketMatch(url.pathname)
+    const sessionMatch = url.pathname.match(/^\/v1\/games\/([a-f0-9]{64})\/session$/)
+    if (request.method === 'POST' && sessionMatch) {
+      const limit = await env.SESSION_LIMITER.limit({ key: requestIp(request) })
+      if (!limit.success) return withCors(rateLimited(), origin)
+      let objectId: DurableObjectId
+      try { objectId = env.GAME_ROOMS.idFromString(sessionMatch[1]!) }
+      catch { return withCors(json({ error: 'The game credential is invalid or the game has expired.' }, 401), origin) }
+      const headers = new Headers(request.headers)
+      headers.set('X-Whitehall-Client-IP', requestIp(request))
+      const response = await env.GAME_ROOMS.get(objectId).fetch('https://room/session', { method: 'POST', headers, body: request.body })
+      return withCors(response, origin)
+    }
     if (request.method === 'GET' && match && request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
       const limit = await env.CONNECT_LIMITER.limit({ key: requestIp(request) })
       if (!limit.success) return withCors(rateLimited(), origin)

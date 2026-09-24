@@ -1,92 +1,103 @@
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import App from './App'
 import { MailQrShare, MailQrReader } from './MailQr'
-import { acceptMail, decodeMail, encodeMail, MAIL_STORAGE_KEY, mailTimestamp, mailUrl, otherPlayer, mailTurnStart, isMailBoundary, mailTurns, mailTurnTimestamp, reviewMailCorrection, mailHistoryReducer, normalizeMailHistory } from './game/byMail'
-import { createGameHistory, currentHistoryState, playerViewForState, gameHistoryReducer, type GameHistory, type PlayerView } from './game/history'
+import { acceptMail, decodeMail, encodeMail, mailTimestamp, mailUrl, otherPlayer, isMailBoundary, mailTurns, mailTurnTimestamp, reviewMailCorrection, mailHistoryReducer, normalizeMailHistory } from './game/byMail'
+import { createGameHistory, currentHistoryState, playerViewForState, type GameHistory, type PlayerView } from './game/history'
 import { createInitialGame } from './game/gameEngine'
-import { loadStoredHistory } from './game/persistence'
-import type { GameAction } from './game/types'
+import { SavedGameLibrary, normalizeLocalResume, type SavedGame, type MailSession, type MailView } from './game/savedGames'
+import SavedGamesMenu from './SavedGamesMenu'
 import OnlineGame from './online/OnlineGame'
+import { confirmLeaveGame, leaveSavedGame } from './game/leaveGame'
+import { MAX_GAME_NAME_LENGTH } from './game/gameName'
 import {
   configuredOnlineApi,
   createOnlineGame,
-  loadOnlineSession,
   onlineSessionFromInvite,
   onlineSessionFromLocation,
-  saveOnlineSession,
   type OnlineSession,
 } from './online/onlineSession'
 
-interface MailSession {
-  id: number
-  role: PlayerView
-  history: GameHistory
-  outgoing: string
-  turnStart: number
-  baselineEndedAt: number | null
-  completedText?: string
-}
-const ACTIVE_SHARING_KEY = 'whitehall-mystery.mail-active-sharing'
-const BOARD_VIEW_KEY = 'whitehall-mystery.mail-show-board'
-const DRAFT_KEY = 'whitehall-mystery.mail-draft'
-function readStorage(key: string) { try { return localStorage.getItem(key) } catch { return null } }
-function writeStorage(key: string, value: string) { try { localStorage.setItem(key, value) } catch { /* Private browsing. */ } }
-function loadSession(): MailSession | null {
-  try {
-    const saved = JSON.parse(readStorage(MAIL_STORAGE_KEY) ?? 'null') as (Omit<MailSession, 'history'> & { actions: GameAction[]; cursor?: number }) | null
-    if (!saved || !Number.isInteger(saved.id) || !['jack', 'investigators'].includes(saved.role)) return null
-    if (!Array.isArray(saved.actions) || saved.actions.length > 3000) return null
-    const replayed = saved.actions.reduce((history, action) => gameHistoryReducer(history, { type: 'apply', action }), createGameHistory(createInitialGame()))
-    if (saved.cursor !== undefined) replayed.cursor = saved.cursor
-    const history = loadStoredHistory({ getItem: () => JSON.stringify({ version: 2, history: replayed }), setItem: () => {} })
-    if (!history || (saved.outgoing && decodeMail(saved.outgoing).id !== saved.id)) return null
-    const turnStart = saved.turnStart ?? mailTurnStart(history, saved.role)
-    if (!Number.isInteger(turnStart) || turnStart < 0 || turnStart > history.cursor) return null
-    return { ...saved, history, turnStart, baselineEndedAt: saved.baselineEndedAt ?? null }
-  } catch { return null }
-}
 const urlMessage = () => new URLSearchParams(window.location.hash.slice(1)).get('mail') ?? ''
+type GameMenu = 'choose' | 'mail' | 'online' | 'resume' | null
+const NAME_DRAFT_KEY = 'whitehall-mystery.new-online-name'
 
 export default function GameApp() {
-  const [onlineSession, setOnlineSession] = useState<OnlineSession | null>(() => {
-    if (urlMessage()) return null
+  const [library] = useState(() => {
+    let storage: Storage | null = null
+    try { storage = localStorage } catch { /* Report unavailable storage through the library. */ }
+    const library = new SavedGameLibrary(storage)
     const invited = onlineSessionFromLocation()
-    const loaded = invited ?? loadOnlineSession()
-    if (invited) {
-      saveOnlineSession(invited)
+    if (invited && !urlMessage()) {
+      library.activate(library.saveOnline(invited).id)
       window.history.replaceState(null, '', window.location.pathname + window.location.search)
     }
-    return loaded
+    return library
   })
-  const [session, setSession] = useState<MailSession | null>(() => onlineSession ? null : loadSession())
-  const [menu, setMenu] = useState<'choose' | 'mail' | 'online' | null>(() => urlMessage() ? 'mail' : null)
-  const [draft, setDraft] = useState(() => urlMessage() || readStorage(DRAFT_KEY) || '')
+  const saved = useSyncExternalStore(library.subscribe, library.getSnapshot, library.getSnapshot)
+  const game = saved.games.find(game => game.id === saved.activeId) ?? null
+  // Navigation lives above the keyed workspace so leaving its active slot can
+  // still open the new-game chooser, without resurrecting the removed game.
+  const [menu, setMenu] = useState<GameMenu>(() => urlMessage() ? 'mail' : !game ? 'resume' : null)
+  const [leaving, setLeaving] = useState(false)
+  const [leaveError, setLeaveError] = useState('')
+  const [leaveIds] = useState(() => new Map<string, string>())
+  const leaveAndNew = async () => {
+    if (!game || leaving || !confirmLeaveGame(game, true)) return
+    setLeaving(true)
+    setLeaveError('')
+    let requestId = leaveIds.get(game.id)
+    if (!requestId) { requestId = crypto.randomUUID(); leaveIds.set(game.id, requestId) }
+    try {
+      await leaveSavedGame(library, game, requestId)
+      setMenu('choose')
+    } catch (error) {
+      setLeaveError(`${error instanceof Error ? error.message : 'Could not leave the game.'} Your saved game has been kept; retry Leave+New Game when connected.`)
+    } finally { setLeaving(false) }
+  }
+  return <>
+    {saved.error && <p className="storage-warning" role="alert">{saved.error}</p>}
+    {leaving && <p className="storage-warning" role="status">Leaving the current game…</p>}
+    {leaveError && <p className="storage-warning" role="alert">{leaveError}</p>}
+    <div inert={leaving}>
+      <GameWorkspace key={game?.id ?? 'no-game'} game={game} library={library} menu={menu} setMenu={next => { setLeaveError(''); setMenu(next) }} onLeaveNewGame={() => void leaveAndNew()} />
+    </div>
+  </>
+}
+
+function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame }: {
+  game: SavedGame | null; library: SavedGameLibrary; menu: GameMenu; setMenu: (menu: GameMenu) => void; onLeaveNewGame: () => void
+}) {
+  const onlineSession = game?.mode === 'online' ? game.session : null
+  const session = game?.mode === 'by-mail' ? game.session : null
+  const [draft, setDraft] = useState(() => urlMessage() || (game?.mode === 'by-mail' ? game.view.draft : ''))
   const [onlineDraft, setOnlineDraft] = useState('')
   const [onlineBusy, setOnlineBusy] = useState(false)
-  const [showBoard, setShowBoard] = useState(() => readStorage(BOARD_VIEW_KEY) === 'true')
-  const [activeSharing, setActiveSharing] = useState(() => readStorage(ACTIVE_SHARING_KEY) === 'true')
+  const [onlineName, setOnlineName] = useState(() => {
+    try { return localStorage.getItem(NAME_DRAFT_KEY) ?? '' } catch { return '' }
+  })
+  const updateOnlineName = (name: string) => {
+    setOnlineName(name)
+    try { localStorage.setItem(NAME_DRAFT_KEY, name) } catch { setFeedback('Could not save the name draft in browser storage.') }
+  }
+  const [showBoard, setShowBoard] = useState(() => game?.mode === 'by-mail' && game.view.showBoard)
+  const [activeSharing, setActiveSharing] = useState(() => game?.mode === 'by-mail' && game.view.activeSharing)
   const [correction, setCorrection] = useState<ReturnType<typeof reviewMailCorrection> | null>(null)
   const [feedback, setFeedback] = useState('')
   const [shareFeedback, setShareFeedback] = useState<{ message: string; copied: boolean; sequence: number } | null>(null)
-  const [generation, setGeneration] = useState(0)
-  const saveOnline = (next: OnlineSession | null) => {
-    saveOnlineSession(next)
-    setOnlineSession(next)
+  const saveOnline = (next: OnlineSession) => {
+    library.activate(library.saveOnline(next).id)
   }
-  const save = (next: MailSession | null) => {
-    writeStorage(MAIL_STORAGE_KEY, JSON.stringify(next ? {
-      id: next.id, role: next.role, outgoing: next.outgoing, turnStart: next.turnStart, baselineEndedAt: next.baselineEndedAt, completedText: next.completedText, cursor: next.history.cursor,
-      actions: next.history.entries.slice(1).map(entry => entry.action),
-    } : null))
-    setSession(next)
+  const save = (next: MailSession) => {
+    library.activate(library.saveMail(next).id)
   }
-  const setSharing = (value: boolean) => { setActiveSharing(value); writeStorage(ACTIVE_SHARING_KEY, String(value)) }
-  const updateDraft = (value: string) => { setCorrection(null); setDraft(value); writeStorage(DRAFT_KEY, value); setFeedback(''); setShareFeedback(null) }
+  const saveMailView = (patch: Partial<MailView>) => library.updateMailView(library.getSnapshot().activeId, patch)
+  const setSharing = (value: boolean) => { setActiveSharing(value); saveMailView({ activeSharing: value }) }
+  const updateDraft = (value: string) => { setCorrection(null); setDraft(value); saveMailView({ draft: value }); setFeedback(''); setShareFeedback(null) }
   const openMenu = () => { setMenu('choose'); setFeedback('') }
+  const openResume = () => { setMenu('resume'); setFeedback('') }
   const state = session ? currentHistoryState(session.history) : null
   const waiting = !!session && state?.stage !== 'gameOver' && playerViewForState(state!) !== session.role
   const loadIncoming = (next: ReturnType<typeof decodeMail>, message: string) => {
-    saveOnline(null)
     save({ ...next, turnStart: next.history.cursor, baselineEndedAt: next.endedAt, outgoing: encodeMail(next.id, otherPlayer(next.role), next.history, next.endedAt) })
     updateDraft('')
     setMenu(null)
@@ -104,7 +115,10 @@ export default function GameApp() {
   }
   const receive = (joining: boolean) => {
     try {
-      const next = !joining && session ? acceptMail(draft, session) : decodeMail(draft)
+      const decoded = decodeMail(draft)
+      const existing = library.get(`by-mail-${decoded.id}-${decoded.role}`)
+      const baseline = !joining ? session : existing?.mode === 'by-mail' ? existing.session : null
+      const next = baseline ? acceptMail(draft, baseline) : decoded
       const updateNotice = 'updateNotice' in next ? next.updateNotice : null
       loadIncoming(next, updateNotice ? `Game loaded. ${updateNotice}` : 'Game loaded.')
     } catch (error) { setFeedback(error instanceof Error ? error.message : 'Could not load this message.') }
@@ -126,12 +140,11 @@ export default function GameApp() {
       if (!(error instanceof DOMException && error.name === 'AbortError')) reportShare('Sharing is unavailable. Use Copy text or Copy link.')
     }
   }
-  const startOnline = async () => {
+  const startOnline = async (role: PlayerView) => {
     setOnlineBusy(true)
     setFeedback('')
     try {
-      const next = await createOnlineGame()
-      save(null)
+      const next = await createOnlineGame({ role, name: onlineName.trim() })
       saveOnline(next)
       setMenu(null)
     } catch (error) {
@@ -143,10 +156,9 @@ export default function GameApp() {
   const joinOnline = () => {
     const next = onlineSessionFromInvite(onlineDraft)
     if (!next) {
-      setFeedback('Paste a complete online investigator invitation link.')
+      setFeedback('Paste a complete online player invitation link.')
       return
     }
-    save(null)
     saveOnline(next)
     setOnlineDraft('')
     setFeedback('')
@@ -159,17 +171,20 @@ export default function GameApp() {
     <button type="button" className="primary-button" disabled={!draft.trim() || (!joining && !waiting)} onClick={() => receive(joining)}>{joining ? 'Join existing game' : 'Load partner’s reply'}</button>
     {!joining && <button type="button" onClick={receiveCorrection}>Load partner’s correction</button>}
   </>
+  if (menu === 'resume') return <SavedGamesMenu library={library} activeId={game?.id ?? ''}
+    onResume={id => { library.activate(id); setMenu(null) }} onNewGame={openMenu} onCancel={() => setMenu(null)} />
   if (menu) return <main className="mail-menu">
     <h1>{menu === 'choose' ? 'New game' : menu === 'mail' ? 'By Mail' : 'Online'}</h1>
     {menu === 'choose' ? <>
-      <p>Choose how to play this two-player game.</p>
-      <button className="primary-button" onClick={() => { save(null); saveOnline(null); setGeneration(generation + 1); writeStorage('whitehall-mystery.game.v1', ''); setMenu(null) }}>Same device</button>
-      <button className="primary-button" onClick={() => { saveOnline(null); setMenu('mail') }}>By Mail</button>
+      <p>Choose how to play this two-player game. {game && 'Your current game is saved; return to it with Resume game.'}</p>
+      <button className="primary-button" onClick={() => { library.addSameDevice(); setMenu(null) }}>Same device</button>
+      <button className="primary-button" onClick={() => setMenu('mail')}>By Mail</button>
       <button className="primary-button" onClick={() => { setFeedback(''); setMenu('online') }}>Online</button>
     </> : menu === 'mail' ? <>
       <p>Take turns on separate devices. Send the game text or a link through SMS, WhatsApp, or any messenger. Each message includes the history needed to rejoin on another device.</p>
       <button className="primary-button" onClick={() => {
-        const id = Math.floor(Date.now() / 1000)
+        let id = Math.floor(Date.now() / 1000)
+        while (library.getSnapshot().games.some(saved => saved.mode === 'by-mail' && saved.session.id === id)) id += 1
         save({ id, role: 'jack', history: createGameHistory(createInitialGame()), outgoing: '', turnStart: 0, baselineEndedAt: null })
         setMenu(null); setSharing(false); setFeedback(''); updateDraft('')
         window.history.replaceState(null, '', window.location.pathname + window.location.search)
@@ -178,23 +193,30 @@ export default function GameApp() {
       {importControls(true)}
     </> : <>
       <p>Play on separate devices with live synchronization through the Cloudflare multiplayer service.</p>
-      <button className="primary-button" type="button" disabled={onlineBusy || !configuredOnlineApi()} onClick={() => void startOnline()}>
-        {onlineBusy ? 'Creating game…' : 'Start new game as Jack'}
-      </button>
+      <label htmlFor="online-game-name">Game name (optional)</label>
+      <input id="online-game-name" className="game-name-input" value={onlineName} maxLength={MAX_GAME_NAME_LENGTH} disabled={onlineBusy} onChange={event => updateOnlineName(event.target.value)} />
+      <p className="game-name-hint">Shared with your partner. You can change it in Resume game.</p>
+      <button className="primary-button" type="button" disabled={onlineBusy || !configuredOnlineApi()} onClick={() => void startOnline('jack')}>Start new game as Jack</button>
+      <button className="primary-button" type="button" disabled={onlineBusy || !configuredOnlineApi()} onClick={() => void startOnline('investigators')}>Start new game as Investigators</button>
+      {onlineBusy && <p role="status">Creating game…</p>}
       {!configuredOnlineApi() && <p>Online multiplayer is not configured for this deployment.</p>}
-      <label htmlFor="online-invitation">Investigator invitation link</label>
+      <label htmlFor="online-invitation">Player invitation link</label>
       <textarea id="online-invitation" value={onlineDraft} onChange={event => setOnlineDraft(event.target.value)} rows={3} autoCapitalize="off" autoCorrect="off" spellCheck={false} />
-      <button type="button" disabled={!onlineDraft.trim()} onClick={joinOnline}>Join as investigators</button>
+      <button type="button" disabled={onlineBusy || !onlineDraft.trim()} onClick={joinOnline}>Join invited side</button>
     </>}
-    <button className="text-button" onClick={() => { setMenu(null); setFeedback('') }}>Cancel</button>
+    <button className="text-button" disabled={onlineBusy} onClick={() => { setMenu(game ? null : 'resume'); setFeedback('') }}>Cancel</button>
     <p role="status">{feedback}</p>
   </main>
-  if (onlineSession) return <OnlineGame
+  if (onlineSession && game) return <OnlineGame
     session={onlineSession}
-    onLeave={() => { saveOnline(null); setMenu('choose') }}
     onChooseNewGame={() => setMenu('choose')}
+    onResumeGame={openResume}
+    onLeaveNewGame={onLeaveNewGame}
+    onProgress={(history, createdAt, seats, revision, name) => library.updateOnline(game.id, history, createdAt, seats, revision, name)}
+    onInvitation={invitation => library.saveInvitation(game.id, invitation)}
   />
-  if (!session) return <App key={generation} onNewGame={openMenu} />
+  if (game?.mode === 'same-device') return <App local={{ history: normalizeLocalResume(game.history), onChange: history => library.saveLocal(game.id, history) }} onNewGame={openMenu} onResumeGame={openResume} onLeaveNewGame={onLeaveNewGame} />
+  if (!session) return null
   const update = (history: GameHistory) => {
     const nextState = currentHistoryState(history)
     const finished = nextState.stage === 'gameOver' || playerViewForState(nextState) !== session.role
@@ -220,13 +242,13 @@ export default function GameApp() {
   }
   return <>
     <section className="mail-panel" aria-label="By Mail game">
-      <div className="mail-heading"><strong>By Mail · {session.role === 'jack' ? 'Jack' : 'Investigators'}</strong><time>{mailTimestamp(session.id)}</time><button className="text-button" onClick={() => {
-        if (window.confirm('Leave this game to choose a new game?')) openMenu()
-      }}>New game</button>
+      <div className="mail-heading"><strong>By Mail · {session.role === 'jack' ? 'Jack' : 'Investigators'}</strong><time>{mailTimestamp(session.id)}</time><button className="text-button" onClick={openMenu}>New game</button>
+        <button className="text-button" onClick={openResume}>Resume game</button>
+        <button className="text-button" onClick={onLeaveNewGame}>Leave+New Game</button>
         <button type="button" onClick={() => {
           if (waiting) {
             setShowBoard(!showBoard)
-            writeStorage(BOARD_VIEW_KEY, String(!showBoard))
+            saveMailView({ showBoard: !showBoard })
           } else setSharing(!activeSharing)
         }}>{sharingVisible ? 'Show board' : 'Show sharing'}</button>
       </div>

@@ -1,6 +1,7 @@
 import { playerViewForState, type PlayerView } from '../game/history'
 import type { OnlineSnapshot } from '../game/onlineProtocol'
 import type { OnlineUndoState } from '../game/onlineUndo'
+import { opponentRole, type OnlineSeats } from '../game/onlineSeats'
 
 export const TURN_ALERT_KEYS = {
   flash: 'whitehall-mystery.turn-alert.flash',
@@ -22,8 +23,13 @@ export const turnAlert = (role: PlayerView): OnlineAlert => ({
 export function onlineUpdateAlert(
   before: OnlineSnapshot | null, after: OnlineSnapshot | null, role: PlayerView,
   previousUndo: OnlineUndoState | null, undo: OnlineUndoState | null,
+  previousSeats?: OnlineSeats | null, seats?: OnlineSeats | null,
 ): OnlineAlert | null {
   if (!before || !after || before.roomId !== after.roomId || after.revision <= before.revision) return null
+  const opponent = opponentRole(role)
+  if (seats?.[opponent].leftAt != null && seats[opponent].leftAt !== previousSeats?.[opponent].leftAt) return {
+    title: 'Opponent left', body: 'Your partner left the game. You can invite a replacement player.',
+  }
   if (undo && (undo.id !== previousUndo?.id || undo.status !== previousUndo.status)) {
     if (undo.status === 'pending' && undo.requestedBy !== role) return {
       title: 'Undo requested', body: 'Your partner asks to reopen their last turn. Review the board, then approve or deny the request.',

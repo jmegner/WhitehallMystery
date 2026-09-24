@@ -17,7 +17,10 @@ test('By Mail exchanges turns between isolated devices and rejoins from a link',
     await jack.getByRole('button', { name: 'Lock in four locations' }).click()
     await expect(jack.getByRole('heading', { name: 'Waiting for the investigators' })).toBeVisible()
     const invitation = await jack.getByLabel('Outgoing game text').inputValue()
-    const savedAfterInvitation = await jack.evaluate(() => localStorage.getItem('whitehall-mystery.by-mail.v1')!)
+    const savedAfterInvitation = await jack.evaluate(() => {
+      const key = 'whitehall-mystery.saved-game.v1.' + localStorage.getItem('whitehall-mystery.active-game.v1')
+      return { key, text: localStorage.getItem(key)! }
+    })
     expect(invitation.length).toBe(26)
     expect(invitation).toMatch(/^01-/)
     await jack.context().grantPermissions(['clipboard-read', 'clipboard-write'])
@@ -115,7 +118,7 @@ test('By Mail exchanges turns between isolated devices and rejoins from a link',
     await expect(jack.getByText(/This update includes/)).toHaveCount(0)
 
     // Simulate a device still waiting at the original invitation, then load the same reply.
-    await jack.evaluate(saved => localStorage.setItem('whitehall-mystery.by-mail.v1', saved), savedAfterInvitation)
+    await jack.evaluate(saved => localStorage.setItem(saved.key, saved.text), savedAfterInvitation)
     await jack.reload()
     await jack.getByLabel('Game text or link from your partner').fill(reply)
     await jack.getByRole('button', { name: /Load partner.s reply/ }).click()
@@ -219,7 +222,7 @@ test('turn timestamps and corrections work during a turn, with review for broade
     await bob.getByLabel('Legal yellow Investigator destinations').getByRole('button').first().click()
     await bob.getByRole('button', { name: 'Show sharing', exact: true }).click()
     await expect(bob.getByRole('heading', { name: 'Turn 4 in progress', exact: true })).toBeVisible()
-    const saved = await bob.evaluate(() => localStorage.getItem('whitehall-mystery.by-mail.v1'))
+    const saved = await bob.evaluate(() => JSON.parse(localStorage.getItem('whitehall-mystery.saved-game.v1.' + localStorage.getItem('whitehall-mystery.active-game.v1'))!).session)
     await bob.getByLabel('Game text or link from your partner').fill(revised)
     await bob.getByRole('button', { name: /Load partner.s correction/ }).click()
     const review = bob.getByRole('alertdialog', { name: 'Review partner correction' })
@@ -227,7 +230,7 @@ test('turn timestamps and corrections work during a turn, with review for broade
     await expect(review).toContainText('Game ID: same')
     await expect(review).toContainText('Changed turn numbers: 2, 3')
     await bob.getByRole('button', { name: 'Reject correction' }).click()
-    expect(await bob.evaluate(() => localStorage.getItem('whitehall-mystery.by-mail.v1'))).toBe(saved)
+    expect(await bob.evaluate(() => JSON.parse(localStorage.getItem('whitehall-mystery.saved-game.v1.' + localStorage.getItem('whitehall-mystery.active-game.v1'))!).session)).toEqual(saved)
     await bob.getByRole('button', { name: /Load partner.s correction/ }).click()
     await bob.getByRole('button', { name: 'Accept correction' }).click()
     await expect(bob.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()

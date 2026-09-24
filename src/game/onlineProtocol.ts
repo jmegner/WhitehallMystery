@@ -11,6 +11,7 @@ import {
 import { isStoredGameState } from './persistence'
 import type { GameAction, GameState, InspectorActionMode, JackMoveType } from './types'
 import type { OnlineUndoCommand, OnlineUndoState } from './onlineUndo'
+import type { OnlineSeats } from './onlineSeats'
 
 export const ONLINE_PROTOCOL_VERSION = 1
 export const ONLINE_RULES_VERSION = 'whitehall-2026-09-18'
@@ -50,7 +51,7 @@ export type OnlineClientMessage =
   | OnlineMutation
 
 export type OnlineServerMessage =
-  | { type: 'snapshot'; requestId?: string; snapshot: OnlineSnapshot; undo?: OnlineUndoState | null }
+  | { type: 'snapshot'; requestId?: string; snapshot: OnlineSnapshot; undo?: OnlineUndoState | null; createdAt?: number; seats?: OnlineSeats; name?: string }
   | { type: 'presence'; jack: boolean; investigators: boolean }
   | {
       type: 'error'

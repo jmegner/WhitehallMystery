@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import './App.css'
 import { normalizeMailHistory, mailHistoryReducer, mailBoardState } from './game/byMail'
+import { onlineBoardState } from './game/remoteHistory'
 import { contrastingBlackOrWhite } from './colorContrast'
 import {
   activeInvestigatorColor,
@@ -1552,15 +1553,18 @@ function HandoffScreen({
 }
 
 interface AppProps {
+  local?: { history: GameHistory; onChange: (history: GameHistory) => void }
   mail?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; onChange: (history: GameHistory) => void }
   online?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; waitingMessage?: string; onCommands: (commands: HistoryCommand[]) => void }
   onNewGame?: () => void
+  onResumeGame?: () => void
+  onLeaveNewGame?: () => void
 }
-function App({ mail, online, onNewGame }: AppProps) {
+function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: AppProps) {
   const [localHistory, setHistory] = useState(initializeHistory)
   const remote = mail ?? online
-  const history = remote?.history ?? localHistory
-  const state = remote ? mailBoardState(history, remote.role) : currentHistoryState(history)
+  const history = remote?.history ?? local?.history ?? localHistory
+  const state = online ? onlineBoardState(history, online.role) : mail ? mailBoardState(history, mail.role) : currentHistoryState(history)
   const recap = state.stage === 'gameOver' ? gameRecap(history) : []
   const displayedPublicLog = recap.length > 0 ? recap : currentRoundPublicLog(state.publicLog)
   const [showPossible, setShowPossible] = useState(() => {
@@ -1646,6 +1650,8 @@ function App({ mail, online, onNewGame }: AppProps) {
     }
     if (mail) {
       mail.onChange(normalizeMailHistory(next))
+    } else if (local) {
+      local.onChange(next)
     } else {
       setHistory(next)
       const storage = browserStorage()
@@ -1716,6 +1722,12 @@ function App({ mail, online, onNewGame }: AppProps) {
   const handleRevealUndo = () => applyHistoryCommand({ type: 'revealUndo' })
   if (history.pendingReveal || isHandoff(state.stage)) {
     return (
+      <>
+      {!remote && <nav className="game-navigation" aria-label="Saved games">
+        <button type="button" onClick={onNewGame}>New game</button>
+        <button type="button" onClick={onResumeGame}>Resume game</button>
+        {onLeaveNewGame && <button type="button" onClick={onLeaveNewGame}>Leave+New Game</button>}
+      </nav>}
       <HandoffScreen
         state={state}
         dispatch={dispatch}
@@ -1729,6 +1741,7 @@ function App({ mail, online, onNewGame }: AppProps) {
         historyRevealTarget={history.pendingReveal}
         onRevealUndo={handleRevealUndo}
       />
+      </>
     )
   }
 
@@ -1843,13 +1856,15 @@ function App({ mail, online, onNewGame }: AppProps) {
             type="button"
             className="text-button"
             onClick={() => {
-              if (state.stage === 'jackDiscoverySetup' || window.confirm('Start a new game and lose the current progress?')) {
+              if (onNewGame || state.stage === 'jackDiscoverySetup' || window.confirm('Start a new game and lose the current progress?')) {
                 dispatch({ type: 'newGame' })
               }
             }}
           >
             New game
           </button>}
+          {!remote && onResumeGame && <button type="button" className="text-button" onClick={onResumeGame}>Resume game</button>}
+          {!remote && onLeaveNewGame && <button type="button" className="text-button" onClick={onLeaveNewGame}>Leave+New Game</button>}
         </div>
       </header>
 

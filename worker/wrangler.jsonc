@@ -26,6 +26,11 @@
   },
   "ratelimits": [
     {
+      "name": "SESSION_LIMITER",
+      "namespace_id": "41003",
+      "simple": { "limit": 120, "period": 60 }
+    },
+    {
       "name": "CREATE_GAME_LIMITER",
       "namespace_id": "41001",
       "simple": {

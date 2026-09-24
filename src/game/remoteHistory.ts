@@ -54,3 +54,21 @@ export function remoteBoardState(history: GameHistory, role: PlayerView) {
     notice: 'Your turn is complete. Waiting for your partner.',
   }
 }
+
+// Keep the verified wire history intact; only project the investigator's UI.
+// A tentative start (including one restored by undo) is not public until the
+// first move is committed. Jack still sees investigator actions immediately.
+export function onlineBoardState(history: GameHistory, role: PlayerView) {
+  const state = currentHistoryState(history)
+  if (role === 'jack' && state.notice === 'The starting location is public. Make Jack’s first secret move.') {
+    return { ...state, notice: 'Your starting location stays private until you record your first move.' }
+  }
+  if (role === 'investigators' && state.stage !== 'gameOver' && state.round === 1) {
+    const played = history.entries.slice(0, history.cursor + 1)
+    if (!played.some(entry => entry.action?.type === 'confirmJackMove')) {
+      const start = played.findIndex(entry => entry.action?.type === 'chooseJackStart')
+      if (start > 0) return remoteBoardState({ ...history, cursor: start - 1 }, role)
+    }
+  }
+  return remoteBoardState(history, role)
+}

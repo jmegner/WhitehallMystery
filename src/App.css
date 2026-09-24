@@ -27,6 +27,8 @@
 
 .app-header {
   display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   align-items: center;
   justify-content: space-between;
   color: #f8edda;
@@ -62,6 +64,7 @@
 
 .header-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
 }
@@ -1280,6 +1283,7 @@ button:disabled {
 }
 .mail-menu { max-width: 640px; }
 .mail-menu > button { margin: .5rem .5rem .5rem 0; }
+.mail-menu > label { display: block; margin-top: .7rem; }
 .mail-panel textarea, .mail-menu textarea {
   display: block;
   box-sizing: border-box;
@@ -1292,3 +1296,52 @@ button:disabled {
 .mail-heading { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
 .mail-heading time { font-variant-numeric: tabular-nums; }
 .mail-panel .button-row { flex-wrap: wrap; }
+.game-navigation {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.75rem;
+}
+
+.saved-game-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.saved-game-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.saved-game-list .saved-game-resume {
+  width: 100%;
+  display: grid;
+  gap: 0.35rem;
+  text-align: left;
+  white-space: normal;
+}
+
+.saved-game-leave { align-self: center; color: #852c28; }
+.saved-game-status-error { grid-column: 1 / -1; margin: 0; }
+.saved-game-name-editor { grid-column: 1 / -1; min-width: 0; }
+.saved-game-name, .online-game-name { overflow-wrap: anywhere; }
+.saved-game-resume { overflow-wrap: anywhere; }
+.game-name-input { display: block; box-sizing: border-box; width: 100%; margin: .5rem 0; padding: .6rem; font: inherit; }
+.game-name-hint { margin: .4rem 0 .7rem; font-size: .9rem; }
+.saved-game-name-editor .button-row { flex-wrap: wrap; }
+.online-departure { padding: 0.8rem; border: 1px solid #a67331; border-radius: 6px; background: #fff0cd; }
+
+.saved-game-list [aria-current="true"] {
+  border-color: #a67331;
+}
+
+.storage-warning {
+  padding: 1rem;
+  background: #fff0cd;
+  color: #742917;
+}

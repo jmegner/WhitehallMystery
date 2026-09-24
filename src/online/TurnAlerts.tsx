@@ -96,7 +96,7 @@ export default function TurnAlerts({ store }: { store: OnlineSessionStore }) {
     let previous = store.getSnapshot()
     const unsubscribe = store.subscribe(() => {
       const next = store.getSnapshot()
-      const alert = onlineUpdateAlert(previous.snapshot, next.snapshot, store.session.role, previous.undo, next.undo)
+      const alert = onlineUpdateAlert(previous.snapshot, next.snapshot, store.session.role, previous.undo, next.undo, previous.seats, next.seats)
       previous = next
       if (alert) alertForUpdate(alert)
     })
@@ -161,7 +161,7 @@ export default function TurnAlerts({ store }: { store: OnlineSessionStore }) {
           onChange={event => void enableNotifications(event.target.checked)} />System notification</label>
         <button type="button" onClick={testAlerts} disabled={!flashEnabled && !chimeEnabled && !notificationEnabled}>Test alerts</button>
       </div>
-      <p className="turn-alert-help">Also used for undo requests and decisions. Alerts work while this game page is open, including in a background tab.</p>
+      <p className="turn-alert-help">Also used for undo requests, decisions, and an opponent leaving. Alerts work while this game page is open, including in a background tab.</p>
       {chimeEnabled && soundStatus !== 'ready' && <p className="turn-alert-help" role="status">
         {soundStatus === 'unavailable' ? 'Sound is unavailable in this browser.' : 'Click Test alerts or interact with the page to enable sound after opening or refreshing it.'}
       </p>}

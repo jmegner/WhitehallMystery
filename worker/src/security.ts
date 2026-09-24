@@ -14,6 +14,14 @@ export const createRoleToken = (): string => {
 
 export const hashRoleToken = (token: string): Promise<string> => sha256Hex(token)
 
+// Retry-safe invitation tokens without persisting plaintext credentials. The
+// authenticated requester's secret keys a domain-separated HMAC for this invite.
+export const replacementToken = async (token: string, roomId: string, requestId: string, generation = 0): Promise<string> => {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(token), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`whitehall-replacement-v1:${roomId}:${requestId}:${generation}`))
+  return bytesToBase64Url(new Uint8Array(signature))
+}
+
 export const fixedTimeEqual = (left: string, right: string): boolean => {
   const length = Math.max(left.length, right.length)
   let difference = left.length ^ right.length

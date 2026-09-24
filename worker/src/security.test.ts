@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { allowedOrigin, createRoleToken, fixedTimeEqual, hashRoleToken } from './security'
+import { allowedOrigin, createRoleToken, fixedTimeEqual, hashRoleToken, replacementToken } from './security'
 
 describe('Worker security helpers', () => {
+  it('derives retry-safe replacement tokens bound to the requester, room, and invitation', async () => {
+    const token = createRoleToken()
+    const id = crypto.randomUUID()
+    const invite = await replacementToken(token, 'a'.repeat(64), id)
+    expect(invite).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(await replacementToken(token, 'a'.repeat(64), id)).toBe(invite)
+    expect(await replacementToken(createRoleToken(), 'a'.repeat(64), id)).not.toBe(invite)
+    expect(await replacementToken(token, 'b'.repeat(64), id)).not.toBe(invite)
+    expect(await replacementToken(token, 'a'.repeat(64), crypto.randomUUID())).not.toBe(invite)
+    expect(await replacementToken(token, 'a'.repeat(64), id, 1)).not.toBe(invite)
+  })
   it('creates high-entropy role credentials and stores them as hashes', async () => {
     const first = createRoleToken()
     const second = createRoleToken()

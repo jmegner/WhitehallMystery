@@ -11,7 +11,8 @@ export default function OnlineUndoPanel({ store, online }: { store: OnlineSessio
   const pending = undo?.status === 'pending'
   const requester = undo?.requestedBy === role
   const busy = online.status !== 'connected' || online.pendingRequestId !== null
-  const canRequest = online.undoSupported && history && onlineUndoTarget(history, role) !== null
+  const departed = online.seats && (online.seats.jack.leftAt !== null || online.seats.investigators.leftAt !== null)
+  const canRequest = !departed && online.undoSupported && history && onlineUndoTarget(history, role) !== null
   const name = undo?.requestedBy === 'jack' ? 'Jack' : 'The investigator player'
 
   return <section className="online-undo" aria-label="Online undo">
