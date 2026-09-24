@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { SavedGameLibrary, savedGameMode, savedGameStatus, savedGameTime, type SavedGame } from './game/savedGames'
 import { readOnlineGame, renameOnlineGame } from './online/onlineSession'
 import { confirmLeaveGame, leaveSavedGame } from './game/leaveGame'
@@ -60,26 +60,19 @@ export default function SavedGamesMenu({ library, activeId, onResume, onNewGame,
     </div>
     {!games.length && <p>No saved games. Start a new game when you’re ready.</p>}
     <ul className="saved-game-list">
-      {games.map(game => <li key={game.id}>
-        <button className="saved-game-resume" type="button" disabled={busy !== null} aria-current={game.id === activeId ? 'true' : undefined} onClick={() => onResume(game.id)}>
-          {game.name && <strong className="saved-game-name">{game.name}</strong>}
-          <strong>{savedGameTime(game)}</strong>
-          <span>{savedGameMode(game)}{game.mode !== 'same-device' && ` · ${game.session.role === 'jack' ? 'Jack' : 'Investigators'}`}{game.id === activeId && ' · Current game'}</span>
-          <span>{savedGameStatus(game)}{game.mode === 'online' && ' (last known)'}</span>
-        </button>
-        <button className="saved-game-leave" type="button" disabled={busy !== null} onClick={() => void leave(game)}>{busy === game.id ? 'Leaving…' : 'Leave'}</button>
-        <GameNameEditor game={game} library={library} disabled={busy !== null} onBusy={value => setBusy(value ? `rename:${game.id}` : null)} />
-        {errors[game.id] && <p className="saved-game-status-error" role="status">Status could not refresh: {errors[game.id]}</p>}
-      </li>)}
+      {games.map(game => <SavedGameEntry key={game.id} game={game} library={library} active={game.id === activeId} busy={busy}
+        onResume={() => onResume(game.id)} onLeave={() => void leave(game)} onBusy={value => setBusy(value ? `rename:${game.id}` : null)} statusError={errors[game.id]} />)}
     </ul>
     {activeId && <button type="button" className="text-button" disabled={busy !== null} onClick={onCancel}>Cancel</button>}
     <p role="status">{feedback}</p>
   </main>
 }
 
-function GameNameEditor({ game, library, disabled, onBusy }: {
-  game: SavedGame; library: SavedGameLibrary; disabled: boolean; onBusy: (busy: boolean) => void
+function SavedGameEntry({ game, library, active, busy, onResume, onLeave, onBusy, statusError }: {
+  game: SavedGame; library: SavedGameLibrary; active: boolean; busy: string | null; onResume: () => void; onLeave: () => void; onBusy: (busy: boolean) => void; statusError?: string
 }) {
+  const labelId = useId()
+  const disabled = busy !== null
   const [edit, setEdit] = useState<{ name: string; expectedName: string; requestId: string } | null>(null)
   const [error, setError] = useState('')
   const save = async () => {
@@ -97,8 +90,27 @@ function GameNameEditor({ game, library, disabled, onBusy }: {
     } catch (error) { setError(error instanceof Error ? error.message : 'Could not rename the game.') }
     finally { onBusy(false) }
   }
-  return <div className="saved-game-name-editor">
-    {edit ? <form onSubmit={event => { event.preventDefault(); void save() }}>
+  return <li>
+    <div className="saved-game-card">
+      {/* The resume hit area fills the card, but Edit is a sibling button, never
+          a nested interactive control. Both keep native keyboard behavior. */}
+      <button className="saved-game-resume" type="button" disabled={disabled} aria-current={active ? 'true' : undefined}
+        aria-labelledby={`${labelId}-name ${labelId}-details`} onClick={onResume}>
+        <span id={`${labelId}-details`} className="saved-game-details">
+          <strong>{savedGameTime(game)}</strong>
+          <span>{savedGameMode(game)}{game.mode !== 'same-device' && ` · ${game.session.role === 'jack' ? 'Jack' : 'Investigators'}`}{active && ' · Current game'}</span>
+          <span>{savedGameStatus(game)}{game.mode === 'online' && ' (last known)'}</span>
+        </span>
+      </button>
+      <div className="saved-game-name-row">
+        <strong id={`${labelId}-name`} className={game.name ? 'saved-game-name' : 'saved-game-unnamed'}>{game.name || 'Unnamed game'}</strong>
+        <button type="button" className="text-button saved-game-edit-name" disabled={disabled} aria-expanded={edit !== null} aria-controls={`${labelId}-editor`}
+          onClick={() => { setEdit({ name: game.name ?? '', expectedName: game.name ?? '', requestId: crypto.randomUUID() }); setError('') }}>Edit name</button>
+      </div>
+    </div>
+    <button className="saved-game-leave" type="button" disabled={disabled} onClick={onLeave}>{busy === game.id ? 'Leaving…' : 'Leave'}</button>
+    {edit && <div className="saved-game-name-editor" id={`${labelId}-editor`}>
+    <form onSubmit={event => { event.preventDefault(); void save() }}>
       <label>Game name (optional)
         <input className="game-name-input" value={edit.name} maxLength={MAX_GAME_NAME_LENGTH} disabled={disabled}
           onChange={event => setEdit({ ...edit, name: event.target.value, requestId: crypto.randomUUID() })} />
@@ -108,8 +120,9 @@ function GameNameEditor({ game, library, disabled, onBusy }: {
         <button type="submit" disabled={disabled}>Save name</button>
         <button type="button" disabled={disabled} onClick={() => { setEdit(null); setError('') }}>Cancel name edit</button>
       </div>
-    </form> : <button type="button" className="text-button" disabled={disabled}
-      onClick={() => { setEdit({ name: game.name ?? '', expectedName: game.name ?? '', requestId: crypto.randomUUID() }); setError('') }}>Edit name</button>}
+    </form>
     {error && <p role="alert">{error}</p>}
-  </div>
+    </div>}
+    {statusError && <p className="saved-game-status-error" role="status">Status could not refresh: {statusError}</p>}
+  </li>
 }

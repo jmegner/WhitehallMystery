@@ -2,6 +2,42 @@ import { expect, test } from '@playwright/test'
 
 test.use({ timezoneId: 'America/Chicago' })
 
+test('compact Edit name sits beside the name inside the card without resuming the game', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Resume game', exact: true }).click()
+  const edit = page.getByRole('button', { name: 'Edit name', exact: true })
+  await expect(page.locator('.saved-game-name-row')).toContainText('Unnamed game')
+  await edit.click()
+  await expect(page.getByRole('heading', { name: 'Resume game', exact: true })).toBeVisible()
+  await page.getByLabel('Game name (optional)').fill('Friday game')
+  await page.getByRole('button', { name: 'Save name', exact: true }).click()
+  for (const width of [1000, 390]) {
+    await page.setViewportSize({ width, height: 844 })
+    const nameBox = (await page.locator('.saved-game-name').boundingBox())!
+    const editBox = (await edit.boundingBox())!
+    const cardBox = (await page.locator('.saved-game-card').boundingBox())!
+    expect(editBox.x).toBeGreaterThan(nameBox.x + nameBox.width)
+    expect(editBox.y).toBeLessThan(nameBox.y + nameBox.height)
+    expect(editBox.x + editBox.width).toBeLessThan(cardBox.x + cardBox.width)
+    expect(editBox.height).toBeLessThan((await page.getByRole('button', { name: 'Leave', exact: true }).boundingBox())!.height)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({ path: `test-results/inline-edit-name-${width}.png`, fullPage: true })
+  }
+  await expect(page.locator('button button, button input')).toHaveCount(0)
+  await edit.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByLabel('Game name (optional)')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Resume game', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel name edit', exact: true }).click()
+  // The name still belongs to the card's resume hit area, not just the details.
+  await page.locator('.saved-game-name').click({ force: true })
+  await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Resume game', exact: true }).click()
+  await page.getByRole('button', { name: /Friday game/ }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime', exact: true })).toBeVisible()
+})
+
 test('Leave+New Game confirms, removes only the current game, and opens creation; names persist locally', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('Location 33, selectable', { exact: true }).click()
@@ -26,7 +62,7 @@ test('Leave+New Game confirms, removes only the current game, and opens creation
   await page.getByRole('button', { name: 'Resume game', exact: true }).click()
   await expect(page.locator('.saved-game-resume')).toHaveCount(2)
   await expect(page.locator('.saved-game-resume').filter({ hasText: 'By Mail' })).toHaveCount(0)
-  await page.locator('.saved-game-resume').filter({ hasText: 'Keep this game' }).click()
+  await page.getByRole('button', { name: /Keep this game/ }).click()
   await expect(page.getByLabel('1 player actions', { exact: true })).toBeVisible()
   page.once('dialog', dialog => dialog.accept())
   await page.getByRole('button', { name: 'Leave+New Game', exact: true }).click()

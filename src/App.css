@@ -1318,13 +1318,35 @@ button:disabled {
   align-items: stretch;
 }
 
+.saved-game-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid #aa9272;
+  border-radius: 8px;
+  background: #f7eedf;
+}
+
 .saved-game-list .saved-game-resume {
   width: 100%;
-  display: grid;
-  gap: 0.35rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
   text-align: left;
   white-space: normal;
 }
+.saved-game-details { display: grid; gap: .35rem; }
+.saved-game-resume::after { content: ''; position: absolute; inset: 0; border-radius: 8px; }
+.saved-game-list .saved-game-resume:hover { filter: none; }
+.saved-game-resume:focus-visible { outline: none; }
+.saved-game-resume:focus-visible::after { outline: 2px solid #6d4e2a; outline-offset: 2px; }
+.saved-game-card:has(.saved-game-resume:hover:not(:disabled)) { border-color: #6d4e2a; }
+.saved-game-name-row { order: -1; display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem .5rem; }
+.saved-game-unnamed { color: var(--muted); font-weight: normal; }
+.saved-game-edit-name { position: relative; z-index: 1; padding: 3px 6px; font-size: .75rem; white-space: nowrap; }
 
 .saved-game-leave { align-self: center; color: #852c28; }
 .saved-game-status-error { grid-column: 1 / -1; margin: 0; }
@@ -1336,7 +1358,7 @@ button:disabled {
 .saved-game-name-editor .button-row { flex-wrap: wrap; }
 .online-departure { padding: 0.8rem; border: 1px solid #a67331; border-radius: 6px; background: #fff0cd; }
 
-.saved-game-list [aria-current="true"] {
+.saved-game-card:has([aria-current="true"]) {
   border-color: #a67331;
 }
 
