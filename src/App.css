@@ -391,6 +391,10 @@ button:disabled {
   border-width: 5px;
 }
 
+.board-frame.active-jack {
+  border: 5px solid #000;
+}
+
 .board-frame.active-investigator-yellow {
   border-color: #ffff00;
 }
@@ -696,6 +700,11 @@ button:disabled {
   pointer-events: none;
   animation: investigator-color-glow 1.5s ease-in-out infinite;
   filter: drop-shadow(0 0 2.5px var(--investigator-background));
+}
+
+.board-frame.active-jack .investigator-piece {
+  animation: none;
+  filter: none;
 }
 
 @keyframes investigator-color-glow {

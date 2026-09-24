@@ -2,7 +2,8 @@ import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import './App.css'
 import { normalizeMailHistory, mailHistoryReducer, mailBoardState } from './game/byMail'
-import { onlineBoardState } from './game/remoteHistory'
+import { isInvestigatorReview, onlineBoardState, onlineHistoryReducer } from './game/remoteHistory'
+import { SECRET_INFO_UNDO_WARNING, undoIncludesSecretInfo } from './game/undoWarning'
 import { contrastingBlackOrWhite } from './colorContrast'
 import {
   activeInvestigatorColor,
@@ -41,6 +42,7 @@ import {
   currentHistoryState,
   gameRecap,
   gameHistoryReducer,
+  playerViewForState,
   undoMode,
   type GameHistory,
   type HistoryCommand,
@@ -246,6 +248,7 @@ const titleForStage = (state: GameState) => {
 
 interface BoardProps {
   state: GameState
+  suppressTurnIndicators: boolean
   legalCircleIds: Set<number>
   coachReachableCircleIds: Set<number>
   legalCrossingIds: Set<string>
@@ -298,6 +301,7 @@ function BoardEdgeArrows({
 
 function GameBoard({
   state,
+  suppressTurnIndicators,
   legalCircleIds,
   coachReachableCircleIds,
   legalCrossingIds,
@@ -331,14 +335,15 @@ function GameBoard({
   }
   const hoveredOutcome = hoveredMaybeId === null ? undefined : possibleOutcomes.get(hoveredMaybeId)
   const peekAtJack = showJackPeek && isInspectorInteraction(state.stage)
-  const canPreviewJackDistances = state.stage === 'jackMove' || peekAtJack
-  const routePreview = hoveredRouteTarget === null
+  const canPreviewJackDistances = !suppressTurnIndicators && (state.stage === 'jackMove' || peekAtJack)
+  const routePreview = suppressTurnIndicators || hoveredRouteTarget === null
     ? { segments: [], turnLabels: new Map<number, string>() }
     : shortestJackRoutePreview(state, hoveredRouteTarget)
   const jackHoverTurnLabels = hoveredJack && canPreviewJackDistances
     ? jackRouteTurnLabels(state, peekAtJack ? 'normal' : state.jackMoveSelection.type)
     : new Map<number, string>()
   const previewUnrestrictedDistances =
+    !suppressTurnIndicators &&
     (state.stage === 'jackDiscoverySetup' || state.stage === 'jackChooseStart' || state.stage === 'jackMove') &&
     hoveredUnrestrictedRouteStart !== null
   const unrestrictedHoverTurnLabels = previewUnrestrictedDistances
@@ -352,13 +357,13 @@ function GameBoard({
       ? jackHoverTurnLabels
       : routePreview.turnLabels
   const showJack = isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
-  const activeInvestigatorStartId = isInspectorInteraction(state.stage)
+  const activeInvestigatorStartId = !suppressTurnIndicators && isInspectorInteraction(state.stage)
     ? state.investigatorPositions[activeInvestigatorColor(state)]
     : undefined
   const investigatorOneTurnCrossings = activeInvestigatorStartId
     ? reachableCrossings(activeInvestigatorStartId, 2)
     : new Set<string>()
-  const investigatorRoutePreview = hoveredInvestigatorRouteTarget
+  const investigatorRoutePreview = !suppressTurnIndicators && hoveredInvestigatorRouteTarget
     ? shortestInvestigatorRoutePreview(state, hoveredInvestigatorRouteTarget)
     : { segments: [], turnLabels: new Map<string, string>() }
   const investigatorRouteCrossingIds = new Set(
@@ -377,7 +382,7 @@ function GameBoard({
           .filter((circle) => circle !== undefined)
       : []
   const plannedRouteSegments = trimmedRouteSegments(route)
-  const activeInvestigator = isInspectorInteraction(state.stage)
+  const activeInvestigator = !suppressTurnIndicators && isInspectorInteraction(state.stage)
     ? crossingsById.get(state.investigatorPositions[activeInvestigatorColor(state)] ?? '')
     : undefined
   const privateJackLocation = (isPrivateJackView(state.stage) || peekAtJack) && state.currentJack !== null
@@ -388,7 +393,7 @@ function GameBoard({
     : []
   const pastPathSegments = trimmedRouteSegments(pastPath)
   const canPreviewPlacedInvestigators = state.stage === 'jackChooseStart' || state.stage === 'jackMove'
-  const canPreviewInvestigatorDistances = canPreviewPlacedInvestigators || isInspectorInteraction(state.stage)
+  const canPreviewInvestigatorDistances = !suppressTurnIndicators && (canPreviewPlacedInvestigators || isInspectorInteraction(state.stage))
   const displayedInvestigatorColors = canPreviewPlacedInvestigators
     ? INVESTIGATOR_ORDER.filter((color) => showInvestigatorMaybes || hoveredInvestigator === color)
     : []
@@ -422,7 +427,7 @@ function GameBoard({
   const includeFirstTurnInvestigatorLabels = hoveredInvestigator !== null
     ? hoveredInvestigator !== activeInvestigatorColor(state)
     : hoveredInvestigatorMoveChoice !== null
-  const hoveredInvestigatorTurnLabels = investigatorDistanceStartId
+  const hoveredInvestigatorTurnLabels = !suppressTurnIndicators && investigatorDistanceStartId
     ? investigatorShortestTurnLabels(investigatorDistanceStartId, includeFirstTurnInvestigatorLabels)
     : new Map<string, string>()
   const showCrossingTurnLabels =
@@ -533,7 +538,7 @@ function GameBoard({
         />
       )}
 
-      {privateJackLocation && (
+      {!suppressTurnIndicators && privateJackLocation && (
         <BoardEdgeArrows
           x={privateJackLocation.x}
           y={privateJackLocation.y}
@@ -1042,7 +1047,7 @@ function GameBoard({
       {INVESTIGATOR_ORDER.map((color) => {
         const crossingId = state.investigatorPositions[color]
         const crossing = crossingId ? crossingsById.get(crossingId) : undefined
-        const active = isInspectorInteraction(state.stage) && activeInvestigatorColor(state) === color
+        const active = !suppressTurnIndicators && isInspectorInteraction(state.stage) && activeInvestigatorColor(state) === color
         const selectable = crossing ? legalCrossingIds.has(crossing.id) : false
         return crossing ? (
           <g
@@ -1170,11 +1175,11 @@ interface HistoryControlsProps {
   onRedoAll: () => void
   onRand: () => void
   onRandSide: () => void
-  mailControls?: { canUndo: boolean; canRedo: boolean; waiting: boolean }
+  mailControls?: { canUndo: boolean; canRequestUndo?: boolean; canRedo: boolean; waiting: boolean }
 }
 
 function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand, onRandSide, mailControls }: HistoryControlsProps) {
-  const mode = mailControls ? mailControls.canUndo ? 'undo' : 'disabled' : undoMode(history)
+  const mode = mailControls ? mailControls.canUndo || mailControls.canRequestUndo ? 'undo' : 'disabled' : undoMode(history)
   return (
     <div className="history-controls" aria-label="Action history controls">
       <button className="side-history-button" type="button" disabled={mailControls ? !mailControls.canUndo : !canBigUndo(history)} onClick={onBigUndo}>
@@ -1555,7 +1560,7 @@ function HandoffScreen({
 interface AppProps {
   local?: { history: GameHistory; onChange: (history: GameHistory) => void }
   mail?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; onChange: (history: GameHistory) => void }
-  online?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; waitingMessage?: string; onCommands: (commands: HistoryCommand[]) => void }
+  online?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; waitingMessage?: string; requestUndo?: { canRequest: boolean; onRequest: () => void }; onCommands: (commands: HistoryCommand[]) => void }
   onNewGame?: () => void
   onResumeGame?: () => void
   onLeaveNewGame?: () => void
@@ -1565,6 +1570,7 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
   const remote = mail ?? online
   const history = remote?.history ?? local?.history ?? localHistory
   const state = online ? onlineBoardState(history, online.role) : mail ? mailBoardState(history, mail.role) : currentHistoryState(history)
+  const waitingForJack = !!online && online.role === 'investigators' && playerViewForState(currentHistoryState(history)) === 'jack'
   const recap = state.stage === 'gameOver' ? gameRecap(history) : []
   const displayedPublicLog = recap.length > 0 ? recap : currentRoundPublicLog(state.publicLog)
   const [showPossible, setShowPossible] = useState(() => {
@@ -1614,17 +1620,19 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
     const acceptedCommands: HistoryCommand[] = []
     for (const command of commands) {
       const previous = next
-      next = remote ? mailHistoryReducer(next, command, remote.role, remote.turnStart) : gameHistoryReducer(next, command)
-      if (online) next = normalizeMailHistory(next)
+      next = online ? onlineHistoryReducer(next, command, online.role, online.turnStart)
+        : mail ? mailHistoryReducer(next, command, mail.role, mail.turnStart) : gameHistoryReducer(next, command)
       if (next !== previous) acceptedCommands.push(command)
     }
+    if (remote?.role === 'investigators' && commands.some(command => command.type === 'undo' || command.type === 'bigUndo') &&
+      undoIncludesSecretInfo(history, next.cursor) && !window.confirm(SECRET_INFO_UNDO_WARNING)) return
     if (runInvestigatorAuto && (!remote || (remote.role === 'investigators' && !remote.waiting))) {
       const automatic = automaticInvestigatorActions(next)
       if (remote) {
         for (const command of automatic.commands) {
           const previous = next
-          next = mailHistoryReducer(next, command, remote.role, remote.turnStart)
-          if (online) next = normalizeMailHistory(next)
+          next = online ? onlineHistoryReducer(next, command, online.role, online.turnStart)
+            : mailHistoryReducer(next, command, remote.role, remote.turnStart)
           if (next !== previous) acceptedCommands.push(command)
         }
       } else {
@@ -1665,7 +1673,11 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
     if (action.type === 'newGame' && onNewGame) { onNewGame(); return }
     applyHistoryCommands([{ type: 'apply', action }], investigatorAuto)
   }
-  const handleUndo = () => applyHistoryCommand({ type: 'undo' })
+  const handleUndo = () => {
+    if (online?.requestUndo) {
+      if (online.requestUndo.canRequest) online.requestUndo.onRequest()
+    } else applyHistoryCommand({ type: 'undo' })
+  }
   const handleUndoRoute = () => {
     applyHistoryCommands(state.jackMoveSelection.path.map(() => ({ type: 'undo' as const })))
   }
@@ -1693,6 +1705,7 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
     // or future game states cannot lock up the UI.
     for (let actionCount = 0; actionCount < 100; actionCount += 1) {
       const nextState = currentHistoryState(next)
+      if (online && isInvestigatorReview(nextState)) break
       if (
         side === 'jack' &&
         (nextState.stage === 'handoffInspectorsSetup' || nextState.stage === 'handoffInspectorsTurn')
@@ -1707,7 +1720,7 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
       let progressed = false
       for (const action of actions) {
         const command = { type: 'apply' as const, action }
-        const advanced = gameHistoryReducer(next, command)
+        const advanced = online ? onlineHistoryReducer(next, command, online.role, online.turnStart) : gameHistoryReducer(next, command)
         if (advanced !== next) {
           next = advanced
           commands.push(command)
@@ -1875,7 +1888,12 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
           <div className="board-toolbar">
             <div className="board-options">
               <HistoryControls
-                mailControls={remote ? { canUndo: !online?.waiting && history.cursor > remote.turnStart, canRedo: !online?.waiting && history.cursor < history.entries.length - 1, waiting: remote.waiting || state.stage === 'gameOver' } : undefined}
+                mailControls={remote ? {
+                  canUndo: !online?.waiting && history.cursor > remote.turnStart,
+                  canRequestUndo: online?.requestUndo?.canRequest,
+                  canRedo: !online?.waiting && !(online && isInvestigatorReview(state)) && history.cursor < history.entries.length - 1,
+                  waiting: remote.waiting || state.stage === 'gameOver' || (!!online && isInvestigatorReview(state)),
+                } : undefined}
                 history={history}
                 onUndo={handleUndo}
                 onBigUndo={handleBigUndo}
@@ -2019,13 +2037,14 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
           <div className="board-stage">
             <div
               className={
-                isInspectorInteraction(state.stage)
+                waitingForJack ? 'board-frame active-jack' : isInspectorInteraction(state.stage)
                   ? `board-frame active-investigator-${activeInvestigatorColor(state)}`
                   : 'board-frame'
               }
             >
               <GameBoard
                 state={state}
+                suppressTurnIndicators={waitingForJack}
                 legalCircleIds={legalCircleIds}
                 coachReachableCircleIds={coachReachableCircleIds}
                 legalCrossingIds={legalCrossingIds}
@@ -2042,7 +2061,7 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
                 onCircleMiddleClick={handleCircleMiddleClick}
                 onCrossing={handleCrossing}
                 onMapClick={() => {
-                  if (!remote?.waiting && (state.stage === 'investigatorTurnResult' || state.stage === 'investigatorSetupResult')) {
+                  if (!online && !remote?.waiting && isInvestigatorReview(state)) {
                     dispatch({ type: 'continueHandoff' })
                   }
                 }}
@@ -2053,7 +2072,7 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
                 Investigators’ Turn
               </div>
             )}
-            {!remote?.waiting && (state.stage === 'investigatorTurnResult' || state.stage === 'investigatorSetupResult') && (
+            {!online && !remote?.waiting && isInvestigatorReview(state) && (
               <div className="map-continue-prompt">Results shown · Click anywhere on the map to continue</div>
             )}
           </div>
@@ -2114,6 +2133,12 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
             {state.notice}
           </div>
           <DiscoveryChecklist state={state} />
+          {online && !online.waiting && isInvestigatorReview(state) && <>
+            <p>Review the investigators’ {state.stage === 'investigatorSetupResult' ? 'starting positions' : 'actions'}. You can still undo before handing the turn to Jack.</p>
+            <button className="primary-button" type="button" onClick={() => dispatch({ type: 'continueHandoff' })}>
+              {state.stage === 'investigatorSetupResult' ? 'Confirm deployment' : 'End investigator turn'}
+            </button>
+          </>}
           {!remote?.waiting && <GameControls
             state={state}
             dispatch={dispatch}

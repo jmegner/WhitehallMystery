@@ -222,6 +222,9 @@ test('online departures: notify, preserve history, refresh the chooser, revoke o
     await expect(newInvestigators.getByRole('heading', { name: 'Deploy the Blue Investigator' })).toBeVisible()
     await expect(jack.locator('.online-departure')).toBeVisible()
     await newInvestigators.getByRole('button', { name: 'Rand Side', exact: true }).click()
+    await expect(newInvestigators.getByRole('button', { name: 'Confirm deployment' })).toBeVisible()
+    await expect(jack.locator('.online-departure')).toBeVisible()
+    await newInvestigators.getByRole('button', { name: 'Confirm deployment' }).click()
     await expect(jack.getByRole('heading', { name: 'Jack: Choose the Starting Location' })).toBeVisible()
     await expect(jack.locator('.online-departure')).toHaveCount(0)
     // Retry an old acknowledged Leave: it must not evict the replacement.

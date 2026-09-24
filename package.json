@@ -16,7 +16,7 @@
     "typecheck:worker": "tsc -p worker/tsconfig.json",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "vitest run src worker",
-    "test:e2e": "playwright test --grep-invert \"online departures\" && playwright test tests/e2e/onlineDepartures.spec.ts",
+    "test:e2e": "playwright test --grep-invert \"online departures|online turn review\" && playwright test tests/e2e/onlineDepartures.spec.ts && playwright test tests/e2e/onlineTurnReview.spec.ts",
     "lint": "eslint .",
     "preview": "vite preview"
   },

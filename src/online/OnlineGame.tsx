@@ -7,6 +7,8 @@ import { opponentRole, type OnlineSeats } from '../game/onlineSeats'
 import TurnAlerts from './TurnAlerts'
 import OnlineUndoPanel from './OnlineUndoPanel'
 import type { InvitationCopyStatus } from './invitationClipboard'
+import { onlineUndoTarget } from '../game/onlineUndo'
+import { SECRET_INFO_UNDO_WARNING, undoIncludesSecretInfo } from '../game/undoWarning'
 
 interface OnlineGameProps {
   session: OnlineSession
@@ -86,6 +88,14 @@ export default function OnlineGame({ session, invitationCopyStatus, onChooseNewG
   const opponent = opponentRole(session.role)
   const seat = online.seats?.[opponent]
   const opponentLeft = seat ? seat.leftAt !== null : false
+  const undoTarget = onlineUndoTarget(online.history, session.role)
+  const departed = online.seats && (online.seats.jack.leftAt !== null || online.seats.investigators.leftAt !== null)
+  const canRequestUndo = connected && online.pendingRequestId === null && !undoPending && !departed && online.undoSupported && undoTarget !== null
+  const requestUndo = () => {
+    if (!canRequestUndo || undoTarget === null) return
+    if (session.role === 'investigators' && undoIncludesSecretInfo(online.history!, undoTarget) && !window.confirm(SECRET_INFO_UNDO_WARNING)) return
+    store.sendUndo({ type: 'request-undo' })
+  }
   const hasInvitation = session.opponentInvitation ? session.opponentInvitation.generation === (seat?.generation ?? 0) :
     session.role === 'jack' && !!session.investigatorsToken && (!seat || seat.generation === 0)
   const invitation = hasInvitation ? onlineInviteUrl(session) : ''
@@ -107,7 +117,7 @@ export default function OnlineGame({ session, invitationCopyStatus, onChooseNewG
         {inviting ? 'Creating invitation…' : invitation ? 'Replace invitation link' : 'Create replacement invitation'}
       </button>}
       <TurnAlerts store={store} />
-      <OnlineUndoPanel store={store} online={online} />
+      <OnlineUndoPanel store={store} online={online} canRequestUndo={canRequestUndo} onRequestUndo={requestUndo} />
       {invitation && <details open>
         <summary>Invite the {opponent === 'jack' ? 'Jack' : 'investigator'} player</summary>
         <p>This link is that player’s private game credential. Send it only to that player.</p>
@@ -123,6 +133,7 @@ export default function OnlineGame({ session, invitationCopyStatus, onChooseNewG
         turnStart: state.stage === 'gameOver' ? online.history.cursor : onlineTurnStart(online.history, session.role),
         waiting,
         waitingMessage: undoPending ? 'Undo request pending' : undefined,
+        requestUndo: playerTurn !== session.role ? { canRequest: canRequestUndo, onRequest: requestUndo } : undefined,
         onCommands: commands,
       }}
       onNewGame={onChooseNewGame}

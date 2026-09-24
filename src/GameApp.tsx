@@ -2,6 +2,7 @@ import { useState, useSyncExternalStore } from 'react'
 import App from './App'
 import { MailQrShare, MailQrReader } from './MailQr'
 import { acceptMail, decodeMail, encodeMail, mailTimestamp, mailUrl, otherPlayer, isMailBoundary, mailTurns, mailTurnTimestamp, reviewMailCorrection, mailHistoryReducer, normalizeMailHistory } from './game/byMail'
+import { SECRET_INFO_UNDO_WARNING, undoIncludesSecretInfo } from './game/undoWarning'
 import { createGameHistory, currentHistoryState, playerViewForState, type GameHistory, type PlayerView } from './game/history'
 import { createInitialGame } from './game/gameEngine'
 import { SavedGameLibrary, normalizeLocalResume, type SavedGame, type MailSession, type MailView } from './game/savedGames'
@@ -255,7 +256,9 @@ function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame, onStartOn
   const turnInProgress = !waiting && state?.stage !== 'gameOver'
   const sharingVisible = waiting ? !showBoard : activeSharing
   const undoFromSharing = (side: boolean) => {
-    update(normalizeMailHistory(mailHistoryReducer(session.history, { type: side ? 'bigUndo' : 'undo' }, session.role, session.turnStart)))
+    const next = normalizeMailHistory(mailHistoryReducer(session.history, { type: side ? 'bigUndo' : 'undo' }, session.role, session.turnStart))
+    if (session.role === 'investigators' && undoIncludesSecretInfo(session.history, next.cursor) && !window.confirm(SECRET_INFO_UNDO_WARNING)) return
+    update(next)
     setSharing(false)
   }
   return <>

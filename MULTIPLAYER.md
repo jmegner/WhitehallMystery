@@ -25,7 +25,17 @@ The Playwright configuration starts isolated Vite and Wrangler servers on fresh 
 
 Run just the online browser tests with `npx playwright test tests/e2e/online.spec.ts`. They cover two-player sync, turn/undo alerts, approval, denial, cancellation, refresh, redo preservation, and server rejection of unauthorized or stale operations. Notification delivery is simulated through the browser API instead of producing real OS toasts during tests.
 
-`npm run test:e2e` runs the departure/replacement scenarios in a second isolated local Worker invocation so the suites do not compete for the same simulated per-IP connection quota. Run those alone with `npx playwright test tests/e2e/onlineDepartures.spec.ts`. No production limiter is disabled or increased for testing.
+`npm run test:e2e` runs the departure/replacement scenarios and investigator turn-review scenarios in separate isolated local Worker invocations so the suites do not compete for the same simulated per-IP creation/connection quotas. Run those alone with `npx playwright test tests/e2e/onlineDepartures.spec.ts` or `npx playwright test tests/e2e/onlineTurnReview.spec.ts`. No production limiter is disabled or increased for testing.
+
+## Investigator turn review and Undo
+
+Online investigators must choose **Confirm deployment** after placing all three pieces and **End investigator turn** after their actions, including when **inv auto** finishes the actions automatically. The opponent still sees investigator actions live, but the turn stays with Investigators until confirmation. Clicking the map does not confirm; Undo remains available, and redo and refresh preserve the review step. This applies to manual online turns too. Same-device and By Mail turn handoffs are unchanged.
+
+While investigators wait for Jack, their map has a black outline without active-investigator glow or piece guides. The privacy projection still hides Jack's uncommitted starting location.
+
+In By Mail and online games, investigators receive a confirmation warning before undoing a search/arrest, including a side undo that contains one or an online undo request that would remove one. Cancelling leaves the history unchanged. This is an advisory fairness warning, not an anti-cheating boundary. In online games, normal **Undo** requests the opponent's approval when it is not your turn, with the same availability checks as **Request undo**; **Undo Side** cannot bypass turn ownership.
+
+Deploy this turn-review change with `npm run deploy:worker` before publishing the frontend, and have both players refresh their open pages. It needs no new bindings, secrets, migrations, or dashboard steps. Existing room histories remain replayable. The Worker uses the same online reducer as the frontend and accepts explicit continuation only at investigator review stages, with the existing authentication, turn ownership, revision/hash, and rate-limit checks.
 
 ## Cloudflare configuration
 

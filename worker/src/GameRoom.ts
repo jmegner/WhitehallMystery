@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers'
 import { createInitialGame } from '../../src/game/gameEngine'
-import { normalizeRemoteHistory, remoteHistoryReducer } from '../../src/game/remoteHistory'
+import { isInvestigatorReview, onlineHistoryReducer } from '../../src/game/remoteHistory'
 import { applyOnlineUndo, isOnlineUndoState, type OnlineUndoState } from '../../src/game/onlineUndo'
 import {
   MAX_ONLINE_ACTIONS,
@@ -78,9 +78,10 @@ const send = (socket: WebSocket, message: OnlineServerMessage) => {
 const historiesEqual = (left: GameHistory, right: GameHistory) =>
   canonicalJson(left) === canonicalJson(right)
 
-const forbiddenClientCommand = (command: HistoryCommand): boolean =>
+const forbiddenClientCommand = (command: HistoryCommand, history: GameHistory): boolean =>
   command.type === 'revealUndo' ||
-  (command.type === 'apply' && (command.action.type === 'continueHandoff' || command.action.type === 'newGame'))
+  (command.type === 'apply' && (command.action.type === 'newGame' ||
+    (command.action.type === 'continueHandoff' && !isInvestigatorReview(currentHistoryState(history)))))
 
 export class GameRoom extends DurableObject<WorkerEnv> {
   private commandQueue: Promise<void> = Promise.resolve()
@@ -378,11 +379,11 @@ export class GameRoom extends DurableObject<WorkerEnv> {
           send(socket, { type: 'error', requestId: message.requestId, code: 'invalid-command', message: 'A command batch cannot continue after your turn ends.' })
           return
         }
-        if (forbiddenClientCommand(command)) {
+        if (forbiddenClientCommand(command, history)) {
           send(socket, { type: 'error', requestId: message.requestId, code: 'invalid-command', message: 'That command is not available in an online game.' })
           return
         }
-        const next = normalizeRemoteHistory(remoteHistoryReducer(history, command, role, turnStart))
+        const next = onlineHistoryReducer(history, command, role, turnStart)
         if (historiesEqual(history, next)) {
           send(socket, { type: 'error', requestId: message.requestId, code: 'invalid-command', message: 'That command is not valid for the current game state.' })
           return

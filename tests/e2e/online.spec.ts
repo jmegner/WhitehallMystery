@@ -176,6 +176,13 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
       await expect(investigators.getByRole('heading', { name: `Deploy the ${color} Investigator` })).toBeVisible()
       await investigators.getByLabel('Available deployment crossings').getByRole('button').first().click()
     }
+    await expect(investigators.getByRole('button', { name: 'Confirm deployment' })).toBeVisible()
+    await expect(jack.getByRole('heading', { name: 'Waiting for your partner' })).toBeVisible()
+    await investigators.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect(investigators.getByRole('heading', { name: 'Deploy the Red Investigator' })).toBeVisible()
+    await investigators.getByRole('button', { name: 'Redo Side', exact: true }).click()
+    await investigators.reload()
+    await investigators.getByRole('button', { name: 'Confirm deployment' }).click()
     await expect(jack.getByRole('heading', { name: 'Jack: Choose the Starting Location' })).toBeVisible()
     await expect.poll(() => jack.evaluate(() => window.turnAlertProbe.flashes)).toEqual([500])
     expect(await jack.evaluate(() => window.turnAlertProbe.tones)).toBe(2)
@@ -255,13 +262,13 @@ test('failed online creation does not copy placeholder text or create a saved ro
   await page.getByRole('button', { name: 'New game', exact: true }).click()
   await page.getByRole('button', { name: 'Online', exact: true }).click()
   await page.getByRole('button', { name: 'Start new game as Jack', exact: true }).click()
-  await expect(page.getByRole('status')).toContainText('Could not create an online game.')
+  await expect(page.getByRole('status').filter({ hasText: 'Could not create an online game.' })).toBeVisible()
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Clipboard before creation')
   // A refused clipboard write must also handle creation failing later, even
   // when the browser never asks the ClipboardItem for its promised data.
   await page.evaluate(() => { window.invitationClipboardProbe.blockAutomatic = true })
   await page.getByRole('button', { name: 'Start new game as Jack', exact: true }).click()
-  await expect(page.getByRole('status')).toContainText('Could not create an online game.')
+  await expect(page.getByRole('status').filter({ hasText: 'Could not create an online game.' })).toBeVisible()
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('Clipboard before creation')
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await page.getByRole('button', { name: 'Resume game', exact: true }).click()
@@ -313,6 +320,7 @@ test('online undo is non-modal, survives refresh, alerts both sides, and preserv
     await jack.getByRole('button', { name: 'Rand Side', exact: true }).click()
     await expect(investigators.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
     await investigators.getByRole('button', { name: 'Rand Side', exact: true }).click()
+    await investigators.getByRole('button', { name: 'Confirm deployment' }).click()
     await expect(jack.getByRole('heading', { name: 'Jack: Choose the Starting Location' })).toBeVisible()
     await jack.getByRole('button', { name: 'Rand Side', exact: true }).click()
     await expect(investigators.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
@@ -323,7 +331,7 @@ test('online undo is non-modal, survives refresh, alerts both sides, and preserv
       window.turnAlertProbe.flashes = []; window.turnAlertProbe.tones = 0; window.turnAlertProbe.notifications = []
     })
 
-    await jack.getByRole('button', { name: 'Request undo', exact: true }).click()
+    await jack.getByRole('button', { name: 'Undo', exact: true }).click()
     const requestCard = investigators.getByRole('region', { name: 'Undo request', exact: true })
     await expect(requestCard).toBeVisible()
     await expect(investigators.getByRole('dialog')).toHaveCount(0)
@@ -368,22 +376,6 @@ test('online undo is non-modal, survives refresh, alerts both sides, and preserv
 
     await jack.getByRole('button', { name: 'Redo', exact: true }).click()
     await expect(investigators.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
-    for (const color of ['yellow', 'blue', 'red']) {
-      await investigators.getByLabel(`Legal ${color} Investigator destinations`).getByRole('button').first().click()
-    }
-    for (const color of ['Yellow', 'Blue', 'Red']) {
-      await expect(investigators.getByRole('heading', { name: `${color} Investigator: Clues and Suspicion` })).toBeVisible()
-      await investigators.getByRole('button', { name: 'Pass', exact: true }).click()
-    }
-    await expect(jack.getByRole('heading', { name: 'Jack: Escape in the Night' })).toBeVisible()
-    const investigatorBefore = await jack.evaluate(() => window.onlineProbe.snapshot!)
-    await investigators.getByRole('button', { name: 'Request undo', exact: true }).click()
-    await jack.getByRole('button', { name: 'Approve undo' }).click()
-    await expect(investigators.getByLabel('Online undo')).toContainText('Your undo request was approved.')
-    const investigatorAfter = await investigators.evaluate(() => window.onlineProbe.snapshot!)
-    expect(investigatorAfter.history.state.stage).toBe('investigatorAction')
-    expect(investigatorAfter.history.actions).toEqual(investigatorBefore.history.actions)
-    expect(investigatorAfter.history.cursor).toBeLessThan(investigatorBefore.history.cursor)
   } finally {
     await investigatorsContext.close()
   }

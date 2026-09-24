@@ -215,9 +215,11 @@ test('reveals a private handoff when the handoff card is clicked', async ({ page
 
 test('Jack-view future checkbox shows investigator reach and searchable locations', async ({ page }) => {
   await page.goto('/')
-  const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })
-  await randSide.click()
-  await randSide.click()
+  // Fixed positions keep the marker under test away from Jack's legal targets,
+  // whose extra outlines intentionally increase the radius.
+  for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`, { exact: true }).click()
+  await page.getByRole('button', { name: 'Lock in four locations' }).click()
+  for (let i = 0; i < 3; i++) await page.getByLabel('Available deployment crossings').getByRole('button').first().click()
   await page.getByRole('button', { name: /reveal my view/i }).click()
 
   await page.getByLabel('Secret Discovery Locations').getByRole('button').first().click()

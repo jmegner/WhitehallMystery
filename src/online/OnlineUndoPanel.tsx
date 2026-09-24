@@ -1,18 +1,17 @@
 import { createPortal } from 'react-dom'
 import { useState } from 'react'
-import { onlineUndoTarget } from '../game/onlineUndo'
 import type { OnlineSessionStore, OnlineStoreState } from './onlineSession'
 import './OnlineUndoPanel.css'
 
-export default function OnlineUndoPanel({ store, online }: { store: OnlineSessionStore; online: OnlineStoreState }) {
+export default function OnlineUndoPanel({ store, online, canRequestUndo, onRequestUndo }: {
+  store: OnlineSessionStore; online: OnlineStoreState; canRequestUndo: boolean; onRequestUndo: () => void
+}) {
   const [minimizedRequest, setMinimizedRequest] = useState<string | null>(null)
-  const { undo, history } = online
+  const { undo } = online
   const role = store.session.role
   const pending = undo?.status === 'pending'
   const requester = undo?.requestedBy === role
   const busy = online.status !== 'connected' || online.pendingRequestId !== null
-  const departed = online.seats && (online.seats.jack.leftAt !== null || online.seats.investigators.leftAt !== null)
-  const canRequest = !departed && online.undoSupported && history && onlineUndoTarget(history, role) !== null
   const name = undo?.requestedBy === 'jack' ? 'Jack' : 'The investigator player'
 
   return <section className="online-undo" aria-label="Online undo">
@@ -37,7 +36,7 @@ export default function OnlineUndoPanel({ store, online }: { store: OnlineSessio
         : undo.status === 'denied'
           ? requester ? 'Your undo request was denied. The game is unchanged.' : 'Undo denied. The game is unchanged.'
           : 'Undo request cancelled. The game is unchanged.'}</p>}
-      <button type="button" disabled={busy || !canRequest} onClick={() => store.sendUndo({ type: 'request-undo' })}>Request undo</button>
+      <button type="button" disabled={!canRequestUndo} onClick={onRequestUndo}>Request undo</button>
       <small>{online.undoSupported ? 'After your turn, ask your partner to reopen its final action.' : 'Undo requests need an updated multiplayer Worker.'}</small>
     </>}
   </section>
