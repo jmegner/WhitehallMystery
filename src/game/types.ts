@@ -113,5 +113,5 @@ export type GameAction =
   | { type: 'setInspectorActionMode'; mode: Exclude<InspectorActionMode, 'choose'> }
   | { type: 'searchCircle'; circleId: number }
   | { type: 'arrestCircle'; circleId: number }
-  | { type: 'passInspectorAction' }
+  | { type: 'passInspectorAction'; review?: boolean }
   | { type: 'newGame' }

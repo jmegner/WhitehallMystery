@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createInitialGame, deploymentChoices, legalInspectorActionCircles, legalNormalDestinations, legalJackDestinations } from './gameEngine'
 import { createGameHistory, currentHistoryState, gameHistoryReducer, playerViewForState, type GameHistory, type HistoryCommand } from './history'
-import { normalizeRemoteHistory, onlineBoardState, onlineHistoryReducer, onlineInvestigatorActionCount } from './remoteHistory'
+import { normalizeRemoteHistory, onlineBoardState, onlineHistoryReducer, onlineInvestigatorActionCount, reviewOnlineAutomaticPasses } from './remoteHistory'
 import { onlineHistoryFromWire, onlineHistoryToWire, onlineTurnStart } from './onlineProtocol'
 import { automaticInvestigatorActions } from './investigatorAuto'
 import { undoIncludesSecretInfo } from './undoWarning'
@@ -126,12 +126,13 @@ const onlineDeployment = () => {
   for (let i = 0; i < 3; i++) history = onlineApply(history, { type: 'placeInvestigator', crossingId: deploymentChoices(currentHistoryState(history))[0]!, review: false })
   return history
 }
-const onlineActions = () => {
+const onlineActions = (moveRed = true) => {
   let history = onlineApply(onlineDeployment(), { type: 'continueHandoff' })
   history = onlineApply(history, { type: 'chooseJackStart', circleId: 33 })
   history = onlineApply(history, { type: 'selectJackDestination', circleId: legalNormalDestinations(currentHistoryState(history))[0]! })
   history = onlineApply(history, { type: 'confirmJackMove' })
-  for (const color of ['yellow', 'blue', 'red'] as const) {
+  const colors = ['yellow', 'blue', 'red'] as const
+  for (const color of colors.slice(0, moveRed ? 3 : 2)) {
     history = onlineApply(history, { type: 'moveInvestigator', crossingId: currentHistoryState(history).investigatorPositions[color]! })
   }
   return history
@@ -146,6 +147,60 @@ const redAction = () => {
 }
 
 describe('online investigator review', () => {
+  it('reviews a Red move followed by three auto passes, preserving the marker through replay, undo, and redo', () => {
+    const before = onlineActions(false)
+    const redMove: HistoryCommand = { type: 'apply', action: { type: 'moveInvestigator', crossingId: currentHistoryState(before).investigatorPositions.red! } }
+    const moved = onlineCommand(before, redMove)
+    const automatic = automaticInvestigatorActions(moved, () => new Map())
+    const commands = reviewOnlineAutomaticPasses(before, [redMove], automatic.commands)
+    expect(commands).toEqual([
+      { type: 'apply', action: { type: 'passInspectorAction' } },
+      { type: 'apply', action: { type: 'passInspectorAction' } },
+      { type: 'apply', action: { type: 'passInspectorAction', review: true } },
+    ])
+    const review = commands.reduce(onlineCommand, moved)
+    expect(currentHistoryState(review).stage).toBe('investigatorTurnResult')
+    expect(playerViewForState(currentHistoryState(review))).toBe('investigators')
+    expect(onlineHistoryFromWire(onlineHistoryToWire(review))).toEqual(review)
+    expect(onlineCommand(review, { type: 'redoAll' })).toBe(review)
+    const undone = onlineCommand(review, { type: 'undo' })
+    for (const type of ['redo', 'redoAll'] as const) expect(onlineCommand(undone, { type })).toEqual(review)
+    // A manual Red pass after undo is an explicit final action, so it ends the
+    // turn even though the discarded redo tail still contains a review marker.
+    expect(currentHistoryState(onlineApply(undone, { type: 'passInspectorAction' })).stage).toBe('jackMove')
+    const finished = onlineApply(review, { type: 'continueHandoff' })
+    expect(currentHistoryState(finished).stage).toBe('jackMove')
+    expect(onlineHistoryFromWire(onlineHistoryToWire(finished))).toEqual(finished)
+    const redone = onlineCommand({ ...finished, cursor: before.cursor }, { type: 'redoAll' })
+    expect(redone.cursor).toBe(review.cursor)
+    expect(currentHistoryState(redone)).toEqual(currentHistoryState(review))
+    expect(onlineHistoryFromWire(onlineHistoryToWire(redone))).toEqual(redone)
+    expect(onlineApply(redone, { type: 'continueHandoff' })).toEqual(finished)
+    expect(currentHistoryState(normalizeRemoteHistory(review)).stage).toBe('jackMove') // Mail remains unchanged.
+  })
+
+  it('does not request review for checkbox activation, manual actions, Rand Side batches, or mixed auto chains', () => {
+    const before = onlineActions(false)
+    const move: HistoryCommand = { type: 'apply', action: { type: 'moveInvestigator', crossingId: currentHistoryState(before).investigatorPositions.red! } }
+    const moved = onlineCommand(before, move)
+    const passes = automaticInvestigatorActions(moved, () => new Map()).commands
+    expect(reviewOnlineAutomaticPasses(moved, [], passes)).toBe(passes) // Enabling inv auto after moving.
+    expect(reviewOnlineAutomaticPasses(moved, [passes[0]!], passes.slice(1))).toEqual(passes.slice(1))
+    expect(reviewOnlineAutomaticPasses(before, [move, ...passes], passes)).toBe(passes)
+    const mixed: HistoryCommand[] = [{ type: 'apply', action: { type: 'searchCircle', circleId: 33 } }, ...passes.slice(1)]
+    expect(reviewOnlineAutomaticPasses(before, [move], mixed)).toBe(mixed)
+    expect(currentHistoryState(passes.reduce(onlineCommand, moved)).stage).toBe('jackMove')
+  })
+
+  it('rejects review markers outside the final pass of an all-pass turn', () => {
+    const yellow = onlineActions()
+    expect(onlineApply(yellow, { type: 'passInspectorAction', review: true })).toBe(yellow)
+    const blue = onlineApply(yellow, { type: 'passInspectorAction' })
+    expect(onlineApply(blue, { type: 'passInspectorAction', review: true })).toBe(blue)
+    const red = redAction()
+    expect(onlineApply(red, { type: 'passInspectorAction', review: true })).toBe(red)
+  })
+
   it('requires confirmation even when deployment omits review, survives replay, and stops redo at review', () => {
     const review = onlineDeployment()
     expect(currentHistoryState(review).stage).toBe('investigatorSetupResult')

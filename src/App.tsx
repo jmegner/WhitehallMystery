@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import './App.css'
 import { normalizeMailHistory, mailHistoryReducer, mailBoardState } from './game/byMail'
-import { isInvestigatorReview, onlineBoardState, onlineHistoryReducer, onlineInvestigatorActionCount } from './game/remoteHistory'
+import { isInvestigatorReview, onlineBoardState, onlineHistoryReducer, onlineInvestigatorActionCount, reviewOnlineAutomaticPasses } from './game/remoteHistory'
 import { SECRET_INFO_UNDO_WARNING, undoIncludesSecretInfo } from './game/undoWarning'
 import { contrastingBlackOrWhite } from './colorContrast'
 import {
@@ -1635,7 +1635,8 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
     if (runInvestigatorAuto && (!remote || (remote.role === 'investigators' && !remote.waiting))) {
       const automatic = automaticInvestigatorActions(next)
       if (remote) {
-        for (const command of automatic.commands) {
+        const automaticCommands = online ? reviewOnlineAutomaticPasses(history, acceptedCommands, automatic.commands) : automatic.commands
+        for (const command of automaticCommands) {
           const previous = next
           next = online ? onlineHistoryReducer(next, command, online.role, online.turnStart)
             : mailHistoryReducer(next, command, remote.role, remote.turnStart)
@@ -2150,7 +2151,7 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
           </div>
           <DiscoveryChecklist state={state} />
           {online && !online.waiting && isInvestigatorReview(state) && <>
-            <p>Review the investigators’ {state.stage === 'investigatorSetupResult' ? 'starting positions' : 'actions'}. You can still undo before handing the turn to Jack.</p>
+            <p>Review the investigators’ {state.stage === 'investigatorSetupResult' ? 'starting positions' : 'moves and actions'}. You can still undo before handing the turn to Jack.</p>
             <button className="primary-button" type="button" onClick={() => dispatch({ type: 'continueHandoff' })}>
               {state.stage === 'investigatorSetupResult' ? 'Confirm deployment' : 'End investigator turn'}
             </button>

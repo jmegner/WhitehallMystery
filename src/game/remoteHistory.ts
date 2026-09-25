@@ -11,10 +11,39 @@ import type { GameState } from './types'
 export const isInvestigatorReview = (state: GameState) =>
   state.stage === 'investigatorSetupResult' || state.stage === 'investigatorTurnResult'
 
-export function normalizeRemoteHistory(history: GameHistory, reviewDeployment = false): GameHistory {
+// The marker belongs to the final automatic pass, not GameState, so old engine
+// histories retain their replay semantics and undo/redo retains this decision.
+function isAutoPassReview(history: GameHistory): boolean {
+  const finalAction = history.entries[history.cursor]?.action
+  if (currentHistoryState(history).stage !== 'investigatorTurnResult' ||
+    finalAction?.type !== 'passInspectorAction' || !finalAction.review) return false
+  const before = history.entries[history.cursor - 4]?.state
+  return before?.stage === 'investigatorMove' && before.activeInvestigator === 2 &&
+    history.entries[history.cursor - 3]?.action?.type === 'moveInvestigator' &&
+    history.entries[history.cursor - 2]?.action?.type === 'passInspectorAction' &&
+    history.entries[history.cursor - 1]?.action?.type === 'passInspectorAction'
+}
+
+const needsOnlineReview = (history: GameHistory) =>
+  currentHistoryState(history).stage === 'investigatorSetupResult' || isAutoPassReview(history)
+
+export function reviewOnlineAutomaticPasses(
+  before: GameHistory, triggeringCommands: HistoryCommand[], automaticCommands: HistoryCommand[],
+): HistoryCommand[] {
+  const state = currentHistoryState(before)
+  const trigger = triggeringCommands[0]
+  if (state.stage !== 'investigatorMove' || state.activeInvestigator !== 2 || triggeringCommands.length !== 1 ||
+    trigger?.type !== 'apply' || trigger.action.type !== 'moveInvestigator' || automaticCommands.length !== 3 ||
+    !automaticCommands.every(command => command.type === 'apply' && command.action.type === 'passInspectorAction')) {
+    return automaticCommands
+  }
+  return [...automaticCommands.slice(0, 2), { type: 'apply', action: { type: 'passInspectorAction', review: true } }]
+}
+
+export function normalizeRemoteHistory(history: GameHistory, reviewResults = false): GameHistory {
   for (let index = 0; index < 4; index += 1) {
     const state = currentHistoryState(history)
-    if (reviewDeployment && state.stage === 'investigatorSetupResult') break
+    if (reviewResults && needsOnlineReview(history)) break
     const stage = state.stage
     if (!stage.startsWith('handoff') && stage !== 'investigatorSetupResult' && stage !== 'investigatorTurnResult') break
     history = gameHistoryReducer(history, { type: 'apply', action: { type: 'continueHandoff' } })
@@ -27,13 +56,13 @@ export function remoteHistoryReducer(
   command: HistoryCommand,
   role: PlayerView,
   turnStart: number,
-  reviewDeployment = false,
+  reviewResults = false,
 ): GameHistory {
   if (command.type === 'redoAll') {
     let next = history
     while (next.cursor < next.entries.length - 1 && playerViewForState(currentHistoryState(next)) === role) {
-      if (reviewDeployment && currentHistoryState(next).stage === 'investigatorSetupResult') break
-      next = remoteHistoryReducer(next, { type: 'redo' }, role, turnStart, reviewDeployment)
+      if (reviewResults && needsOnlineReview(next)) break
+      next = remoteHistoryReducer(next, { type: 'redo' }, role, turnStart, reviewResults)
     }
     return next
   }
@@ -45,27 +74,31 @@ export function remoteHistoryReducer(
   }
   if (command.type === 'redo') {
     if (history.cursor >= history.entries.length - 1) return history
-    if (reviewDeployment && currentHistoryState(history).stage === 'investigatorSetupResult') return history
+    if (reviewResults && needsOnlineReview(history)) return history
     const nextAction = history.entries[history.cursor + 1]!.action
-    if (reviewDeployment && nextAction?.type === 'placeInvestigator' && !nextAction.review && currentHistoryState(history).activeInvestigator === 2) {
+    if (reviewResults && nextAction?.type === 'placeInvestigator' && !nextAction.review && currentHistoryState(history).activeInvestigator === 2) {
       // Reopening a deployment saved by an older client must gain the review
       // step too. This branches the redo history; it never rewrites old entries.
       return gameHistoryReducer(history, { type: 'apply', action: { ...nextAction, review: true } })
     }
-    return normalizeRemoteHistory({ ...history, cursor: history.cursor + 1, pendingReveal: null }, reviewDeployment)
+    return normalizeRemoteHistory({ ...history, cursor: history.cursor + 1, pendingReveal: null }, reviewResults)
   }
   if (command.type !== 'apply' || playerViewForState(currentHistoryState(history)) !== role) return history
   return gameHistoryReducer(history, command)
 }
 
-// Shared by the client and Worker. Only deployment needs confirmation; Red's
-// final action hands off immediately, including automatic actions and redo.
+// Shared by the client and Worker. Deployment and an all-pass auto chain caused
+// by moving Red need confirmation. Other final actions hand off immediately.
 // Record the usual handoff actions so old and new histories replay identically.
 export function onlineHistoryReducer(history: GameHistory, command: HistoryCommand, role: PlayerView, turnStart: number): GameHistory {
   if (command.type === 'apply' && command.action.type === 'placeInvestigator') {
     command = { ...command, action: { ...command.action, review: true } }
   }
-  return normalizeRemoteHistory(remoteHistoryReducer(history, command, role, turnStart, true), true)
+  const next = remoteHistoryReducer(history, command, role, turnStart, true)
+  // Reject a misplaced review marker rather than silently ending the turn.
+  if (command.type === 'apply' && command.action.type === 'passInspectorAction' && command.action.review &&
+    (next === history || !isAutoPassReview(next))) return history
+  return normalizeRemoteHistory(next, true)
 }
 
 export function remoteBoardState(history: GameHistory, role: PlayerView) {

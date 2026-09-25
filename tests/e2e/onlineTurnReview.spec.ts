@@ -34,7 +34,7 @@ async function moveInvestigators(page: Page) {
 
 // Isolated local Worker invocation: these real two-device tests don't consume
 // production quotas or share the other suites' simulated per-IP creation quota.
-test('online turn review: deployment needs confirmation, final auto actions hand off immediately, and waiting has no active-piece indicators', async ({ page: jack, browser }) => {
+test('online turn review: moving Red then auto-passing all three needs confirmation, preserved by refresh and redo', async ({ page: jack, browser }) => {
   const context = await browser.newContext()
   const investigators = await context.newPage()
   try {
@@ -74,26 +74,34 @@ test('online turn review: deployment needs confirmation, final auto actions hand
     await expect(investigators.locator('.investigator-piece').first()).toHaveCSS('animation-name', 'investigator-color-glow')
     await investigators.getByLabel('inv auto', { exact: true }).check()
     await moveInvestigators(investigators)
-    await expect(jack.getByRole('heading', { name: 'Jack: Escape in the Night' })).toBeVisible()
-    await expect(investigators.getByRole('button', { name: 'End investigator turn' })).toHaveCount(0)
+    await expect(investigators.getByRole('button', { name: 'End investigator turn' })).toBeVisible()
+    await expect(jack.getByRole('heading', { name: 'Waiting for your partner' })).toBeVisible()
     await expect.poll(() => snapshot(investigators)).toEqual(await snapshot(jack))
     const before = await snapshot(investigators)
-    expect(before.history.actions.slice(-5).map(action => action.type)).toEqual([
-      'passInspectorAction', 'passInspectorAction', 'passInspectorAction', 'continueHandoff', 'continueHandoff',
+    expect(before.history.state.stage).toBe('investigatorTurnResult')
+    expect(before.history.actions.slice(-3)).toEqual([
+      { type: 'passInspectorAction' }, { type: 'passInspectorAction' }, { type: 'passInspectorAction', review: true },
     ])
     await investigators.reload()
     await expect(investigators.getByLabel('inv auto', { exact: true })).toBeChecked()
-    await expect(investigators.getByRole('heading', { name: 'Waiting for your partner' })).toBeVisible()
+    await expect(investigators.getByRole('button', { name: 'End investigator turn' })).toBeVisible()
     expect((await snapshot(investigators)).historyHash).toBe(before.historyHash)
-    // The automatic pass ended our turn: undo requires consent, and redo must
-    // finish immediately again without advancing any of Jack's actions.
+    // Still our turn: no opponent approval is needed, and redo must preserve
+    // the confirmation instead of silently handing play to Jack.
     await investigators.getByRole('button', { name: 'Undo', exact: true }).click()
-    await jack.getByRole('button', { name: 'Approve undo' }).click()
+    await expect(investigators.getByRole('heading', { name: 'Red Investigator: Clues and Suspicion' })).toBeVisible()
+    await expect(jack.getByRole('button', { name: 'Approve undo' })).toHaveCount(0)
     await expect(investigators.getByRole('button', { name: 'Redo Side', exact: true })).toBeEnabled()
     await investigators.getByRole('button', { name: 'Redo Side', exact: true }).click()
+    await expect(investigators.getByRole('button', { name: 'End investigator turn' })).toBeVisible()
+    expect((await snapshot(investigators)).historyHash).toBe(before.historyHash)
+    for (const name of ['Rand', 'Rand Side']) await expect(investigators.getByRole('button', { name, exact: true })).toBeEnabled()
+    await investigators.getByRole('button', { name: 'End investigator turn' }).click()
     await expect(jack.getByRole('heading', { name: 'Jack: Escape in the Night' })).toBeVisible()
     await expect.poll(() => snapshot(investigators)).toEqual(await snapshot(jack))
-    expect((await snapshot(investigators)).historyHash).toBe(before.historyHash)
+    expect((await snapshot(investigators)).history.actions.slice(before.history.cursor)).toEqual([
+      { type: 'continueHandoff' }, { type: 'continueHandoff' },
+    ])
     for (const name of ['Rand', 'Rand Side']) await expect(investigators.getByRole('button', { name, exact: true })).toBeDisabled()
     await expect(investigators.locator('.board-frame')).toHaveCSS('border-top-color', 'rgb(0, 0, 0)')
     await expect(investigators.locator('.active-investigator-ring, .edge-guide-line, .active-investigator-edge-arrows, .jack-location-edge-arrows')).toHaveCount(0)
@@ -173,6 +181,7 @@ test('online turn review: Rand Side completes turns and pending reviews without 
     // the local per-IP burst limit without weakening the production limiter.
     await investigators.getByLabel('inv auto', { exact: true }).check()
     await moveInvestigators(investigators)
+    await finishReview('End investigator turn', 'jackMove')
     await expect(jack.getByRole('heading', { name: 'Jack: Escape in the Night' })).toBeVisible()
     await expect.poll(() => snapshot(investigators)).toEqual(await snapshot(jack))
     await expect(investigators.getByRole('button', { name: 'End investigator turn' })).toHaveCount(0)

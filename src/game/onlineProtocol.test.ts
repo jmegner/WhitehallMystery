@@ -7,6 +7,7 @@ import {
   onlineHistoryFromWire,
   onlineHistoryToWire,
   parseOnlineClientMessage,
+  parseOnlineGameAction,
   verifyOnlineSnapshot,
 } from './onlineProtocol'
 import type { GameAction } from './types'
@@ -49,6 +50,16 @@ describe('online history snapshots', () => {
 })
 
 describe('online command parsing', () => {
+  it('accepts only a boolean review marker on investigator passes', () => {
+    for (const action of [{ type: 'passInspectorAction' }, { type: 'passInspectorAction', review: true }, { type: 'passInspectorAction', review: false }]) {
+      expect(parseOnlineGameAction(action)).toEqual(action)
+    }
+    for (const review of ['true', 1, null, {}, []]) {
+      expect(parseOnlineGameAction({ type: 'passInspectorAction', review })).toBeNull()
+    }
+    expect(parseOnlineGameAction({ type: 'passInspectorAction', review: true, arbitrary: 'storage' })).toBeNull()
+  })
+
   it('accepts strict typed commands', () => {
     const message = JSON.stringify({
       type: 'command',

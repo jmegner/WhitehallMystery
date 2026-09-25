@@ -101,6 +101,11 @@ export const parseOnlineGameAction = (value: unknown): GameAction | null => {
       return hasOnlyKeys(value, ['type', 'crossingId']) && isCrossingId(value.crossingId)
         ? { type: value.type, crossingId: value.crossingId }
         : null
+    case 'passInspectorAction':
+      return hasOnlyKeys(value, ['type'], ['review']) &&
+        (value.review === undefined || typeof value.review === 'boolean')
+        ? { type: value.type, ...(value.review === undefined ? {} : { review: value.review }) }
+        : null
     case 'setJackMoveType':
       return hasOnlyKeys(value, ['type', 'moveType']) && isMoveType(value.moveType)
         ? { type: value.type, moveType: value.moveType }
@@ -112,7 +117,6 @@ export const parseOnlineGameAction = (value: unknown): GameAction | null => {
     case 'confirmDiscoveries':
     case 'continueHandoff':
     case 'confirmJackMove':
-    case 'passInspectorAction':
     case 'newGame':
       return hasOnlyKeys(value, ['type']) ? { type: value.type } : null
     default:

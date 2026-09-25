@@ -29,11 +29,11 @@ Run just the online browser tests with `npx playwright test tests/e2e/online.spe
 
 ## Investigator turn review and Undo
 
-Online investigators must choose **Confirm deployment** after placing all three pieces. Clicking the map does not confirm; Undo remains available, and redo and refresh preserve the deployment review step. During normal turns, Red's final action hands play to Jack immediately, whether performed manually or by **inv auto**. Searches with remaining targets stay open until a clue is found, the targets are exhausted, or the player passes. Jack still sees investigator actions live. Same-device and By Mail turn handoffs are unchanged.
+Online investigators must choose **Confirm deployment** after placing all three pieces. Clicking the map does not confirm; Undo remains available, and redo and refresh preserve the deployment review step. During normal turns, Red's final action hands play to Jack immediately, whether performed manually or by **inv auto**. One exception: when manually moving Red causes **inv auto** to pass all three investigators, **End investigator turn** is required so the player can review/undo the movement. This confirmation survives refresh and redo. Enabling **inv auto** after movement, manual passes, and auto chains that include a search/arrest still end normally. Searches with remaining targets stay open until a clue is found, the targets are exhausted, or the player passes. Jack still sees investigator actions live. Same-device and By Mail turn handoffs are unchanged.
 
 **Rand Side** is an explicit full-turn shortcut: it finishes the current side's remaining actions, including deployment confirmation, and hands play to the opponent. It also works when already on a review screen, and never plays any of the opponent's actions.
 
-When only deployment confirmation remains, both **Rand** and **Rand Side** stay enabled and act as **Confirm deployment**. For older games already paused on **End investigator turn**, either button still confirms that pending result. Neither takes an extra game action. Both become disabled while waiting for the opponent.
+When only confirmation remains, both **Rand** and **Rand Side** stay enabled and act as **Confirm deployment** or **End investigator turn**, including the all-pass auto exception and older saved review screens. Neither takes an extra game action. Both become disabled while waiting for the opponent.
 
 While investigators wait for Jack, their map has a black outline without active-investigator glow or piece guides. The privacy projection still hides Jack's uncommitted starting location.
 
