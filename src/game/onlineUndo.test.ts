@@ -101,6 +101,12 @@ describe('consensual online undo', () => {
     expect(consistentUndoTransition(during, after, pending.undo, null)).toBe(false)
     expect(consistentUndoTransition(during, { ...after, history: during.history }, pending.undo, approved.undo)).toBe(false)
     expect(consistentUndoTransition(during, during, pending.undo, null)).toBe(false)
+    const recovered = await createOnlineSnapshot(before.roomId, 21, history)
+    expect(isOnlineUndoState(pending.undo, history, 21)).toBe(true)
+    expect(isOnlineUndoState({ ...pending.undo, requestedRevision: 22 }, history, 21)).toBe(false)
+    expect(consistentUndoTransition(during, recovered, pending.undo, pending.undo)).toBe(true)
+    expect(consistentUndoTransition(during, after, pending.undo, pending.undo)).toBe(false)
+    expect(consistentUndoTransition(during, recovered, pending.undo, { ...pending.undo, targetCursor: 0 })).toBe(false)
   })
 
   it('accepts only bounded typed undo commands, never a caller-selected rollback or arbitrary payload', () => {

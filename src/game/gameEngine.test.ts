@@ -25,6 +25,8 @@ import {
   possibleJackSearchOutcomesAfterMove,
 } from './inference'
 import {
+  adjacentCirclesForCrossing,
+  alleyGroups,
   alleyDestinations,
   circles,
   circlesById,
@@ -91,8 +93,8 @@ describe('Whitehall map data', () => {
     const jackEdges = [...jackTransitions.values()].reduce((total, destinations) => total + destinations.size, 0) / 2
     const investigatorEdges =
       [...investigatorNeighbors.values()].reduce((total, destinations) => total + destinations.size, 0) / 2
-    expect(jackEdges).toBe(677)
-    expect(investigatorEdges).toBe(366)
+    expect(jackEdges).toBe(679)
+    expect(investigatorEdges).toBe(367)
     expect([...jackTransitions.get(101)!.keys()].sort((a, b) => a - b)).toEqual([
       70, 82, 83, 84, 85, 99, 100, 103, 118,
     ])
@@ -249,6 +251,35 @@ describe('investigator movement previews', () => {
       shorter,
       genuinelyDifferent,
     ])
+  })
+})
+
+describe('corrected map connections and alleys', () => {
+  test('uses the 162–HB connection for movement, searches, and arrests', () => {
+    expect(adjacentCirclesForCrossing('HB')).toContain(162)
+    expect(jackTransitions.get(162)?.get(141)).toContainEqual(['HB'])
+    expect(jackTransitions.get(162)?.get(164)).toContainEqual(['HB'])
+    expect(investigatorTransitions.get('HD')?.get('HB')).toContainEqual([162])
+    expect(investigatorTransitions.get('HB')?.get('HD')).toContainEqual([162])
+    const state: GameState = { ...createInitialGame(), stage: 'investigatorAction', investigatorPositions: { yellow: 'HB' } }
+    for (const inspectorActionMode of ['search', 'arrest'] as const) {
+      expect(legalInspectorActionCircles({ ...state, inspectorActionMode })).toContain(162)
+    }
+  })
+
+  test('splits the old alley group 98 at both 140–HH and 162–HB', () => {
+    expect(alleyGroups).toHaveLength(116)
+    for (const group of [[122, 124, 125, 140], [140, 141, 162], [161, 162, 164, 163]]) {
+      expect(alleyGroups).toContainEqual(group)
+    }
+    const state: GameState = {
+      ...createInitialGame(), stage: 'jackMove',
+      jackMoveSelection: { type: 'alley', path: [] },
+    }
+    expect(legalJackDestinations({ ...state, currentJack: 140 }).sort((a, b) => a - b)).toEqual([122, 124, 125, 141, 162])
+    expect(legalJackDestinations({ ...state, currentJack: 162 }).sort((a, b) => a - b)).toEqual([140, 141, 161, 163, 164])
+    expect(alleyDestinations.get(122)?.has(161)).toBe(false)
+    expect(alleyDestinations.get(161)?.has(122)).toBe(false)
   })
 })
 

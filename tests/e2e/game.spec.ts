@@ -1,4 +1,20 @@
 import { expect, test } from '@playwright/test'
+import { createInitialGame } from '../../src/game/gameEngine'
+
+test('uses the new 162–HB street connection and corrected alley boundaries on the board', async ({ page }) => {
+  const state = { ...createInitialGame(), stage: 'jackMove', currentJack: 162 }
+  await page.addInitScript(state => {
+    localStorage.setItem('whitehall-mystery.game.v1', JSON.stringify({ version: 1, state }))
+  }, state)
+  await page.goto('/')
+  const targets = page.getByLabel('Legal Jack destinations').getByRole('button')
+  await expect(targets).toHaveText(['122', '139', '140', '141', '161', '164'])
+  await page.getByRole('button', { name: 'Alley (2)', exact: true }).click()
+  await expect(targets).toHaveText(['140', '141', '161', '163', '164'])
+  await expect(page.getByLabel('Location 122, selectable', { exact: true })).toHaveCount(0)
+  await page.reload()
+  await expect(targets).toHaveText(['140', '141', '161', '163', '164'])
+})
 
 test('keeps history buttons left-aligned ahead of the action count and options', async ({ page }) => {
   await page.goto('/')
@@ -30,7 +46,7 @@ test('keeps history buttons left-aligned ahead of the action count and options',
   await expect(page.locator('.board-options')).toHaveCSS('justify-content', 'flex-start')
 })
 
-test('shows the complete action recap in the public log after game over', async ({ page }) => {
+test('shows every round of the public hunt log alongside the revealed recap after game over', async ({ page }) => {
   const baseState = {
     stage: 'jackChooseStart',
     round: 1,
@@ -47,7 +63,15 @@ test('shows the complete action recap in the public log after game over', async 
     clueLocations: [],
     inspectorActionMode: 'choose',
     checkedThisAction: [],
-    publicLog: ['This current-round entry should be replaced by the recap.'],
+    publicLog: [
+      'M0: Jack began the hunt at Discovery Location 33.',
+      'M1: yellow searched 12: no clue.',
+      'M7: Jack reached Discovery Location 46.',
+      'M0: Round 2 begins from 46.',
+      'M2: blue attempted an arrest at 55: missed.',
+      'M8: Jack reached Discovery Location 147.',
+      'M0: Round 3 begins from 147.',
+    ],
     notice: '',
     result: null,
   }
@@ -109,12 +133,20 @@ test('shows the complete action recap in the public log after game over', async 
   await page.goto('/')
 
   const publicLog = page.locator('.public-log')
+  await expect(publicLog.locator(':scope > ol > li')).toHaveText(baseState.publicLog)
+  await expect(publicLog.getByText('Revealed action recap', { exact: true })).toBeVisible()
   await expect(publicLog.getByText('Jack started at location 33.')).toBeVisible()
   await expect(publicLog.getByText('Jack moved via Coach to {44, 55}.')).toBeVisible()
   await expect(publicLog.getByText('Investigators moved {BB, BC, BD}.')).toBeVisible()
   await expect(publicLog.getByText('Yellow found a clue at 55.')).toBeVisible()
   await expect(publicLog.getByText('Blue executed an arrest at 55: caught Jack.')).toBeVisible()
-  await expect(publicLog.getByText('This current-round entry should be replaced by the recap.')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(publicLog.locator(':scope > ol > li')).toHaveText(baseState.publicLog.slice(5))
+  await expect(publicLog.getByText('Revealed action recap', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Redo', exact: true }).click()
+  await expect(publicLog.locator(':scope > ol > li')).toHaveText(baseState.publicLog)
+  await page.reload()
+  await expect(publicLog.locator(':scope > ol > li')).toHaveText(baseState.publicLog)
 })
 
 test('Jack can preview investigator reach while choosing discovery locations', async ({ page }) => {

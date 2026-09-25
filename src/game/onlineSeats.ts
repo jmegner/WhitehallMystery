@@ -25,12 +25,18 @@ export function seatsAfterTurn(seats: OnlineSeats, role: PlayerView, before: Gam
 }
 
 export type OnlineSessionRequest = { type: 'status'; token: string } | { type: 'leave' | 'invite'; token: string; requestId: string }
+  | { type: 'reinvite'; token: string; requestId: string; expectedGeneration: number }
   | { type: 'rename'; token: string; requestId: string; name: string; expectedName: string }
 export function parseOnlineSessionRequest(value: unknown): OnlineSessionRequest | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const item = value as Record<string, unknown>
   if (typeof item.token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(item.token)) return null
   if (item.type === 'status' && Object.keys(item).sort().join(',') === 'token,type') return { type: 'status', token: item.token }
+  if (item.type === 'reinvite' && Object.keys(item).sort().join(',') === 'expectedGeneration,requestId,token,type' &&
+    Number.isSafeInteger(item.expectedGeneration) && Number(item.expectedGeneration) >= 0 && typeof item.requestId === 'string' &&
+    /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(item.requestId)) {
+    return { type: 'reinvite', token: item.token, requestId: item.requestId, expectedGeneration: Number(item.expectedGeneration) }
+  }
   if (item.type === 'rename' && Object.keys(item).sort().join(',') === 'expectedName,name,requestId,token,type' &&
     isGameName(item.name) && isGameName(item.expectedName) && typeof item.requestId === 'string' &&
     /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(item.requestId)) {

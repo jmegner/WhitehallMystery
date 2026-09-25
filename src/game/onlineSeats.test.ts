@@ -38,4 +38,17 @@ describe('online departures', () => {
       expect(parseOnlineSessionRequest({ type, token, requestId: 'not-a-uuid' })).toBeNull()
     }
   })
+
+  it('restricts recovery to a UUID and expected opponent generation, never caller-supplied role or state', () => {
+    const request = { type: 'reinvite', token: 'a'.repeat(43), requestId: crypto.randomUUID(), expectedGeneration: 0 }
+    expect(parseOnlineSessionRequest(request)).toEqual(request)
+    for (const expectedGeneration of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, '0', undefined]) {
+      expect(parseOnlineSessionRequest({ ...request, expectedGeneration })).toBeNull()
+    }
+    for (const extra of [{ role: 'jack' }, { state: {} }, { arbitrary: 'storage' }]) {
+      expect(parseOnlineSessionRequest({ ...request, ...extra })).toBeNull()
+    }
+    expect(parseOnlineSessionRequest({ ...request, token: 'invalid' })).toBeNull()
+    expect(parseOnlineSessionRequest({ ...request, requestId: 'arbitrary' })).toBeNull()
+  })
 })

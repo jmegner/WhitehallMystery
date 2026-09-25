@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { createOnlineGame, onlineInviteUrl, onlineSessionFromInvite, parseOnlineSession } from './onlineSession'
+import { createOnlineGame, inviteOnlineRejoin, onlineInviteUrl, onlineSessionFromInvite, parseOnlineSession } from './onlineSession'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -16,4 +16,21 @@ it('creates as either side and saves a reloadable invitation for the opposite ro
     expect(invitation?.token).toBe(role === 'jack' ? response.investigatorsToken : response.jackToken)
   }
   expect(fetch).toHaveBeenLastCalledWith('https://worker.invalid/v1/games', expect.objectContaining({ body: JSON.stringify({ name: 'Friday' }) }))
+})
+
+it('validates rejoin responses and sends only a scoped recovery command', async () => {
+  vi.stubGlobal('window', { setTimeout, clearTimeout })
+  const session = { apiBase: 'https://worker.invalid', roomId: 'a'.repeat(64), role: 'investigators' as const, token: 'I'.repeat(43) }
+  const requestId = crypto.randomUUID()
+  const result = { token: 'J'.repeat(43), role: 'jack', generation: 8 }
+  const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json(result))
+  vi.stubGlobal('fetch', fetch)
+  expect(await inviteOnlineRejoin(session, requestId, 7)).toEqual({ token: result.token, generation: 8 })
+  expect(JSON.parse(fetch.mock.calls[0]![1]!.body as string)).toEqual({ type: 'reinvite', token: session.token, requestId, expectedGeneration: 7 })
+  for (const invalid of [{ ...result, role: 'investigators' }, { ...result, generation: 7 }, { ...result, token: 'bad' }]) {
+    fetch.mockImplementationOnce(async () => Response.json(invalid))
+    await expect(inviteOnlineRejoin(session, requestId, 7)).rejects.toThrow('invalid rejoin invitation')
+  }
+  fetch.mockImplementationOnce(async () => Response.json({ error: 'Invalid session request.' }, { status: 400 }))
+  await expect(inviteOnlineRejoin(session, requestId, 7)).rejects.toThrow('updated multiplayer Worker')
 })

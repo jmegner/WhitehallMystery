@@ -80,7 +80,7 @@ async function secondJackTurn(jack: Page, investigators: Page) {
   await settled(investigators, 3)
   await sendActions(investigators, [
     ...['FP', 'HP', 'HZ'].map(crossingId => ({ type: 'moveInvestigator' as const, crossingId })),
-    ...Array.from({ length: 3 }, () => ({ type: 'passInspectorAction' as const })), { type: 'continueHandoff' },
+    ...Array.from({ length: 3 }, () => ({ type: 'passInspectorAction' as const })),
   ])
   await settled(jack, 4)
   await expect(jack.getByRole('heading', { name: 'Jack: Escape in the Night' })).toBeVisible()

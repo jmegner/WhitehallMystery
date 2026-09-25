@@ -66,7 +66,7 @@ export function isOnlineUndoState(value: unknown, history: GameHistory, revision
     !Number.isInteger(item.targetCursor) || Number(item.targetCursor) < 0 ||
     !Number.isInteger(item.fromCursor) || Number(item.fromCursor) <= Number(item.targetCursor) || Number(item.fromCursor) > MAX_ONLINE_ACTIONS ||
     !Number.isInteger(item.requestedRevision) || Number(item.requestedRevision) < 1 || Number(item.requestedRevision) > revision) return false
-  if (item.status === 'pending') return item.resolvedRevision === null && item.requestedRevision === revision && item.fromCursor === history.cursor &&
+  if (item.status === 'pending') return item.resolvedRevision === null && item.fromCursor === history.cursor &&
     item.targetCursor === onlineUndoTarget(history, item.requestedBy)
   if (!['approved', 'denied', 'cancelled'].includes(String(item.status)) ||
     !Number.isInteger(item.resolvedRevision) || Number(item.resolvedRevision) <= Number(item.requestedRevision) || Number(item.resolvedRevision) > revision) return false
@@ -85,7 +85,10 @@ export function consistentUndoTransition(
   if (after.revision !== before.revision + 1) return true
   if (next?.status === 'pending' && next.id !== previous?.id) return previous?.status !== 'pending' && before.historyHash === after.historyHash && next.requestedRevision === after.revision
   if (previous?.status === 'pending') {
-    if (!next || next.id !== previous.id || next.status === 'pending' || next.resolvedRevision !== after.revision) return false
+    // Seat recovery can advance room metadata while leaving the pending undo
+    // and the complete game/redo history untouched.
+    if (next?.status === 'pending') return before.historyHash === after.historyHash && canonicalJson(previous) === canonicalJson(next)
+    if (!next || next.id !== previous.id || next.resolvedRevision !== after.revision) return false
     if (canonicalJson({ ...next, status: 'pending', resolvedRevision: null }) !== canonicalJson(previous)) return false
     return next.status === 'approved'
       ? after.history.cursor === previous.targetCursor && after.history.pendingReveal === null &&

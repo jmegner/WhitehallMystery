@@ -163,6 +163,20 @@ export async function inviteOnlineReplacement(session: OnlineSession, requestId:
   return { token: result.token, generation: Number(result.generation) }
 }
 
+export async function inviteOnlineRejoin(session: OnlineSession, requestId: string, expectedGeneration: number) {
+  let result: Record<string, unknown>
+  try {
+    result = await sessionRequest(session, { type: 'reinvite', requestId, expectedGeneration })
+  } catch (error) {
+    if (error instanceof OnlineSessionHttpError && error.status === 400) throw new Error('Rejoin invitations need the updated multiplayer Worker.')
+    throw error
+  }
+  if (!validToken(result.token) || result.role !== opponentRole(session.role) || !Number.isSafeInteger(result.generation) || Number(result.generation) <= expectedGeneration) {
+    throw new Error('Received an invalid rejoin invitation.')
+  }
+  return { token: result.token, generation: Number(result.generation) }
+}
+
 export const createOnlineGame = async ({ role = 'jack', name = '' }: { role?: PlayerView; name?: string } = {}, apiBase = configuredOnlineApi()): Promise<OnlineSession> => {
   if (!apiBase) throw new Error('Online multiplayer is not configured for this deployment.')
   if (!isGameName(name)) throw new Error('Use a single-line game name of up to 80 characters.')

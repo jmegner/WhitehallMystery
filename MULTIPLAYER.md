@@ -29,11 +29,11 @@ Run just the online browser tests with `npx playwright test tests/e2e/online.spe
 
 ## Investigator turn review and Undo
 
-Online investigators must choose **Confirm deployment** after placing all three pieces and **End investigator turn** after their actions, including when **inv auto** finishes the actions automatically. The opponent still sees investigator actions live, but the turn stays with Investigators until confirmation. Clicking the map does not confirm; Undo remains available, and redo and refresh preserve the review step. This applies to manual online turns too. Same-device and By Mail turn handoffs are unchanged.
+Online investigators must choose **Confirm deployment** after placing all three pieces. Clicking the map does not confirm; Undo remains available, and redo and refresh preserve the deployment review step. During normal turns, Red's final action hands play to Jack immediately, whether performed manually or by **inv auto**. Searches with remaining targets stay open until a clue is found, the targets are exhausted, or the player passes. Jack still sees investigator actions live. Same-device and By Mail turn handoffs are unchanged.
 
-**Rand Side** is an explicit full-turn shortcut: it finishes the current side's remaining actions, including any deployment or end-of-turn confirmation, and hands play to the opponent. It also works when already on a review screen, and never plays any of the opponent's actions.
+**Rand Side** is an explicit full-turn shortcut: it finishes the current side's remaining actions, including deployment confirmation, and hands play to the opponent. It also works when already on a review screen, and never plays any of the opponent's actions.
 
-When only confirmation remains, both **Rand** and **Rand Side** stay enabled and act as **Confirm deployment** or **End investigator turn**. Neither takes an extra game action. Both become disabled while waiting for the opponent.
+When only deployment confirmation remains, both **Rand** and **Rand Side** stay enabled and act as **Confirm deployment**. For older games already paused on **End investigator turn**, either button still confirms that pending result. Neither takes an extra game action. Both become disabled while waiting for the opponent.
 
 While investigators wait for Jack, their map has a black outline without active-investigator glow or piece guides. The privacy projection still hides Jack's uncommitted starting location.
 
@@ -99,6 +99,12 @@ For accurate online start times (including existing rooms), deploy the updated W
 
 ## Leaving games and inviting replacements
 
+Both players, including the invited player, have a collapsible **Invite the Jack/investigator player** section. Its open/closed preference and any generated invitation are saved locally. An existing valid link can be copied without changing access.
+
+If no valid opponent link is saved, **Create rejoin invitation** lets an authenticated player restore their opponent's access without requiring that opponent to Leave first. A confirmation explains that the opponent's previous credential will be revoked and any connected session disconnected. The game, complete undo/redo history, pending undo request, and existing departure flag are preserved. The recovering player sends the new link privately to their opponent. An opponent whose access was replaced sees a message directing them to request the new invitation.
+
+Rejoin invitations use a tightly typed `reinvite` operation with a UUID and expected opponent seat generation. The server determines the target from the authenticated role, rejects stale generations, and applies the existing per-IP/per-role limits. Retrying a lost response returns the same invitation without another credential rotation. No plaintext credentials are persisted on the server. Older rooms work without migration. This requires `npm run deploy:worker` before publishing the frontend; no new secrets, bindings, Turnstile, or dashboard setup are needed.
+
 Every saved-game row has a **Leave** button with confirmation. Same-device and By Mail entries are removed from this browser, including their saved history and mail draft. Tiny credential-free tombstones prevent legacy-save migration from resurrecting removed entries. Leaving the last game keeps an empty list rather than creating another game automatically.
 
 **Leave+New Game** in the active game's navigation uses the same confirmed departure, then opens the new-game chooser for selecting a mode and side. Ordinary **New game** still retains the previous game. A failed online departure keeps the current entry and does not proceed to creation; retrying reuses the departure request ID.
@@ -130,7 +136,7 @@ Both the Worker and browser replay every action and require the replayed state a
 
 ## Abuse controls
 
-The public API has health, room creation, WebSocket upgrade, and a tightly scoped authenticated session endpoint for status, Leave, replacement invitations, and renaming. There is no generic write, chat, upload, or key/value endpoint. Creation accepts either an empty body or a JSON object containing only an optional game name, within 512 UTF-8 bytes. Session bodies are limited to 768 UTF-8 bytes (including streamed bodies), reject unknown fields, and cannot choose a target role or write game state. Renames accept only a bounded name, expected previous name, credential, and request ID. The credential determines the role; only a departed opposing seat can be replaced. Mutations are serialized with game commands and use the same per-role/per-IP command limits, alongside the edge session-request limit.
+The public API has health, room creation, WebSocket upgrade, and a tightly scoped authenticated session endpoint for status, Leave, replacement/rejoin invitations, and renaming. There is no generic write, chat, upload, or key/value endpoint. Creation accepts either an empty body or a JSON object containing only an optional game name, within 512 UTF-8 bytes. Session bodies are limited to 768 UTF-8 bytes (including streamed bodies), reject unknown fields, and cannot choose a target role or write game state. Renames accept only a bounded name, expected previous name, credential, and request ID. The credential determines the role: ordinary replacement invitations require a departed opponent, while explicit rejoin invitations can rotate the opponent's access without marking them as departed. Mutations are serialized with game commands and use the same per-role/per-IP command limits, alongside the edge session-request limit.
 
 The Worker and Durable Object enforce:
 

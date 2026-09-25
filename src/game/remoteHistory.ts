@@ -11,10 +11,10 @@ import type { GameState } from './types'
 export const isInvestigatorReview = (state: GameState) =>
   state.stage === 'investigatorSetupResult' || state.stage === 'investigatorTurnResult'
 
-export function normalizeRemoteHistory(history: GameHistory, reviewResults = false): GameHistory {
+export function normalizeRemoteHistory(history: GameHistory, reviewDeployment = false): GameHistory {
   for (let index = 0; index < 4; index += 1) {
     const state = currentHistoryState(history)
-    if (reviewResults && isInvestigatorReview(state)) break
+    if (reviewDeployment && state.stage === 'investigatorSetupResult') break
     const stage = state.stage
     if (!stage.startsWith('handoff') && stage !== 'investigatorSetupResult' && stage !== 'investigatorTurnResult') break
     history = gameHistoryReducer(history, { type: 'apply', action: { type: 'continueHandoff' } })
@@ -27,13 +27,13 @@ export function remoteHistoryReducer(
   command: HistoryCommand,
   role: PlayerView,
   turnStart: number,
-  reviewResults = false,
+  reviewDeployment = false,
 ): GameHistory {
   if (command.type === 'redoAll') {
     let next = history
     while (next.cursor < next.entries.length - 1 && playerViewForState(currentHistoryState(next)) === role) {
-      if (reviewResults && isInvestigatorReview(currentHistoryState(next))) break
-      next = remoteHistoryReducer(next, { type: 'redo' }, role, turnStart, reviewResults)
+      if (reviewDeployment && currentHistoryState(next).stage === 'investigatorSetupResult') break
+      next = remoteHistoryReducer(next, { type: 'redo' }, role, turnStart, reviewDeployment)
     }
     return next
   }
@@ -45,22 +45,22 @@ export function remoteHistoryReducer(
   }
   if (command.type === 'redo') {
     if (history.cursor >= history.entries.length - 1) return history
-    if (reviewResults && isInvestigatorReview(currentHistoryState(history))) return history
+    if (reviewDeployment && currentHistoryState(history).stage === 'investigatorSetupResult') return history
     const nextAction = history.entries[history.cursor + 1]!.action
-    if (reviewResults && nextAction?.type === 'placeInvestigator' && !nextAction.review && currentHistoryState(history).activeInvestigator === 2) {
+    if (reviewDeployment && nextAction?.type === 'placeInvestigator' && !nextAction.review && currentHistoryState(history).activeInvestigator === 2) {
       // Reopening a deployment saved by an older client must gain the review
       // step too. This branches the redo history; it never rewrites old entries.
       return gameHistoryReducer(history, { type: 'apply', action: { ...nextAction, review: true } })
     }
-    return normalizeRemoteHistory({ ...history, cursor: history.cursor + 1, pendingReveal: null }, reviewResults)
+    return normalizeRemoteHistory({ ...history, cursor: history.cursor + 1, pendingReveal: null }, reviewDeployment)
   }
   if (command.type !== 'apply' || playerViewForState(currentHistoryState(history)) !== role) return history
   return gameHistoryReducer(history, command)
 }
 
-// Shared by the client and Worker. Keep result screens within the investigator
-// turn, including automatic actions and redo; only an explicit confirmation ends it.
-// Existing histories still replay with their original engine semantics.
+// Shared by the client and Worker. Only deployment needs confirmation; Red's
+// final action hands off immediately, including automatic actions and redo.
+// Record the usual handoff actions so old and new histories replay identically.
 export function onlineHistoryReducer(history: GameHistory, command: HistoryCommand, role: PlayerView, turnStart: number): GameHistory {
   if (command.type === 'apply' && command.action.type === 'placeInvestigator') {
     command = { ...command, action: { ...command.action, review: true } }

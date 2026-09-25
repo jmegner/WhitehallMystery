@@ -32,7 +32,7 @@ import {
   type SearchOutcome,
 } from './game/inference'
 import { automaticInvestigatorActions } from './game/investigatorAuto'
-import { currentRoundPublicLog } from './game/publicLog'
+import { publicHuntLog } from './game/publicLog'
 import {
   actionCount,
   canBigUndo,
@@ -1578,7 +1578,7 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
   const state = online ? onlineBoardState(history, online.role) : mail ? mailBoardState(history, mail.role) : currentHistoryState(history)
   const waitingForJack = !!online && online.role === 'investigators' && playerViewForState(currentHistoryState(history)) === 'jack'
   const recap = state.stage === 'gameOver' ? gameRecap(history) : []
-  const displayedPublicLog = recap.length > 0 ? recap : currentRoundPublicLog(state.publicLog)
+  const displayedPublicLog = publicHuntLog(state)
   const [showPossible, setShowPossible] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY) : false
@@ -2169,6 +2169,12 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
                 <li key={`${index}-${entry}`}>{entry}</li>
               ))}
             </ol>
+            {recap.length > 0 && <details open>
+              <summary>Revealed action recap</summary>
+              <ol>
+                {recap.map((entry, index) => <li key={`${index}-${entry}`}>{entry}</li>)}
+              </ol>
+            </details>}
           </details>
         </aside>
       </main>

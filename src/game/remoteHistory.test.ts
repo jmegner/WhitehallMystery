@@ -5,6 +5,7 @@ import { normalizeRemoteHistory, onlineBoardState, onlineHistoryReducer, onlineI
 import { onlineHistoryFromWire, onlineHistoryToWire, onlineTurnStart } from './onlineProtocol'
 import { automaticInvestigatorActions } from './investigatorAuto'
 import { undoIncludesSecretInfo } from './undoWarning'
+import { adjacentCirclesForCrossing, crossings } from './mapData'
 import type { GameAction } from './types'
 
 const apply = (history: GameHistory, action: GameAction) => normalizeRemoteHistory(gameHistoryReducer(history, { type: 'apply', action }))
@@ -125,6 +126,24 @@ const onlineDeployment = () => {
   for (let i = 0; i < 3; i++) history = onlineApply(history, { type: 'placeInvestigator', crossingId: deploymentChoices(currentHistoryState(history))[0]!, review: false })
   return history
 }
+const onlineActions = () => {
+  let history = onlineApply(onlineDeployment(), { type: 'continueHandoff' })
+  history = onlineApply(history, { type: 'chooseJackStart', circleId: 33 })
+  history = onlineApply(history, { type: 'selectJackDestination', circleId: legalNormalDestinations(currentHistoryState(history))[0]! })
+  history = onlineApply(history, { type: 'confirmJackMove' })
+  for (const color of ['yellow', 'blue', 'red'] as const) {
+    history = onlineApply(history, { type: 'moveInvestigator', crossingId: currentHistoryState(history).investigatorPositions[color]! })
+  }
+  return history
+}
+const redAction = () => {
+  const crossing = crossings.find(({ id }) => adjacentCirclesForCrossing(id).length >= 2 && !adjacentCirclesForCrossing(id).includes(33))!
+  return createGameHistory({
+    ...createInitialGame(), stage: 'investigatorAction', activeInvestigator: 2,
+    investigatorPositions: { red: crossing.id }, inspectorActionMode: 'search',
+    currentJack: 33, roundTrail: [33], publicRound: { start: 33, moves: [], observations: [] },
+  })
+}
 
 describe('online investigator review', () => {
   it('requires confirmation even when deployment omits review, survives replay, and stops redo at review', () => {
@@ -142,23 +161,84 @@ describe('online investigator review', () => {
     expect(currentHistoryState(normalizeRemoteHistory(review)).stage).toBe('jackChooseStart') // Mail behavior is unchanged.
   })
 
-  it('retains automatic end-of-turn results until confirmation, including after undo/redo', () => {
-    let history = onlineApply(onlineDeployment(), { type: 'continueHandoff' })
-    history = onlineApply(history, { type: 'chooseJackStart', circleId: 33 })
-    history = onlineApply(history, { type: 'selectJackDestination', circleId: legalNormalDestinations(currentHistoryState(history))[0]! })
-    history = onlineApply(history, { type: 'confirmJackMove' })
-    for (const color of ['yellow', 'blue', 'red'] as const) {
-      history = onlineApply(history, { type: 'moveInvestigator', crossingId: currentHistoryState(history).investigatorPositions[color]! })
-    }
+  it('hands off after automatic actions and replays/redoes the entire handoff without playing Jack actions', () => {
+    let history = onlineActions()
     const automatic = automaticInvestigatorActions(history, () => new Map())
     expect(automatic.commands.length).toBe(3)
-    for (const command of automatic.commands) history = onlineCommand(history, command)
-    expect(currentHistoryState(history).stage).toBe('investigatorTurnResult')
-    const finished = onlineApply(history, { type: 'continueHandoff' })
+    for (const [index, command] of automatic.commands.entries()) {
+      history = onlineCommand(history, command)
+      expect(currentHistoryState(history).stage).toBe(index === 2 ? 'jackMove' : 'investigatorAction')
+    }
+    expect(history.entries.slice(-3).map(entry => entry.action?.type)).toEqual(['passInspectorAction', 'continueHandoff', 'continueHandoff'])
+    expect(onlineHistoryFromWire(onlineHistoryToWire(history))).toEqual(history)
+    const jackDraft = onlineApply(history, { type: 'selectJackDestination', circleId: legalNormalDestinations(currentHistoryState(history))[0]! })
+    for (const type of ['redo', 'redoAll'] as const) {
+      // Model an approved undo: reopen the position immediately before Red's
+      // final action, retaining Jack's later action in the redo tail.
+      const redone = onlineCommand({ ...jackDraft, cursor: history.cursor - 3 }, { type })
+      expect(redone.cursor).toBe(history.cursor)
+      expect(currentHistoryState(redone)).toEqual(currentHistoryState(history))
+      expect(redone.entries).toBe(jackDraft.entries)
+      expect(onlineHistoryFromWire(onlineHistoryToWire(redone))).toEqual(redone)
+    }
+  })
+
+  it('ends after Red passes manually, but not after Yellow or Blue', () => {
+    let history = onlineActions()
+    for (let index = 0; index < 3; index++) {
+      history = onlineApply(history, { type: 'passInspectorAction' })
+      expect(currentHistoryState(history).stage).toBe(index === 2 ? 'jackMove' : 'investigatorAction')
+    }
+    expect(onlineHistoryFromWire(onlineHistoryToWire(history))).toEqual(history)
+  })
+
+  it('keeps Red searching after misses until the last available target, then hands off', () => {
+    let history = redAction()
+    const targets = legalInspectorActionCircles(currentHistoryState(history))
+    for (const [index, circleId] of targets.entries()) {
+      history = onlineApply(history, { type: 'searchCircle', circleId })
+      expect(currentHistoryState(history).stage).toBe(index === targets.length - 1 ? 'jackMove' : 'investigatorAction')
+    }
+    expect(currentHistoryState(history).publicRound?.observations).toHaveLength(targets.length)
+  })
+
+  it('hands off when Red finds a clue even if other targets remain', () => {
+    const state = currentHistoryState(redAction())
+    const circleId = legalInspectorActionCircles(state)[0]!
+    const history = onlineApply(createGameHistory({ ...state, roundTrail: [circleId, 33] }), { type: 'searchCircle', circleId })
+    expect(currentHistoryState(history).stage).toBe('jackMove')
+    expect(currentHistoryState(history).clueLocations).toContain(circleId)
+  })
+
+  it.each([false, true])('ends Red\'s arrest action correctly (arrest succeeds: %s)', hit => {
+    const state = currentHistoryState(redAction())
+    const circleId = legalInspectorActionCircles(state)[0]!
+    const before = createGameHistory({ ...state, currentJack: hit ? circleId : 33, inspectorActionMode: 'arrest' })
+    const history = onlineApply(before, { type: 'arrestCircle', circleId })
+    expect(currentHistoryState(history).stage).toBe(hit ? 'gameOver' : 'jackMove')
+    expect(currentHistoryState(history).result?.winner).toBe(hit ? 'investigators' : undefined)
+  })
+
+  it('hands off after inv-auto finishes Red\'s remaining searches', () => {
+    const before = redAction()
+    const targets = legalInspectorActionCircles(currentHistoryState(before))
+    const searched = onlineApply(before, { type: 'searchCircle', circleId: targets[0]! })
+    const outcomes = new Map(targets.map(circleId => [circleId, {
+      ifNo: new Set([33]), ifYes: new Set([circleId]), positiveMeansJackIsThereNow: true,
+    }]))
+    const automatic = automaticInvestigatorActions(searched, () => outcomes)
+    expect(automatic.commands).toEqual(targets.slice(1).map(circleId => ({ type: 'apply', action: { type: 'searchCircle', circleId } })))
+    const finished = automatic.commands.reduce(onlineCommand, searched)
     expect(currentHistoryState(finished).stage).toBe('jackMove')
-    const redone = onlineCommand({ ...finished, cursor: history.cursor - 1 }, { type: 'redoAll' })
-    expect(currentHistoryState(redone).stage).toBe('investigatorTurnResult')
-    expect(onlineHistoryFromWire(onlineHistoryToWire(redone))).toEqual(redone)
+    expect(currentHistoryState(finished).publicRound?.observations).toHaveLength(targets.length)
+  })
+
+  it('keeps a saved normal-turn review replayable and allows its explicit confirmation', () => {
+    let history = onlineActions()
+    for (let i = 0; i < 3; i++) history = gameHistoryReducer(history, { type: 'apply', action: { type: 'passInspectorAction' } })
+    expect(currentHistoryState(history).stage).toBe('investigatorTurnResult')
+    expect(onlineHistoryFromWire(onlineHistoryToWire(history))).toEqual(history)
+    expect(currentHistoryState(onlineApply(history, { type: 'continueHandoff' })).stage).toBe('jackMove')
   })
 
   it('keeps older, already-completed deployment histories replayable', () => {

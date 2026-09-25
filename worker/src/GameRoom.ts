@@ -173,6 +173,7 @@ export class GameRoom extends DurableObject<WorkerEnv> {
 
   private authenticatedSockets(): Array<{ socket: WebSocket; attachment: SocketAttachment }> {
     return this.ctx.getWebSockets().flatMap((socket) => {
+      if (socket.readyState !== WebSocket.OPEN) return []
       const attachment = socket.deserializeAttachment() as SocketAttachment | null
       return attachment?.authenticated && attachment.role ? [{ socket, attachment }] : []
     })
@@ -281,16 +282,20 @@ export class GameRoom extends DurableObject<WorkerEnv> {
     }
     const opponent = opponentRole(role)
     const previousInvite = record.lastInvitation?.[role]
-    const retryingInvite = message.type === 'invite' && previousInvite?.requestId === message.requestId
+    const inviting = message.type === 'invite' || message.type === 'reinvite'
+    const retryingInvite = inviting && previousInvite?.requestId === message.requestId
     const derivedFromGeneration = retryingInvite ? previousInvite.derivedFromGeneration : seats[opponent].generation
-    const token = message.type === 'invite' ? await replacementToken(message.token, record.roomId, message.requestId, derivedFromGeneration) : null
+    const token = inviting ? await replacementToken(message.token, record.roomId, message.requestId, derivedFromGeneration) : null
     const opponentHash = opponent === 'jack' ? record.jackTokenHash : record.investigatorsTokenHash
-    if (message.type === 'invite' && (retryingInvite || record.processedRequestIds.includes(message.requestId))) {
+    if (inviting && (retryingInvite || record.processedRequestIds.includes(message.requestId))) {
       return retryingInvite && previousInvite.generation === seats[opponent].generation && fixedTimeEqual(await sha256Hex(token!), opponentHash)
         ? json({ token, role: opponent, generation: seats[opponent].generation })
         : json({ error: 'That invitation has been superseded.' }, 409)
     }
     if (message.type === 'invite' && seats[opponent].leftAt === null) return json({ error: 'Only a side that left can be replaced.' }, 409)
+    if (message.type === 'reinvite' && message.expectedGeneration !== seats[opponent].generation) {
+      return json({ error: 'Your opponent’s access changed. Check the latest game status and try again.' }, 409)
+    }
     const revision = record.revision + 1
     const target = message.type === 'leave' ? role : opponent
     const nextHash = await sha256Hex(token ?? createRoleToken())
@@ -311,7 +316,7 @@ export class GameRoom extends DurableObject<WorkerEnv> {
     await this.persist(record)
     for (const { socket, attachment } of this.authenticatedSockets()) if (attachment.role === target) {
       socket.serializeAttachment({ ...attachment, authenticated: false })
-      socket.close(4005, message.type === 'leave' ? 'You left this game.' : 'This invitation was replaced.')
+      socket.close(4005, message.type === 'leave' ? 'You left this game.' : 'Your access link was replaced. Ask your opponent for the new invitation.')
     }
     this.broadcastSnapshot(record)
     this.broadcastPresence()
@@ -443,7 +448,10 @@ export class GameRoom extends DurableObject<WorkerEnv> {
     })
   }
 
-  override webSocketClose() {
+  override webSocketClose(socket: WebSocket) {
+    const attachment = socket.deserializeAttachment() as SocketAttachment | null
+    if (attachment) socket.serializeAttachment({ ...attachment, authenticated: false })
+    socket.close()
     this.broadcastPresence()
   }
 

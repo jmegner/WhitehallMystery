@@ -8,7 +8,8 @@
     "dev:worker": "wrangler dev --config worker/wrangler.jsonc",
     "deploy:worker": "wrangler deploy --config worker/wrangler.jsonc",
     "generate:map-data": "node scripts/generate-map-data.mjs",
-    "check:map-data": "node scripts/generate-map-data.mjs --check",
+    "generate:alley-groups": "node scripts/generate-alley-groups.mjs && npm run generate:map-data",
+    "check:map-data": "node scripts/generate-alley-groups.mjs --check && node scripts/generate-map-data.mjs --check",
     "build": "npm run check:map-data && npm run typecheck:worker && npm run build:worker && tsc -b && vite build",
     "build:gh": "npm run check:map-data && npm run typecheck:worker && npm run build:worker && tsc -b && vite build --base=/WhitehallMystery/",
     "build:cf": "npm run build",
@@ -16,7 +17,7 @@
     "typecheck:worker": "tsc -p worker/tsconfig.json",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "vitest run src worker",
-    "test:e2e": "playwright test --grep-invert \"online departures|online turn review|online privacy\" && playwright test tests/e2e/onlineDepartures.spec.ts && playwright test tests/e2e/onlineTurnReview.spec.ts tests/e2e/onlinePrivacy.spec.ts",
+    "test:e2e": "playwright test --grep-invert \"online departures|online turn review|online privacy|online invitations\" && playwright test tests/e2e/onlineDepartures.spec.ts && playwright test tests/e2e/onlineTurnReview.spec.ts tests/e2e/onlinePrivacy.spec.ts && playwright test tests/e2e/onlineInvitations.spec.ts",
     "lint": "eslint .",
     "preview": "vite preview"
   },
