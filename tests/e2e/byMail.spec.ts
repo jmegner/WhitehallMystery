@@ -14,7 +14,7 @@ test('By Mail exchanges turns between isolated devices and rejoins from a link',
     await jack.getByRole('button', { name: 'By Mail', exact: true }).click()
     await jack.getByRole('button', { name: 'Start new game as Jack' }).click()
     for (const id of [33, 46, 147, 159]) await jack.getByLabel(`Location ${id}, selectable`, { exact: true }).click()
-    await jack.getByRole('button', { name: 'Lock in four locations' }).click()
+    await jack.getByLabel('Location 33, selectable', { exact: true }).click({ button: 'middle' })
     await expect(jack.getByRole('heading', { name: 'Waiting for the investigators' })).toBeVisible()
     const invitation = await jack.getByLabel('Outgoing game text').inputValue()
     const savedAfterInvitation = await jack.evaluate(() => {

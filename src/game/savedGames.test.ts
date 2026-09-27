@@ -19,6 +19,22 @@ const session: OnlineSession = { apiBase: 'https://example.invalid', roomId: 'a'
 const mail: MailSession = { id: 1700000000, role: 'jack', history: initial(), outgoing: '', turnStart: 0, baselineEndedAt: null }
 
 describe('saved game library', () => {
+  it('keeps AI roles, progress, names and active selection across refreshes', () => {
+    const storage = new MemoryStorage()
+    const library = new SavedGameLibrary(storage)
+    const jack = library.addVersusAi('jack')
+    const investigators = library.addVersusAi('investigators')
+    const history = gameHistoryReducer(initial(), { type: 'apply', action: { type: 'toggleDiscovery', circleId: 33 } })
+    library.saveLocal(jack.id, history)
+    library.renameLocal(jack.id, 'Practice')
+    library.activate(jack.id)
+    const restored = new SavedGameLibrary(storage)
+    expect(restored.get(jack.id)).toMatchObject({ mode: 'versus-ai', role: 'jack', name: 'Practice', history })
+    expect(restored.get(investigators.id)).toMatchObject({ mode: 'versus-ai', role: 'investigators' })
+    expect(restored.getSnapshot().activeId).toBe(jack.id)
+    expect(savedGameStatus(restored.get(jack.id)!)).toBe('Round 1 · Move 0 · Jack’s turn')
+  })
+
   it('persists names without losing them on progress updates and ignores stale online names', () => {
     const storage = new MemoryStorage()
     const library = new SavedGameLibrary(storage)

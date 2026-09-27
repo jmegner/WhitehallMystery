@@ -1,5 +1,6 @@
 import { useState, useSyncExternalStore } from 'react'
 import App from './App'
+import AiGame from './AiGame'
 import { MailQrShare, MailQrReader } from './MailQr'
 import { acceptMail, decodeMail, encodeMail, mailTimestamp, mailUrl, otherPlayer, isMailBoundary, mailTurns, mailTurnTimestamp, reviewMailCorrection, mailHistoryReducer, normalizeMailHistory } from './game/byMail'
 import { SECRET_INFO_UNDO_WARNING, undoIncludesSecretInfo } from './game/undoWarning'
@@ -21,7 +22,7 @@ import {
 } from './online/onlineSession'
 
 const urlMessage = () => new URLSearchParams(window.location.hash.slice(1)).get('mail') ?? ''
-type GameMenu = 'choose' | 'mail' | 'online' | 'resume' | null
+type GameMenu = 'choose' | 'mail' | 'online' | 'ai' | 'resume' | null
 const NAME_DRAFT_KEY = 'whitehall-mystery.new-online-name'
 
 export default function GameApp() {
@@ -191,12 +192,18 @@ function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame, onStartOn
   if (menu === 'resume') return <SavedGamesMenu library={library} activeId={game?.id ?? ''}
     onResume={id => { library.activate(id); setMenu(null) }} onNewGame={openMenu} onCancel={() => setMenu(null)} />
   if (menu) return <main className="mail-menu">
-    <h1>{menu === 'choose' ? 'New game' : menu === 'mail' ? 'By Mail' : 'Online'}</h1>
+    <h1>{menu === 'choose' ? 'New game' : menu === 'mail' ? 'By Mail' : menu === 'ai' ? 'Versus AI' : 'Online'}</h1>
     {menu === 'choose' ? <>
       <p>Choose how to play this two-player game. {game && 'Your current game is saved; return to it with Resume game.'}</p>
       <button className="primary-button" onClick={() => { library.addSameDevice(); setMenu(null) }}>Same device</button>
+      <button className="primary-button" onClick={() => setMenu('ai')}>Versus AI</button>
       <button className="primary-button" onClick={() => setMenu('mail')}>By Mail</button>
       <button className="primary-button" onClick={() => { setFeedback(''); setMenu('online') }}>Online</button>
+    </> : menu === 'ai' ? <>
+      <p>Play Jack against the investigator AI, or control all three investigators against Jack AI. Your game is saved automatically in this browser.</p>
+      <button className="primary-button" onClick={() => { library.addVersusAi('jack'); setMenu(null) }}>Play as Jack</button>
+      <button className="primary-button" onClick={() => { library.addVersusAi('investigators'); setMenu(null) }}>Play as Investigator</button>
+      <p>Jack AI uses discovery sets rated Easy by <a href="https://whitehallmystery.com/" target="_blank" rel="noreferrer">Whitehall Mystery Randomizer</a>. The investigator AI uses public clues and coordinates all three pieces.</p>
     </> : menu === 'mail' ? <>
       <p>Take turns on separate devices. Send the game text or a link through SMS, WhatsApp, or any messenger. Each message includes the history needed to rejoin on another device.</p>
       <button className="primary-button" onClick={() => {
@@ -235,6 +242,7 @@ function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame, onStartOn
     onInvitation={invitation => library.saveInvitation(game.id, invitation)}
   />
   if (game?.mode === 'same-device') return <App local={{ history: normalizeLocalResume(game.history), onChange: history => library.saveLocal(game.id, history) }} onNewGame={openMenu} onResumeGame={openResume} onLeaveNewGame={onLeaveNewGame} />
+  if (game?.mode === 'versus-ai') return <AiGame id={game.id} history={game.history} role={game.role} library={library} onNewGame={openMenu} onResumeGame={openResume} onLeaveNewGame={onLeaveNewGame} />
   if (!session) return null
   const update = (history: GameHistory) => {
     const nextState = currentHistoryState(history)

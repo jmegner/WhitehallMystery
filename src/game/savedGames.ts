@@ -26,6 +26,7 @@ export interface GameSummary { round: number; move: number; turn: PlayerView | n
 interface SavedGameBase { id: string; startedAt: number | null; savedAt: number; name?: string }
 export type SavedGame = SavedGameBase & (
   | { mode: 'same-device'; history: GameHistory }
+  | { mode: 'versus-ai'; role: PlayerView; history: GameHistory }
   | { mode: 'by-mail'; session: MailSession; view: MailView }
   | { mode: 'online'; session: OnlineSession; summary: GameSummary | null; seats?: OnlineSeats | null; revision?: number }
 )
@@ -79,6 +80,10 @@ function parseSavedGame(text: string | null): SavedGame | null {
       const history = readHistory(value.history)
       return history ? { ...base, mode: 'same-device', history } : null
     }
+    if (value.mode === 'versus-ai' && (value.role === 'jack' || value.role === 'investigators')) {
+      const history = readHistory(value.history)
+      return history ? { ...base, mode: 'versus-ai', role: value.role, history } : null
+    }
     if (value.mode === 'by-mail') {
       const session = readMail(value.session)
       if (!session || !record(value.view) || typeof value.view.draft !== 'string' || typeof value.view.showBoard !== 'boolean' || typeof value.view.activeSharing !== 'boolean') return null
@@ -105,9 +110,9 @@ export const summarizeGame = (history: GameHistory): GameSummary => {
   const turn = history.pendingReveal ?? playerViewForState(state) ?? (state.stage.startsWith('handoffJack') ? 'jack' : state.stage.startsWith('handoffInspectors') ? 'investigators' : null)
   return { round: state.round, move: state.moveSlot, stage: state.stage, turn, winner: state.result?.winner ?? null }
 }
-export const savedGameSummary = (game: SavedGame): GameSummary | null => game.mode === 'online' ? game.summary : summarizeGame(game.mode === 'same-device' ? game.history : game.session.history)
+export const savedGameSummary = (game: SavedGame): GameSummary | null => game.mode === 'online' ? game.summary : summarizeGame(game.mode === 'by-mail' ? game.session.history : game.history)
 export const savedGameTime = (game: SavedGame): string => game.startedAt === null ? 'Start time unknown (older saved game)' : mailTimestamp(game.startedAt / 1000)
-export const savedGameMode = (game: SavedGame): string => game.mode === 'same-device' ? 'Same device' : game.mode === 'by-mail' ? 'By Mail' : 'Online'
+export const savedGameMode = (game: SavedGame): string => game.mode === 'versus-ai' ? `Versus AI · ${game.role === 'jack' ? 'Jack' : 'Investigator'}` : game.mode === 'same-device' ? 'Same device' : game.mode === 'by-mail' ? 'By Mail' : 'Online'
 export const savedGameStatus = (game: SavedGame): string => {
   const summary = savedGameSummary(game)
   if (!summary) return 'Not connected yet'
@@ -210,7 +215,12 @@ export class SavedGameLibrary {
   }
   saveLocal(id: string, history: GameHistory) {
     const game = this.get(id)
-    if (game?.mode === 'same-device') this.put({ ...game, history, savedAt: Date.now() })
+    if (game?.mode === 'same-device' || game?.mode === 'versus-ai') this.put({ ...game, history, savedAt: Date.now() })
+  }
+  addVersusAi(role: PlayerView) {
+    const game: SavedGame = { id: `versus-ai-${crypto.randomUUID()}`, mode: 'versus-ai', role, startedAt: Date.now(), savedAt: Date.now(), history: createGameHistory(createInitialGame()) }
+    this.put(game); this.activate(game.id)
+    return game
   }
   saveMail(session: MailSession, view?: MailView) {
     const id = `by-mail-${session.id}-${session.role}`

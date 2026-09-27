@@ -828,10 +828,17 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       }
       const color = activeInvestigatorColor(state)
       const investigatorPositions = { ...state.investigatorPositions, [color]: action.crossingId }
+      const start = state.investigatorPositions[color]
+      const publicLog = [...state.publicLog, moveLog(state.moveSlot,
+        start === action.crossingId
+          ? `${color} stayed at ${start}.`
+          : `${color} moved ${start}→${action.crossingId}.`,
+      )]
       if (state.activeInvestigator === INVESTIGATOR_ORDER.length - 1) {
         return {
           ...state,
           investigatorPositions,
+          publicLog,
           stage: 'investigatorAction',
           activeInvestigator: 0,
           inspectorActionMode: 'search',
@@ -843,6 +850,7 @@ export const gameReducer = (state: GameState, action: GameAction): GameState => 
       return {
         ...state,
         investigatorPositions,
+        publicLog,
         activeInvestigator: next,
         notice: `${INVESTIGATOR_ORDER[next]} Investigator: move zero, one, or two crossings.`,
       }

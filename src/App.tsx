@@ -32,6 +32,7 @@ import {
   type SearchOutcome,
 } from './game/inference'
 import { automaticInvestigatorActions } from './game/investigatorAuto'
+import { aiHistoryReducer } from './game/aiSession'
 import { publicHuntLog } from './game/publicLog'
 import {
   actionCount,
@@ -856,7 +857,7 @@ function GameBoard({
               r="18"
               onClick={() => selectable && onCircle(circle.id)}
               onMouseDown={(event) => {
-                if (event.button === 1 && legal) {
+                if (event.button === 1 && (legal || (state.stage === 'jackDiscoverySetup' && circle.color === 'white'))) {
                   event.preventDefault()
                   onCircleMiddleClick(circle.id)
                 }
@@ -1109,18 +1110,15 @@ function GameBoard({
   )
 }
 
-function MoveTrack({ state, showJackPeek }: { state: GameState; showJackPeek: boolean }) {
+function MoveTrack({ state, showJackPeek, mode }: { state: GameState; showJackPeek: boolean; mode: string }) {
   const moves = state.publicRound?.moves ?? []
   const showPrivateLocations = isPrivateJackView(state.stage) || (showJackPeek && isInspectorInteraction(state.stage))
   return (
     <section className="move-track" aria-label="Public Jack move track">
       <div className="track-heading">
-        <div>
-          <span className="eyebrow">Public move track</span>
-          <strong>
-            Round {state.round} · Move {state.moveSlot} of 15
-          </strong>
-        </div>
+        <strong>
+          Round {state.round} · Move {state.moveSlot} · {mode}
+        </strong>
         <div className="special-counts" aria-label="Jack special movement tiles remaining">
           <span>Coach {state.specialRemaining.coach}/2</span>
           <span>Alley {state.specialRemaining.alley}/2</span>
@@ -1256,6 +1254,7 @@ function GameControls({ state, dispatch, onUndoRoute, onUndoSecondLocation }: Ga
       <>
         <p>
           Select one white numbered circle in each board region. Selecting another location in the same region replaces it.
+          {' '}Middle-click a location to select it and submit once all four regions are chosen.
         </p>
         <div className="quadrant-grid">
           {QUADRANTS.map((quadrant) => {
@@ -1564,6 +1563,7 @@ function HandoffScreen({
 }
 
 interface AppProps {
+  ai?: { history: GameHistory; role: PlayerView; waiting: boolean; paused: boolean; onChange: (history: GameHistory) => void }
   local?: { history: GameHistory; onChange: (history: GameHistory) => void }
   mail?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; onChange: (history: GameHistory) => void }
   online?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; waitingMessage?: string; requestUndo?: { canRequest: boolean; onRequest: () => void }; onCommands: (commands: HistoryCommand[]) => void }
@@ -1571,11 +1571,11 @@ interface AppProps {
   onResumeGame?: () => void
   onLeaveNewGame?: () => void
 }
-function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: AppProps) {
+function App({ local, mail, online, ai, onNewGame, onResumeGame, onLeaveNewGame }: AppProps) {
   const [localHistory, setHistory] = useState(initializeHistory)
-  const remote = mail ?? online
+  const remote = mail ?? online ?? (ai ? { ...ai, turnStart: 0 } : undefined)
   const history = remote?.history ?? local?.history ?? localHistory
-  const state = online ? onlineBoardState(history, online.role) : mail ? mailBoardState(history, mail.role) : currentHistoryState(history)
+  const state = ai ? onlineBoardState(history, ai.role) : online ? onlineBoardState(history, online.role) : mail ? mailBoardState(history, mail.role) : currentHistoryState(history)
   const waitingForJack = !!online && online.role === 'investigators' && playerViewForState(currentHistoryState(history)) === 'jack'
   const recap = state.stage === 'gameOver' ? gameRecap(history) : []
   const displayedPublicLog = publicHuntLog(state)
@@ -1626,11 +1626,11 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
     const acceptedCommands: HistoryCommand[] = []
     for (const command of commands) {
       const previous = next
-      next = online ? onlineHistoryReducer(next, command, online.role, online.turnStart)
+      next = ai ? aiHistoryReducer(next, command, ai.role) : online ? onlineHistoryReducer(next, command, online.role, online.turnStart)
         : mail ? mailHistoryReducer(next, command, mail.role, mail.turnStart) : gameHistoryReducer(next, command)
       if (next !== previous) acceptedCommands.push(command)
     }
-    if (remote?.role === 'investigators' && commands.some(command => command.type === 'undo' || command.type === 'bigUndo') &&
+    if (!ai && remote?.role === 'investigators' && commands.some(command => command.type === 'undo' || command.type === 'bigUndo') &&
       undoIncludesSecretInfo(history, next.cursor) && !window.confirm(SECRET_INFO_UNDO_WARNING)) return
     if (runInvestigatorAuto && (!remote || (remote.role === 'investigators' && !remote.waiting))) {
       const automatic = automaticInvestigatorActions(next)
@@ -1638,7 +1638,7 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
         const automaticCommands = online ? reviewOnlineAutomaticPasses(history, acceptedCommands, automatic.commands) : automatic.commands
         for (const command of automaticCommands) {
           const previous = next
-          next = online ? onlineHistoryReducer(next, command, online.role, online.turnStart)
+          next = ai ? aiHistoryReducer(next, command, ai.role) : online ? onlineHistoryReducer(next, command, online.role, online.turnStart)
             : mailHistoryReducer(next, command, remote.role, remote.turnStart)
           if (next !== previous) acceptedCommands.push(command)
         }
@@ -1663,7 +1663,9 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
       setShowInvestigatorTurnAnnouncement(true)
       window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1000)
     }
-    if (mail) {
+    if (ai) {
+      ai.onChange(next)
+    } else if (mail) {
       mail.onChange(normalizeMailHistory(next))
     } else if (local) {
       local.onChange(next)
@@ -1714,7 +1716,7 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
       const nextState = currentHistoryState(next)
       // Rand Side includes result confirmation, but must never play the
       // opponent's turn after the online reducer normalizes the handoff.
-      if (online && playerViewForState(nextState) !== side) break
+      if ((online || ai) && playerViewForState(nextState) !== side) break
       if (
         side === 'jack' &&
         (nextState.stage === 'handoffInspectorsSetup' || nextState.stage === 'handoffInspectorsTurn')
@@ -1729,7 +1731,7 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
       let progressed = false
       for (const action of actions) {
         const command = { type: 'apply' as const, action }
-        const advanced = online ? onlineHistoryReducer(next, command, online.role, online.turnStart) : gameHistoryReducer(next, command)
+        const advanced = ai ? aiHistoryReducer(next, command, ai.role) : online ? onlineHistoryReducer(next, command, online.role, online.turnStart) : gameHistoryReducer(next, command)
         if (advanced !== next) {
           next = advanced
           commands.push(command)
@@ -1827,7 +1829,18 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
   }
   const handleCircleMiddleClick = (circleId: number) => {
     if (remote?.waiting) return
-    if (state.stage === 'jackMove') {
+    if (state.stage === 'jackDiscoverySetup') {
+      if (circlesById.get(circleId)?.color !== 'white') return
+      const commands: HistoryCommand[] = []
+      let afterSelection = state
+      if (!state.discoveryLocations.includes(circleId)) {
+        const select = { type: 'toggleDiscovery' as const, circleId }
+        afterSelection = gameReducer(state, select)
+        commands.push({ type: 'apply', action: select })
+      }
+      if (afterSelection.discoveryLocations.length === 4) commands.push({ type: 'apply', action: { type: 'confirmDiscoveries' } })
+      if (commands.length) applyHistoryCommands(commands)
+    } else if (state.stage === 'jackMove') {
       const select = { type: 'selectJackDestination' as const, circleId }
       const afterSelection = gameReducer(state, select)
       const commands: Parameters<typeof gameHistoryReducer>[1][] = [{ type: 'apply', action: select }]
@@ -1890,14 +1903,14 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
         </div>
       </header>
 
-      <MoveTrack state={state} showJackPeek={showJackPeek} />
+      <MoveTrack state={state} showJackPeek={showJackPeek} mode={mail ? 'ByMail' : online ? 'Online' : ai ? 'vs AI' : 'SameDevice'} />
 
       <main className="game-layout">
         <section className="board-panel">
           <div className="board-toolbar">
             <div className="board-options">
               <HistoryControls
-                publicActionCount={online?.role === 'investigators' && state.stage !== 'gameOver' ? onlineInvestigatorActionCount(history) : undefined}
+                publicActionCount={(online?.role === 'investigators' || ai?.role === 'investigators') && state.stage !== 'gameOver' ? onlineInvestigatorActionCount(history) : undefined}
                 mailControls={remote ? {
                   canUndo: !online?.waiting && history.cursor > remote.turnStart,
                   canRequestUndo: online?.requestUndo?.canRequest,
@@ -2145,9 +2158,9 @@ function App({ local, mail, online, onNewGame, onResumeGame, onLeaveNewGame }: A
               </label>
             )}
           </div>
-          <h2>{remote?.waiting ? online?.waitingMessage ?? 'Waiting for your partner' : titleForStage(state)}</h2>
+          <h2>{remote?.waiting ? ai ? ai.paused ? 'AI turn paused' : 'AI turn' : online?.waitingMessage ?? 'Waiting for your partner' : titleForStage(state)}</h2>
           <div className="notice" role="status">
-            {state.notice}
+            {ai?.waiting ? ai.paused ? 'Use Undo or Redo to review the game, or resume the AI from here.' : 'Your opponent is thinking. Your progress is saved.' : state.notice}
           </div>
           <DiscoveryChecklist state={state} />
           {online && !online.waiting && isInvestigatorReview(state) && <>

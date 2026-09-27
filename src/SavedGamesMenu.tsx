@@ -98,7 +98,7 @@ function SavedGameEntry({ game, library, active, busy, onResume, onLeave, onBusy
         aria-labelledby={`${labelId}-name ${labelId}-details`} onClick={onResume}>
         <span id={`${labelId}-details`} className="saved-game-details">
           <strong>{savedGameTime(game)}</strong>
-          <span>{savedGameMode(game)}{game.mode !== 'same-device' && ` · ${game.session.role === 'jack' ? 'Jack' : 'Investigators'}`}{active && ' · Current game'}</span>
+          <span>{savedGameMode(game)}{(game.mode === 'by-mail' || game.mode === 'online') && ` · ${game.session.role === 'jack' ? 'Jack' : 'Investigators'}`}{active && ' · Current game'}</span>
           <span>{savedGameStatus(game)}{game.mode === 'online' && ' (last known)'}</span>
         </span>
       </button>

@@ -522,6 +522,33 @@ test('Jack can preview all shortest routes to a hovered future location', async 
   await expect(page.locator('.route-turn-count').first()).toBeVisible()
 })
 
+for (const scenario of [
+  { name: 'the final discovery', initial: [33, 46, 147], target: 159, expected: [33, 46, 147, 159] },
+  { name: 'a replacement with four discoveries selected', initial: [33, 46, 147, 159], target: 34, expected: [34, 46, 147, 159] },
+  { name: 'an already selected discovery with all four chosen', initial: [33, 46, 147, 159], target: 33, expected: [33, 46, 147, 159] },
+]) {
+  test(`middle-clicking ${scenario.name} submits the choices and preserves undo and refresh`, async ({ page }) => {
+    await page.goto('/')
+    // Partial middle-clicks select without ending the turn; selecting an
+    // existing choice with the middle button must not toggle it off.
+    await page.getByLabel('Location 33, selectable', { exact: true }).click({ button: 'middle' })
+    await page.getByLabel('Location 33, selectable', { exact: true }).click({ button: 'middle' })
+    await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
+    await expect(page.getByLabel('1 player actions')).toHaveText('Actions 1')
+    for (const id of scenario.initial.slice(1)) await page.getByLabel(`Location ${id}, selectable`, { exact: true }).click()
+    await page.getByLabel(new RegExp(`^Location ${scenario.target}(, selectable)?$`)).click({ button: 'middle' })
+    await expect(page.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
+    await page.reload()
+    await expect(page.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
+    await page.getByRole('button', { name: 'Undo!', exact: true }).click()
+    await page.getByRole('button', { name: /reveal the restored view/i }).click()
+    await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
+    expect((await page.locator('.quadrant-card strong').allTextContents()).map(Number).sort((a, b) => a - b)).toEqual(scenario.expected)
+    await page.getByRole('button', { name: 'Redo Side', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
+  })
+}
+
 test('middle-clicking an unselected valid Jack destination selects and submits the move', async ({ page }) => {
   await page.goto('/')
   for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
@@ -617,7 +644,7 @@ test('Jack peek uses Street turn distances when hovering over Jack', async ({ pa
   await expect(page.locator('.route-preview-location')).toHaveCount(0)
 })
 
-test('active investigator can stay by clicking the piece', async ({ page }) => {
+test('logs investigator moves and staying put, including after undo, redo, and refresh', async ({ page }) => {
   await page.goto('/')
   for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
   await page.getByRole('button', { name: 'Lock in four locations' }).click()
@@ -651,6 +678,28 @@ test('active investigator can stay by clicking the piece', async ({ page }) => {
       y: circle.getAttribute('cy'),
     })),
   ).toEqual(positionBefore)
+
+  const publicLog = page.locator('.public-log > ol > li')
+  const expectedLog = [
+    'M0: Jack began the hunt at Discovery Location 33.',
+    'M1: Jack advanced to move 1.',
+    'M1: yellow stayed at FP.',
+  ]
+  await expect(publicLog).toHaveText(expectedLog)
+  for (const [color, start] of [['blue', 'HP'], ['red', 'HZ']]) {
+    const destination = page.getByLabel(`Legal ${color} Investigator destinations`).getByRole('button').nth(1)
+    const crossing = await destination.innerText()
+    await destination.click()
+    expectedLog.push(`M1: ${color} moved ${start}→${crossing}.`)
+    await expect(publicLog).toHaveText(expectedLog)
+  }
+
+  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(publicLog).toHaveText(expectedLog.slice(0, -1))
+  await page.getByRole('button', { name: 'Redo', exact: true }).click()
+  await expect(publicLog).toHaveText(expectedLog)
+  await page.reload()
+  await expect(publicLog).toHaveText(expectedLog)
 })
 
 test('moving to a hovered crossing clears its shortest-path indicators', async ({ page }) => {
@@ -982,7 +1031,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
   await page.getByRole('button', { name: /reveal my view/i }).click()
-  await expect(page.getByText('Round 1 · Move 1 of 15')).toBeVisible()
+  await expect(page.getByText('Round 1 · Move 1 · SameDevice')).toBeVisible()
   await expect(page.getByLabel('Move 0, location 33')).toContainText('33')
   await expect(page.getByLabel(`Move 1, location ${firstDestination}`)).toContainText(String(firstDestination))
   const pastPathToggle = page.getByRole('checkbox', { name: 'past', exact: true })

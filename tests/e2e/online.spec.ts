@@ -166,10 +166,10 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
     expect(await investigators.evaluate(() => window.turnAlertProbe.requestedFromGesture)).toBe(true)
     expect(await investigators.evaluate(() => window.turnAlertProbe.flashes)).toEqual([])
 
-    for (const id of [33, 46, 147, 159]) {
+    for (const id of [33, 46, 147]) {
       await jack.getByLabel(`Location ${id}, selectable`, { exact: true }).click()
     }
-    await jack.getByRole('button', { name: 'Lock in four locations' }).click()
+    await jack.getByLabel('Location 159, selectable', { exact: true }).click({ button: 'middle' })
     await expect(investigators.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
     await expect(investigators.locator('.jack-peek-toggle, .private-discovery, .jack-marker')).toHaveCount(0)
     await expect.poll(() => investigators.evaluate(() => window.turnAlertProbe.flashes)).toEqual([500])
