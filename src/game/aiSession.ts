@@ -40,8 +40,12 @@ export function aiHistoryReducer(history: GameHistory, command: HistoryCommand, 
     cursor -= 1
     while (cursor > 0 && isAutomaticHandoff(history, cursor, role, waitEnd)) cursor -= 1
     if (command.type === 'bigUndo') {
-      const owner = playerViewForState(history.entries[cursor]!.state)
-      while (cursor > 0 && playerViewForState(history.entries[cursor - 1]!.state) === owner &&
+      const ownerAt = (index: number) => {
+        const state = history.entries[index]!.state
+        return waitEnd && isHumanTurnEnd(state, role) ? role : playerViewForState(state)
+      }
+      const owner = ownerAt(cursor)
+      while (cursor > 0 && ownerAt(cursor - 1) === owner &&
         !isAutomaticHandoff(history, cursor - 1, role, waitEnd)) cursor -= 1
     }
   } else if (command.type === 'redo') {

@@ -57,6 +57,7 @@ describe('Versus AI history', () => {
     expect(needsAiTurn(confirmed, role)).toBe(true)
     expect(needsAiEndConfirmation(confirmed, role)).toBe(false)
     expect(currentHistoryState(aiHistoryReducer(confirmed, { type: 'undo' }, role, true)).stage).toBe(reviewStage)
+    expect(aiHistoryReducer(confirmed, { type: 'bigUndo' }, role, true).cursor).toBe(0)
     const automatic = aiHistoryReducer(initial, { type: 'apply', action }, role)
     expect(currentHistoryState(automatic).stage).toBe(aiStage)
   })
@@ -72,6 +73,14 @@ describe('Versus AI history', () => {
     expect(currentHistoryState(confirmed).round).toBe(2)
     expect(currentHistoryState(confirmed).reachedDiscoveries).toEqual([33, 46])
     expect(currentHistoryState(confirmed).moveSlot).toBe(0)
+  })
+
+  test('WaitEnd shows a finished game immediately without asking to hand off', () => {
+    const initial = createGameHistory({ ...roundHistory().entries[1]!.state, moveSlot: 14 })
+    const finished = aiHistoryReducer(initial, { type: 'apply', action: { type: 'confirmJackMove' } }, 'jack', true)
+    expect(currentHistoryState(finished).stage).toBe('gameOver')
+    expect(needsAiEndConfirmation(finished, 'jack')).toBe(false)
+    expect(needsAiTurn(finished, 'jack')).toBe(false)
   })
 
   test.each(['jack', 'investigators'] as const)('lets %s traverse both sides all the way back and forward without changing recorded actions', role => {

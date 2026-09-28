@@ -34,6 +34,112 @@ async function start(page: Page, role: 'Jack' | 'Investigator') {
   await page.getByRole('button', { name: `Play as ${role}`, exact: true }).click()
 }
 
+test('WaitEnd holds Jack setup and middle-clicked moves until confirmation, including after refresh', async ({ page }) => {
+  let workers = 0
+  page.on('worker', () => { workers += 1 })
+  await start(page, 'Jack')
+  await expect(page.getByLabel('WaitEnd', { exact: true })).not.toBeChecked()
+  await page.getByLabel('WaitEnd', { exact: true }).check()
+  for (const id of [33, 46, 147]) await page.getByLabel(`Location ${id}, selectable`, { exact: true }).click()
+  await page.getByLabel('Location 159, selectable', { exact: true }).click({ button: 'middle' })
+  const endTurn = page.getByRole('button', { name: 'End turn', exact: true })
+  await expect(endTurn).toBeVisible()
+  expect(currentHistoryState(await savedHistory(page)).stage).toBe('handoffInspectorsSetup')
+  expect(workers).toBe(0)
+  await page.reload()
+  await expect(page.getByLabel('WaitEnd', { exact: true })).toBeChecked()
+  await expect(endTurn).toBeVisible()
+  expect(workers).toBe(0)
+  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Redo', exact: true }).click()
+  await expect(endTurn).toBeVisible()
+  expect(workers).toBe(0)
+  await endTurn.click()
+  await expect(page.getByRole('heading', { name: 'Jack: Choose the Starting Location' })).toBeVisible({ timeout: 15000 })
+  expect(workers).toBeGreaterThan(0)
+  await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
+  const destination = await page.getByLabel('Legal Jack destinations').getByRole('button').first().innerText()
+  const beforeMove = workers
+  await page.getByLabel(`Location ${destination}, selectable`, { exact: true }).click({ button: 'middle' })
+  await expect(endTurn).toBeVisible()
+  expect(currentHistoryState(await savedHistory(page)).stage).toBe('handoffInspectorsTurn')
+  expect(workers).toBe(beforeMove)
+  await page.reload()
+  await expect(endTurn).toBeVisible()
+  expect(workers).toBe(beforeMove)
+  await endTurn.click()
+  await expect(page.getByRole('heading', { name: /Jack: Escape in the Night|Jack Was Stopped/ })).toBeVisible({ timeout: 15000 })
+  expect(workers).toBeGreaterThan(beforeMove)
+})
+
+test('WaitEnd holds investigator deployment before AI Jack chooses a start', async ({ page }) => {
+  await start(page, 'Investigator')
+  await expect(page.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible({ timeout: 15000 })
+  await page.getByLabel('WaitEnd', { exact: true }).check()
+  for (const crossing of ['FP', 'HP', 'HZ']) await page.getByLabel('Available deployment crossings').getByRole('button', { name: crossing, exact: true }).click()
+  const endTurn = page.getByRole('button', { name: 'End turn', exact: true })
+  await expect(endTurn).toBeVisible()
+  expect(currentHistoryState(await savedHistory(page)).stage).toBe('investigatorSetupResult')
+  await expect(page.locator('.jack-marker')).toHaveCount(0)
+  await page.reload()
+  await expect(endTurn).toBeVisible()
+  await endTurn.click()
+  await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move', exact: true })).toBeVisible({ timeout: 15000 })
+  await expect(page.getByLabel('WaitEnd', { exact: true })).toBeChecked()
+})
+
+for (const finish of ['InvAuto', 'Rand Side'] as const) {
+  test(`WaitEnd stops ${finish} before the AI and keeps review through undo/redo`, async ({ page }) => {
+    const history = jackMoveHistory()
+    await restoreGame(page, history, 'investigators')
+    // A held worker lets the test observe the exact confirmation boundary.
+    await page.route('**/src/game/ai.worker.ts*', route => route.fulfill({ contentType: 'application/javascript', body: 'self.onmessage = () => {}' }))
+    let workers = 0
+    page.on('worker', () => { workers += 1 })
+    await page.goto('/')
+    await page.getByLabel('WaitEnd', { exact: true }).check()
+    const waitBounds = await page.locator('.wait-end-toggle').boundingBox()
+    const autoBounds = await page.locator('.investigator-auto-toggle').boundingBox()
+    expect(waitBounds!.x + waitBounds!.width).toBeLessThanOrEqual(autoBounds!.x)
+    if (finish === 'InvAuto') {
+      await page.getByLabel('InvAuto', { exact: true }).check()
+      for (const color of ['yellow', 'blue', 'red']) await page.getByLabel(`Legal ${color} Investigator destinations`).getByRole('button').first().click()
+    } else {
+      await page.getByRole('button', { name: 'Rand Side', exact: true }).click()
+    }
+    const endTurn = page.getByRole('button', { name: 'End turn', exact: true })
+    await expect(endTurn).toBeVisible()
+    const review = await savedHistory(page)
+    expect(currentHistoryState(review).stage).toBe('investigatorTurnResult')
+    expect(workers).toBe(0)
+    await page.getByLabel('Whitehall game board').click({ position: { x: 10, y: 10 } })
+    await expect(endTurn).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Rand', exact: true })).toBeDisabled()
+    await expect(page.locator('.jack-marker')).toHaveCount(0)
+    await page.reload()
+    await expect(page.getByLabel('WaitEnd', { exact: true })).toBeChecked()
+    await expect(endTurn).toBeVisible()
+    expect(await savedHistory(page)).toEqual(review)
+    expect(workers).toBe(0)
+    await page.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Red Investigator: Clues and Suspicion', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Redo', exact: true }).click()
+    await expect(endTurn).toBeVisible()
+    expect(await savedHistory(page)).toEqual(review)
+    expect(workers).toBe(0)
+    if (finish === 'InvAuto') await endTurn.click()
+    else await page.getByLabel('WaitEnd', { exact: true }).uncheck()
+    await expect(page.getByRole('heading', { name: 'AI turn', exact: true })).toBeVisible()
+    await expect.poll(() => workers).toBeGreaterThan(0)
+    if (finish === 'Rand Side') {
+      await page.reload()
+      await expect(page.getByLabel('WaitEnd', { exact: true })).not.toBeChecked()
+      await expect(page.getByRole('heading', { name: 'AI turn', exact: true })).toBeVisible()
+    }
+  })
+}
+
 test('plays as Jack through AI deployment and a coordinated investigator turn, then resumes', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))

@@ -2147,26 +2147,26 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               Round {state.round} · Move {state.moveSlot}
             </span>
             <div className="control-panel-toggles">
-            {ai && <label className="wait-end-toggle" title="Confirm the end of your turn before the AI acts">
-              <input type="checkbox" checked={ai.waitEnd} onChange={event => ai.onWaitEndChange(event.target.checked)} />
-              WaitEnd
-            </label>}
-            {isInspectorInteraction(state.stage) && (
-              <label className="investigator-auto-toggle">
-                <input
-                  type="checkbox"
-                  checked={investigatorAuto}
-                  onChange={(event) => {
-                    const checked = event.target.checked
-                    setInvestigatorAuto(checked)
-                    const storage = browserStorage()
-                    if (storage) saveBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY, checked)
-                    if (checked) applyHistoryCommands([], true)
-                  }}
-                />
-                InvAuto
-              </label>
-            )}
+              {ai && <label className="wait-end-toggle" title="Confirm the end of your turn before the AI acts">
+                <input type="checkbox" checked={ai.waitEnd} onChange={event => ai.onWaitEndChange(event.target.checked)} />
+                WaitEnd
+              </label>}
+              {isInspectorInteraction(state.stage) && (
+                <label className="investigator-auto-toggle">
+                  <input
+                    type="checkbox"
+                    checked={investigatorAuto}
+                    onChange={(event) => {
+                      const checked = event.target.checked
+                      setInvestigatorAuto(checked)
+                      const storage = browserStorage()
+                      if (storage) saveBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY, checked)
+                      if (checked) applyHistoryCommands([], true)
+                    }}
+                  />
+                  InvAuto
+                </label>
+              )}
             </div>
           </div>
           <h2>{ai?.awaitingEnd ? 'Review your turn' : remote?.waiting ? ai ? ai.paused ? 'AI turn paused' : 'AI turn' : online?.waitingMessage ?? 'Waiting for your partner' : titleForStage(state)}</h2>
