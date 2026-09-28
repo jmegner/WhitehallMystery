@@ -11,6 +11,7 @@ export const INVESTIGATOR_KNOW_STORAGE_KEY = 'whitehall-mystery.show-investigato
 export const POSSIBLE_LOCATIONS_STORAGE_KEY = 'whitehall-mystery.show-possible-locations'
 export const JACK_PEEK_STORAGE_KEY = 'whitehall-mystery.show-jack-peek'
 export const INVESTIGATOR_AUTO_STORAGE_KEY = 'whitehall-mystery.investigator-auto'
+export const AI_WAIT_END_STORAGE_KEY = 'whitehall-mystery.ai-wait-end'
 
 const GAME_STORAGE_VERSION = 2
 

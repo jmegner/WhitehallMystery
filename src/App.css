@@ -902,12 +902,20 @@ button:disabled {
 
 .control-panel-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
 }
 
-.investigator-auto-toggle {
+.control-panel-toggles {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.investigator-auto-toggle,
+.wait-end-toggle {
   display: flex;
   align-items: center;
   gap: 0.35rem;

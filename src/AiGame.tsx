@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import App from './App'
-import { needsAiTurn, resumeAiHistory } from './game/aiSession'
+import { aiHistoryReducer, needsAiEndConfirmation, needsAiTurn, resumeAiHistory } from './game/aiSession'
+import { AI_WAIT_END_STORAGE_KEY, loadBooleanPreference, saveBooleanPreference } from './game/persistence'
 import { type GameHistory, type PlayerView } from './game/history'
 import type { SavedGameLibrary } from './game/savedGames'
 
@@ -10,6 +11,10 @@ export default function AiGame({ id, history, role, library, onNewGame, onResume
 }) {
   const [failure, setFailure] = useState<{ history: GameHistory; message: string } | null>(null)
   const [retry, setRetry] = useState(0)
+  const [waitEnd, setWaitEnd] = useState(() => {
+    try { return loadBooleanPreference(localStorage, AI_WAIT_END_STORAGE_KEY) } catch { return false }
+  })
+  const awaitingEnd = needsAiEndConfirmation(history, role)
   const waiting = needsAiTurn(history, role)
   const paused = waiting && history.cursor < history.entries.length - 1
   const error = failure?.history === history ? failure.message : ''
@@ -48,6 +53,14 @@ export default function AiGame({ id, history, role, library, onNewGame, onResume
       {paused && <p role="status">AI paused while reviewing earlier actions. <button onClick={() => library.saveLocal(id, resumeAiHistory(history))}>Resume AI turn</button></p>}
       {error && <p role="alert">{error} <button onClick={() => { setFailure(null); setRetry(value => value + 1) }}>Retry AI turn</button></p>}
     </section>
-    <App gameId={id} ai={{ history, role, waiting, paused, onChange: next => library.saveLocal(id, next) }} onNewGame={onNewGame} />
+    <App gameId={id} ai={{
+      history, role, waiting: waiting || awaitingEnd, paused, waitEnd, awaitingEnd,
+      onWaitEndChange: checked => {
+        setWaitEnd(checked)
+        try { saveBooleanPreference(localStorage, AI_WAIT_END_STORAGE_KEY, checked) } catch { /* Storage may be unavailable. */ }
+        if (!checked && awaitingEnd) library.saveLocal(id, aiHistoryReducer(history, { type: 'apply', action: { type: 'continueHandoff' } }, role))
+      },
+      onChange: next => library.saveLocal(id, next),
+    }} onNewGame={onNewGame} />
   </>
 }

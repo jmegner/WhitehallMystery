@@ -32,7 +32,7 @@ import {
   type SearchOutcome,
 } from './game/inference'
 import { automaticInvestigatorActions } from './game/investigatorAuto'
-import { aiHistoryReducer } from './game/aiSession'
+import { aiHistoryReducer, needsAiEndConfirmation } from './game/aiSession'
 import PublicHuntLog from './PublicHuntLog'
 import {
   actionCount,
@@ -1564,7 +1564,11 @@ function HandoffScreen({
 
 interface AppProps {
   gameId?: string
-  ai?: { history: GameHistory; role: PlayerView; waiting: boolean; paused: boolean; onChange: (history: GameHistory) => void }
+  ai?: {
+    history: GameHistory; role: PlayerView; waiting: boolean; paused: boolean
+    waitEnd: boolean; awaitingEnd: boolean; onWaitEndChange: (checked: boolean) => void
+    onChange: (history: GameHistory) => void
+  }
   local?: { history: GameHistory; onChange: (history: GameHistory) => void }
   mail?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; onChange: (history: GameHistory) => void }
   online?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; waitingMessage?: string; requestUndo?: { canRequest: boolean; onRequest: () => void }; onCommands: (commands: HistoryCommand[]) => void }
@@ -1626,7 +1630,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     const acceptedCommands: HistoryCommand[] = []
     for (const command of commands) {
       const previous = next
-      next = ai ? aiHistoryReducer(next, command, ai.role) : online ? onlineHistoryReducer(next, command, online.role, online.turnStart)
+      next = ai ? aiHistoryReducer(next, command, ai.role, ai.waitEnd) : online ? onlineHistoryReducer(next, command, online.role, online.turnStart)
         : mail ? mailHistoryReducer(next, command, mail.role, mail.turnStart) : gameHistoryReducer(next, command)
       if (next !== previous) acceptedCommands.push(command)
     }
@@ -1638,7 +1642,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
         const automaticCommands = online ? reviewOnlineAutomaticPasses(history, acceptedCommands, automatic.commands) : automatic.commands
         for (const command of automaticCommands) {
           const previous = next
-          next = ai ? aiHistoryReducer(next, command, ai.role) : online ? onlineHistoryReducer(next, command, online.role, online.turnStart)
+          next = ai ? aiHistoryReducer(next, command, ai.role, ai.waitEnd) : online ? onlineHistoryReducer(next, command, online.role, online.turnStart)
             : mailHistoryReducer(next, command, remote.role, remote.turnStart)
           if (next !== previous) acceptedCommands.push(command)
         }
@@ -1714,6 +1718,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     // or future game states cannot lock up the UI.
     for (let actionCount = 0; actionCount < 100; actionCount += 1) {
       const nextState = currentHistoryState(next)
+      if (ai?.waitEnd && needsAiEndConfirmation(next, ai.role)) break
       // Rand Side includes result confirmation, but must never play the
       // opponent's turn after the online reducer normalizes the handoff.
       if ((online || ai) && playerViewForState(nextState) !== side) break
@@ -1731,7 +1736,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
       let progressed = false
       for (const action of actions) {
         const command = { type: 'apply' as const, action }
-        const advanced = ai ? aiHistoryReducer(next, command, ai.role) : online ? onlineHistoryReducer(next, command, online.role, online.turnStart) : gameHistoryReducer(next, command)
+        const advanced = ai ? aiHistoryReducer(next, command, ai.role, ai.waitEnd) : online ? onlineHistoryReducer(next, command, online.role, online.turnStart) : gameHistoryReducer(next, command)
         if (advanced !== next) {
           next = advanced
           commands.push(command)
@@ -2141,6 +2146,11 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
             <span className="eyebrow">
               Round {state.round} · Move {state.moveSlot}
             </span>
+            <div className="control-panel-toggles">
+            {ai && <label className="wait-end-toggle" title="Confirm the end of your turn before the AI acts">
+              <input type="checkbox" checked={ai.waitEnd} onChange={event => ai.onWaitEndChange(event.target.checked)} />
+              WaitEnd
+            </label>}
             {isInspectorInteraction(state.stage) && (
               <label className="investigator-auto-toggle">
                 <input
@@ -2154,15 +2164,19 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                     if (checked) applyHistoryCommands([], true)
                   }}
                 />
-                inv auto
+                InvAuto
               </label>
             )}
+            </div>
           </div>
-          <h2>{remote?.waiting ? ai ? ai.paused ? 'AI turn paused' : 'AI turn' : online?.waitingMessage ?? 'Waiting for your partner' : titleForStage(state)}</h2>
+          <h2>{ai?.awaitingEnd ? 'Review your turn' : remote?.waiting ? ai ? ai.paused ? 'AI turn paused' : 'AI turn' : online?.waitingMessage ?? 'Waiting for your partner' : titleForStage(state)}</h2>
           <div className="notice" role="status">
-            {ai?.waiting ? ai.paused ? 'Use Undo or Redo to review the game, or resume the AI from here.' : 'Your opponent is thinking. Your progress is saved.' : state.notice}
+            {ai?.awaitingEnd ? 'Review your actions or use Undo to make changes, then end your turn for the AI to play.' : ai?.waiting ? ai.paused ? 'Use Undo or Redo to review the game, or resume the AI from here.' : 'Your opponent is thinking. Your progress is saved.' : state.notice}
           </div>
           <DiscoveryChecklist state={state} />
+          {ai?.awaitingEnd && <button className="primary-button" type="button" onClick={() => dispatch({ type: 'continueHandoff' })}>
+            End turn
+          </button>}
           {online && !online.waiting && isInvestigatorReview(state) && <>
             <p>Review the investigators’ {state.stage === 'investigatorSetupResult' ? 'starting positions' : 'moves and actions'}. You can still undo before handing the turn to Jack.</p>
             <button className="primary-button" type="button" onClick={() => dispatch({ type: 'continueHandoff' })}>
