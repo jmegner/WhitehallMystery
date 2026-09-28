@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import './App.css'
 import { normalizeMailHistory, mailHistoryReducer, mailBoardState } from './game/byMail'
@@ -34,6 +34,8 @@ import {
 import { automaticInvestigatorActions } from './game/investigatorAuto'
 import { aiHistoryReducer, needsAiEndConfirmation } from './game/aiSession'
 import PublicHuntLog from './PublicHuntLog'
+import { indicatorTextAttributes } from './indicatorLayout'
+import { useIndicatorLayout } from './useIndicatorLayout'
 import {
   actionCount,
   canBigUndo,
@@ -128,38 +130,6 @@ const CLUE_CIRCLE_RADIUS = LOCATION_OUTLINES.clue.radius
 const OVERLAPPING_CLUE_CIRCLE_RADIUS = LOCATION_OUTLINES.clueOutsideLegal.radius
 const INVESTIGATOR_MAYBE_CROSSING_SIZE = 15
 
-type IndicatorAngle = 'above' | 'upper-right'
-
-const INDICATOR_OFFSETS = {
-  location: { above: 24, diagonalX: 17, diagonalY: 13 },
-  crossingTurn: { above: 15, diagonalX: 12, diagonalY: 7 },
-  crossingId: { above: 9, diagonalX: 10, diagonalY: 6 },
-} as const
-
-const indicatorTextPosition = (
-  x: number,
-  y: number,
-  usualAngle: IndicatorAngle,
-  alternateAngle: boolean,
-  offsets: { above: number; diagonalX: number; diagonalY: number },
-) => {
-  const angle = alternateAngle
-    ? usualAngle === 'above' ? 'upper-right' : 'above'
-    : usualAngle
-  if (angle === 'above') {
-    return {
-      x,
-      y: y < 40 ? y + offsets.above + 6 : y - offsets.above,
-      textAnchor: 'middle' as const,
-    }
-  }
-  const placeLeft = x > BOARD_SIZE - 70
-  return {
-    x: x + (placeLeft ? -offsets.diagonalX : offsets.diagonalX),
-    y: y < 40 ? y + offsets.diagonalY + 11 : y - offsets.diagonalY,
-    textAnchor: placeLeft ? 'end' as const : 'start' as const,
-  }
-}
 const HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE = 24
 const QUADRANTS: Quadrant[] = ['NW', 'NE', 'SW', 'SE']
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
@@ -320,6 +290,8 @@ function GameBoard({
   onCrossing,
   onMapClick,
 }: BoardProps) {
+  const board = useRef<SVGSVGElement>(null)
+  useIndicatorLayout(board, alternateIndicatorAngle)
   const [hoveredMaybeId, setHoveredMaybeId] = useState<number | null>(null)
   const [hoveredInvestigator, setHoveredInvestigator] = useState<InvestigatorColor | null>(null)
   const [hoveredInvestigatorStart, setHoveredInvestigatorStart] = useState<string | null>(null)
@@ -522,6 +494,7 @@ function GameBoard({
 
   return (
     <svg
+      ref={board}
       className={`game-board${showInvestigatorKnowledge ? ' investigator-knowledge-preview' : ''}`}
       viewBox={`${BOARD_VIEWPORT.x} ${BOARD_VIEWPORT.y} ${BOARD_VIEWPORT.width} ${BOARD_VIEWPORT.height}`}
       role="img"
@@ -884,20 +857,12 @@ function GameBoard({
         [...possibleOutcomes].filter(([, outcome]) => outcome.ifNo.size > 0).map(([id, outcome]) => {
           const circle = circlesById.get(id)
           if (!circle) return null
-          const position = indicatorTextPosition(
-            circle.x,
-            circle.y,
-            'upper-right',
-            alternateIndicatorAngle,
-            INDICATOR_OFFSETS.location,
-          )
+          const position = indicatorTextAttributes(circle.x, circle.y, 'location')
           return (
             <text
               key={`possible-count-${id}`}
               className="possible-outcome-count"
-              x={position.x}
-              y={position.y}
-              textAnchor={position.textAnchor}
+              {...position}
               aria-label={`Search outcome at ${id}: ${outcome.ifNo.size} if no, ${outcome.ifYes.size} if yes`}
             >
               <tspan className="outcome-count-no">{outcome.ifNo.size}</tspan>
@@ -911,20 +876,12 @@ function GameBoard({
         .map(([id, label]) => {
           const circle = circlesById.get(id)
           if (!circle) return null
-          const position = indicatorTextPosition(
-            circle.x,
-            circle.y,
-            'above',
-            alternateIndicatorAngle,
-            INDICATOR_OFFSETS.location,
-          )
+          const position = indicatorTextAttributes(circle.x, circle.y, 'location')
           return (
             <text
               key={`route-turn-${id}`}
               className="route-turn-count"
-              x={position.x}
-              y={position.y}
-              textAnchor={position.textAnchor}
+              {...position}
               aria-label={`Location ${id}: ${label} turns away`}
             >
               {label}
@@ -970,20 +927,12 @@ function GameBoard({
       {[...investigatorRoutePreview.turnLabels].map(([id, label]) => {
         const crossing = crossingsById.get(id)
         if (!crossing) return null
-        const position = indicatorTextPosition(
-          crossing.x,
-          crossing.y,
-          'above',
-          alternateIndicatorAngle,
-          INDICATOR_OFFSETS.crossingTurn,
-        )
+        const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingTurn')
         return (
           <text
             key={`investigator-route-turn-${id}`}
             className="investigator-route-turn-count"
-            x={position.x}
-            y={position.y}
-            textAnchor={position.textAnchor}
+            {...position}
             aria-label={`Crossing ${id}: ${label} turns away`}
           >
             {label}
@@ -994,20 +943,12 @@ function GameBoard({
       {[...hoveredInvestigatorTurnLabels].map(([id, label]) => {
         const crossing = crossingsById.get(id)
         if (!crossing) return null
-        const position = indicatorTextPosition(
-          crossing.x,
-          crossing.y,
-          'above',
-          alternateIndicatorAngle,
-          INDICATOR_OFFSETS.crossingTurn,
-        )
+        const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingTurn')
         return (
           <text
             key={`investigator-hover-turn-${id}`}
             className="investigator-hover-turn-count"
-            x={position.x}
-            y={position.y}
-            textAnchor={position.textAnchor}
+            {...position}
             aria-label={`Crossing ${id}: ${label} turns from ${investigatorDistanceStartId}`}
           >
             {label}
@@ -1017,20 +958,12 @@ function GameBoard({
 
       {showCrossingIds && !showCrossingTurnLabels &&
         crossings.map((crossing) => {
-          const position = indicatorTextPosition(
-            crossing.x,
-            crossing.y,
-            'above',
-            alternateIndicatorAngle,
-            INDICATOR_OFFSETS.crossingId,
-          )
+          const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingId')
           return (
             <text
               key={`crossing-label-${crossing.id}`}
               className="crossing-id-label"
-              x={position.x}
-              y={position.y}
-              textAnchor={position.textAnchor}
+              {...position}
             >
               {crossing.id}
             </text>
@@ -1945,7 +1878,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               </label>
               <label
                 className="alternate-angle-toggle"
-                title="use alternate angle for placing indicators; swap above and up-right positions for indicators"
+                title="use the second-least obscured angle for each indicator"
               >
                 <input
                   type="checkbox"

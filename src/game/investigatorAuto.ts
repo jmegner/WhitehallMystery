@@ -1,12 +1,14 @@
 import { legalInspectorActionCircles } from './gameEngine'
 import { possibleJackSearchOutcomes, type SearchOutcome } from './inference'
+import { createInvestigatorWeights } from './aiInvestigatorWeights'
+import { coveringArrests, investigatorTargets, orderedSearches, possibleLocationsFromOutcomes, soleArrestTarget } from './investigatorTactics'
 import {
   currentHistoryState,
   gameHistoryReducer,
   type GameHistory,
   type HistoryCommand,
 } from './history'
-import type { GameAction, PublicRoundEvidence } from './types'
+import { INVESTIGATOR_ORDER, type GameAction, type PublicRoundEvidence } from './types'
 
 type SearchOutcomeResolver = (evidence: PublicRoundEvidence | null) => Map<number, SearchOutcome>
 
@@ -18,39 +20,36 @@ const nextAutomaticActions = (
   if (state.stage !== 'investigatorAction' || state.inspectorActionMode !== 'search') return []
 
   const outcomes = resolveOutcomes(state.publicRound)
+  const possible = possibleLocationsFromOutcomes(outcomes)
   const adjacent = legalInspectorActionCircles(state)
-  const mostRecentlyRevealedDiscovery = state.reachedDiscoveries.at(-1)
-  const alreadyResolvedLocations = new Set(state.clueLocations)
-  if (mostRecentlyRevealedDiscovery !== undefined) {
-    alreadyResolvedLocations.add(mostRecentlyRevealedDiscovery)
+  const searching = state.checkedThisAction.length > 0
+  const color = INVESTIGATOR_ORDER[state.activeInvestigator]!
+  const available = INVESTIGATOR_ORDER.slice(state.activeInvestigator + (searching ? 1 : 0))
+  // Use ALL exact possibilities for a guaranteed capture, including positions
+  // with poor strategic prospects. Never spend an already-used arrest action.
+  const capture = coveringArrests(possible, state.investigatorPositions, available)
+  if (capture) {
+    const id = capture[color]
+    return id === undefined ? [{ type: 'passInspectorAction' }] : [
+      { type: 'setInspectorActionMode', mode: 'arrest' }, { type: 'arrestCircle', circleId: id },
+    ]
   }
-  const possibleAdjacent = adjacent.filter(
-    (id) =>
-      !state.checkedThisAction.includes(id) &&
-      !alreadyResolvedLocations.has(id) &&
-      outcomes.has(id),
-  )
+  const targets = investigatorTargets(adjacent, outcomes, possible,
+    new Set([...state.clueLocations, ...state.reachedDiscoveries.slice(-1)]), state.checkedThisAction)
 
-  if (state.checkedThisAction.length > 0) {
-    const newPossible = possibleAdjacent.find(
-      (id) => outcomes.get(id)?.positiveMeansJackIsThereNow,
-    )
-    if (newPossible !== undefined) return [{ type: 'searchCircle', circleId: newPossible }]
-    if (possibleAdjacent.length === 0) return [{ type: 'passInspectorAction' }]
-    if (possibleAdjacent.length === 1) {
-      return [{ type: 'searchCircle', circleId: possibleAdjacent[0]! }]
-    }
-    return []
+  if (searching) {
+    if (targets.searches.length === 0) return [{ type: 'passInspectorAction' }]
+    const id = orderedSearches(targets.searches, outcomes, possible, state.investigatorPositions,
+      undefined, createInvestigatorWeights(state))[0]!
+    return [{ type: 'searchCircle', circleId: id }]
   }
 
-  if (possibleAdjacent.length === 0) return [{ type: 'passInspectorAction' }]
-  if (
-    possibleAdjacent.length === 1 &&
-    outcomes.get(possibleAdjacent[0]!)?.positiveMeansJackIsThereNow
-  ) {
+  if (!targets.searches.length && !targets.arrests.length) return [{ type: 'passInspectorAction' }]
+  const onlyTarget = soleArrestTarget(targets, outcomes)
+  if (onlyTarget !== undefined) {
     return [
       { type: 'setInspectorActionMode', mode: 'arrest' },
-      { type: 'arrestCircle', circleId: possibleAdjacent[0]! },
+      { type: 'arrestCircle', circleId: onlyTarget },
     ]
   }
   return []
