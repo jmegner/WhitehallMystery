@@ -5,7 +5,7 @@ import type { GameState } from './types'
 function isHumanTurnEnd(state: GameState, role: PlayerView): boolean {
   return role === 'jack'
     ? state.stage === 'handoffInspectorsSetup' || state.stage === 'handoffInspectorsTurn'
-    : isInvestigatorReview(state) || state.stage === 'handoffJackStart' || state.stage === 'handoffJackTurn'
+    : isInvestigatorReview(state)
 }
 
 export const needsAiEndConfirmation = (history: GameHistory, role: PlayerView): boolean =>

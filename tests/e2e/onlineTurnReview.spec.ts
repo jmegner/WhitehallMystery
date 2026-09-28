@@ -72,7 +72,7 @@ test('online turn review: moving Red then auto-passing all three needs confirmat
     await jack.getByRole('button', { name: 'Record move privately' }).click()
     await expect(investigators.locator('.active-investigator-ring')).toHaveCount(1)
     await expect(investigators.locator('.investigator-piece').first()).toHaveCSS('animation-name', 'investigator-color-glow')
-    await investigators.getByLabel('inv auto', { exact: true }).check()
+    await investigators.getByLabel('InvAuto', { exact: true }).check()
     await moveInvestigators(investigators)
     await expect(investigators.getByRole('button', { name: 'End investigator turn' })).toBeVisible()
     await expect(jack.getByRole('heading', { name: 'Waiting for your partner' })).toBeVisible()
@@ -83,7 +83,7 @@ test('online turn review: moving Red then auto-passing all three needs confirmat
       { type: 'passInspectorAction' }, { type: 'passInspectorAction' }, { type: 'passInspectorAction', review: true },
     ])
     await investigators.reload()
-    await expect(investigators.getByLabel('inv auto', { exact: true })).toBeChecked()
+    await expect(investigators.getByLabel('InvAuto', { exact: true })).toBeChecked()
     await expect(investigators.getByRole('button', { name: 'End investigator turn' })).toBeVisible()
     expect((await snapshot(investigators)).historyHash).toBe(before.historyHash)
     // Still our turn: no opponent approval is needed, and redo must preserve
@@ -159,7 +159,7 @@ test('online turn review: Rand Side completes turns and pending reviews without 
       await expect(jack.getByRole('button', { name: 'Record move privately' })).toHaveCount(0)
     }
     await finishJackMove()
-    await investigators.getByLabel('inv auto', { exact: true }).uncheck()
+    await investigators.getByLabel('InvAuto', { exact: true }).uncheck()
     const before = await snapshot(investigators)
     await investigators.getByRole('button', { name: 'Rand Side', exact: true }).click()
     await expect(jack.getByRole('heading', { name: 'Jack: Escape in the Night' })).toBeVisible()
@@ -179,7 +179,7 @@ test('online turn review: Rand Side completes turns and pending reviews without 
     await finishJackMove()
     // Auto actions use one command batch, keeping this two-turn scenario below
     // the local per-IP burst limit without weakening the production limiter.
-    await investigators.getByLabel('inv auto', { exact: true }).check()
+    await investigators.getByLabel('InvAuto', { exact: true }).check()
     await moveInvestigators(investigators)
     await finishReview('End investigator turn', 'jackMove')
     await expect(jack.getByRole('heading', { name: 'Jack: Escape in the Night' })).toBeVisible()

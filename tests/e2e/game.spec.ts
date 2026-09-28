@@ -979,7 +979,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
     'title',
     "show what places are useful to search/arrest because Jack may be/was there; does not show places that he could have been but can't be now and searching would not help narrow down where he is",
   )
-  await expect(page.getByLabel('inv auto')).toBeVisible()
+  await expect(page.getByLabel('InvAuto')).toBeVisible()
   await expect(page.getByRole('button', { name: /reveal my view/i })).toHaveCount(0)
   await expect(page.getByText('Reachable via Coach', { exact: true })).toHaveCount(0)
   await expect(page.getByText('Private route')).toHaveCount(0)
@@ -1105,10 +1105,10 @@ test('remembers the investigator auto preference', async ({ page }) => {
   await page.getByRole('button', { name: 'Lock in four locations' }).click()
   await page.locator('.app-header').click()
 
-  const investigatorAuto = page.getByLabel('inv auto')
+  const investigatorAuto = page.getByLabel('InvAuto')
   await investigatorAuto.check()
   await page.reload()
-  await expect(page.getByLabel('inv auto')).toBeChecked()
+  await expect(page.getByLabel('InvAuto')).toBeChecked()
 })
 
 test('keeps the mobile layout within the viewport', async ({ page }) => {

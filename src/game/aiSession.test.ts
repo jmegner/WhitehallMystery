@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest'
-import { aiHistoryReducer, needsAiTurn, resumeAiHistory } from './aiSession'
+import { aiHistoryReducer, needsAiEndConfirmation, needsAiTurn, resumeAiHistory } from './aiSession'
 import { createInitialGame, legalNormalDestinations } from './gameEngine'
-import { createGameHistory, currentHistoryState, gameHistoryReducer, type GameHistory } from './history'
+import { createGameHistory, currentHistoryState, gameHistoryReducer, type GameHistory, type PlayerView } from './history'
 import { normalizeRemoteHistory } from './remoteHistory'
-import { INVESTIGATOR_ORDER, type GameAction } from './types'
+import { INVESTIGATOR_ORDER, type GameAction, type GameState } from './types'
 
 function roundHistory(): GameHistory {
   let history = createGameHistory({ ...createInitialGame(), stage: 'jackMove', currentJack: 33,
@@ -21,6 +21,59 @@ function roundHistory(): GameHistory {
 }
 
 describe('Versus AI history', () => {
+  test.each<{
+    name: string; role: PlayerView; state: GameState; action: GameAction; reviewStage: GameState['stage']; aiStage: GameState['stage']
+  }>([
+    {
+      name: 'Jack discovery choices', role: 'jack',
+      state: { ...createInitialGame(), discoveryLocations: [33, 46, 147, 159] },
+      action: { type: 'confirmDiscoveries' }, reviewStage: 'handoffInspectorsSetup', aiStage: 'investigatorSetup',
+    },
+    {
+      name: 'Jack movement', role: 'jack', state: roundHistory().entries[1]!.state,
+      action: { type: 'confirmJackMove' }, reviewStage: 'handoffInspectorsTurn', aiStage: 'investigatorMove',
+    },
+    {
+      name: 'investigator deployment', role: 'investigators',
+      state: { ...createInitialGame(), stage: 'investigatorSetup', activeInvestigator: 2, investigatorPositions: { yellow: 'FP', blue: 'HP' } },
+      action: { type: 'placeInvestigator', crossingId: 'HZ' }, reviewStage: 'investigatorSetupResult', aiStage: 'jackChooseStart',
+    },
+    {
+      name: 'investigator actions', role: 'investigators',
+      state: { ...roundHistory().entries[0]!.state, stage: 'investigatorAction', activeInvestigator: 2 },
+      action: { type: 'passInspectorAction' }, reviewStage: 'investigatorTurnResult', aiStage: 'jackMove',
+    },
+  ])('WaitEnd holds $name until confirmation and preserves the review through undo/redo', ({ role, state, action, reviewStage, aiStage }) => {
+    const initial = createGameHistory(state)
+    const review = aiHistoryReducer(initial, { type: 'apply', action }, role, true)
+    expect(currentHistoryState(review).stage).toBe(reviewStage)
+    expect(needsAiEndConfirmation(review, role)).toBe(true)
+    expect(needsAiTurn(review, role)).toBe(false)
+    const undone = aiHistoryReducer(review, { type: 'undo' }, role, true)
+    expect(undone.cursor).toBe(0)
+    expect(aiHistoryReducer(undone, { type: 'redo' }, role, true)).toEqual(review)
+    const confirmed = aiHistoryReducer(review, { type: 'apply', action: { type: 'continueHandoff' } }, role, true)
+    expect(currentHistoryState(confirmed).stage).toBe(aiStage)
+    expect(needsAiTurn(confirmed, role)).toBe(true)
+    expect(needsAiEndConfirmation(confirmed, role)).toBe(false)
+    expect(currentHistoryState(aiHistoryReducer(confirmed, { type: 'undo' }, role, true)).stage).toBe(reviewStage)
+    const automatic = aiHistoryReducer(initial, { type: 'apply', action }, role)
+    expect(currentHistoryState(automatic).stage).toBe(aiStage)
+  })
+
+  test('WaitEnd keeps discovery reveals and the next round behind investigator confirmation', () => {
+    const initial = createGameHistory({ ...roundHistory().entries[0]!.state,
+      stage: 'investigatorAction', activeInvestigator: 2, currentJack: 46, roundTrail: [33, 46], moveSlot: 7,
+    })
+    const review = aiHistoryReducer(initial, { type: 'apply', action: { type: 'passInspectorAction' } }, 'investigators', true)
+    expect(currentHistoryState(review).round).toBe(1)
+    expect(currentHistoryState(review).reachedDiscoveries).toEqual([33])
+    const confirmed = aiHistoryReducer(review, { type: 'apply', action: { type: 'continueHandoff' } }, 'investigators', true)
+    expect(currentHistoryState(confirmed).round).toBe(2)
+    expect(currentHistoryState(confirmed).reachedDiscoveries).toEqual([33, 46])
+    expect(currentHistoryState(confirmed).moveSlot).toBe(0)
+  })
+
   test.each(['jack', 'investigators'] as const)('lets %s traverse both sides all the way back and forward without changing recorded actions', role => {
     const original = roundHistory()
     let history = original
