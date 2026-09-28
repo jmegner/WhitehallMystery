@@ -1,10 +1,11 @@
 import { useState, useSyncExternalStore } from 'react'
 import App from './App'
 import AiGame from './AiGame'
+import PublicHuntLog from './PublicHuntLog'
 import { MailQrShare, MailQrReader } from './MailQr'
 import { acceptMail, decodeMail, encodeMail, mailTimestamp, mailUrl, otherPlayer, isMailBoundary, mailTurns, mailTurnTimestamp, reviewMailCorrection, mailHistoryReducer, normalizeMailHistory } from './game/byMail'
 import { SECRET_INFO_UNDO_WARNING, undoIncludesSecretInfo } from './game/undoWarning'
-import { createGameHistory, currentHistoryState, playerViewForState, type GameHistory, type PlayerView } from './game/history'
+import { createGameHistory, currentHistoryState, gameRecap, playerViewForState, type GameHistory, type PlayerView } from './game/history'
 import { createInitialGame } from './game/gameEngine'
 import { SavedGameLibrary, normalizeLocalResume, type SavedGame, type MailSession, type MailView } from './game/savedGames'
 import SavedGamesMenu from './SavedGamesMenu'
@@ -241,7 +242,7 @@ function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame, onStartOn
     onProgress={(history, createdAt, seats, revision, name) => library.updateOnline(game.id, history, createdAt, seats, revision, name)}
     onInvitation={invitation => library.saveInvitation(game.id, invitation)}
   />
-  if (game?.mode === 'same-device') return <App local={{ history: normalizeLocalResume(game.history), onChange: history => library.saveLocal(game.id, history) }} onNewGame={openMenu} onResumeGame={openResume} onLeaveNewGame={onLeaveNewGame} />
+  if (game?.mode === 'same-device') return <App gameId={game.id} local={{ history: normalizeLocalResume(game.history), onChange: history => library.saveLocal(game.id, history) }} onNewGame={openMenu} onResumeGame={openResume} onLeaveNewGame={onLeaveNewGame} />
   if (game?.mode === 'versus-ai') return <AiGame id={game.id} history={game.history} role={game.role} library={library} onNewGame={openMenu} onResumeGame={openResume} onLeaveNewGame={onLeaveNewGame} />
   if (!session) return null
   const update = (history: GameHistory) => {
@@ -321,6 +322,9 @@ function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame, onStartOn
       </section>}
       <p role="status">{feedback}</p>
     </section>
-    {sharingVisible ? <section className="mail-panel"><h2>{waiting ? `Waiting for ${otherPlayer(session.role) === 'jack' ? 'Jack' : 'the investigators'}` : state?.stage === 'gameOver' ? 'Game over' : 'Your turn is in progress'}</h2><ol>{state!.publicLog.map((line, i) => <li key={i}>{line}</li>)}</ol></section> : <App mail={{ history: session.history, role: session.role, turnStart: session.turnStart, waiting, onChange: update }} onNewGame={openMenu} />}
+    {sharingVisible ? <section className="mail-panel">
+      <h2>{waiting ? `Waiting for ${otherPlayer(session.role) === 'jack' ? 'Jack' : 'the investigators'}` : state?.stage === 'gameOver' ? 'Game over' : 'Your turn is in progress'}</h2>
+      <PublicHuntLog key={game?.id} gameId={game?.id ?? 'local'} state={state!} recap={state?.stage === 'gameOver' ? gameRecap(session.history) : []} />
+    </section> : <App gameId={game?.id} mail={{ history: session.history, role: session.role, turnStart: session.turnStart, waiting, onChange: update }} onNewGame={openMenu} />}
   </>
 }

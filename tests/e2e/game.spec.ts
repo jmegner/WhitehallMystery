@@ -46,7 +46,7 @@ test('keeps history buttons left-aligned ahead of the action count and options',
   await expect(page.locator('.board-options')).toHaveCSS('justify-content', 'flex-start')
 })
 
-test('shows every round of the public hunt log alongside the revealed recap after game over', async ({ page }) => {
+test('shows the newest hunt sections and entries first, remembering collapse choices during play and after game over', async ({ page }) => {
   const baseState = {
     stage: 'jackChooseStart',
     round: 1,
@@ -133,20 +133,43 @@ test('shows every round of the public hunt log alongside the revealed recap afte
   await page.goto('/')
 
   const publicLog = page.locator('.public-log')
-  await expect(publicLog.locator(':scope > ol > li')).toHaveText(baseState.publicLog)
+  const rounds = publicLog.locator('.public-log-section')
+  const logEntries = rounds.locator('ol > li')
+  const newestFirst = [...baseState.publicLog].reverse()
+  await expect(publicLog.locator(':scope > details > summary')).toHaveText(['Revealed action recap', 'Round 3', 'Round 2', 'Round 1'])
+  await expect(logEntries).toHaveText(newestFirst)
+  await expect(rounds.nth(0)).toHaveJSProperty('open', true)
+  await expect(rounds.nth(1)).toHaveJSProperty('open', false)
+  await expect(rounds.nth(2)).toHaveJSProperty('open', false)
+  await rounds.nth(2).locator('summary').click()
+  await expect(rounds.nth(2).getByText('M7: Jack reached Discovery Location 46.')).toBeVisible()
+  await rounds.nth(0).locator('summary').click()
+  await expect(rounds.nth(0)).toHaveJSProperty('open', false)
   await expect(publicLog.getByText('Revealed action recap', { exact: true })).toBeVisible()
-  await expect(publicLog.getByText('Jack started at location 33.')).toBeVisible()
-  await expect(publicLog.getByText('Jack moved via Coach to {44, 55}.')).toBeVisible()
-  await expect(publicLog.getByText('Investigators moved {BB, BC, BD}.')).toBeVisible()
-  await expect(publicLog.getByText('Yellow found a clue at 55.')).toBeVisible()
-  await expect(publicLog.getByText('Blue executed an arrest at 55: caught Jack.')).toBeVisible()
+  await expect(publicLog.locator('.public-log-recap li')).toHaveText([
+    'Blue executed an arrest at 55: caught Jack.',
+    'Yellow found a clue at 55.',
+    'Investigators moved {BB, BC, BD}.',
+    'Jack moved via Coach to {44, 55}.',
+    'Jack started at location 33.',
+  ])
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
-  await expect(publicLog.locator(':scope > ol > li')).toHaveText(baseState.publicLog.slice(5))
+  await expect(logEntries).toHaveText(newestFirst)
+  await expect(rounds.nth(0)).toHaveJSProperty('open', false)
+  await expect(rounds.nth(2)).toHaveJSProperty('open', true)
   await expect(publicLog.getByText('Revealed action recap', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Redo', exact: true }).click()
-  await expect(publicLog.locator(':scope > ol > li')).toHaveText(baseState.publicLog)
+  await expect(logEntries).toHaveText(newestFirst)
   await page.reload()
-  await expect(publicLog.locator(':scope > ol > li')).toHaveText(baseState.publicLog)
+  await expect(logEntries).toHaveText(newestFirst)
+  await expect(rounds.nth(0)).toHaveJSProperty('open', false)
+  await expect(rounds.nth(1)).toHaveJSProperty('open', false)
+  await expect(rounds.nth(2)).toHaveJSProperty('open', true)
+  await publicLog.locator(':scope > summary').focus()
+  await publicLog.locator(':scope > summary').press('Enter')
+  await expect(publicLog).toHaveJSProperty('open', false)
+  await page.reload()
+  await expect(publicLog).toHaveJSProperty('open', false)
 })
 
 test('Jack can preview investigator reach while choosing discovery locations', async ({ page }) => {
@@ -679,27 +702,27 @@ test('logs investigator moves and staying put, including after undo, redo, and r
     })),
   ).toEqual(positionBefore)
 
-  const publicLog = page.locator('.public-log > ol > li')
+  const publicLog = page.locator('.public-log-section').filter({ has: page.getByText('Round 1', { exact: true }) }).locator('ol > li')
   const expectedLog = [
     'M0: Jack began the hunt at Discovery Location 33.',
     'M1: Jack advanced to move 1.',
     'M1: yellow stayed at FP.',
   ]
-  await expect(publicLog).toHaveText(expectedLog)
+  await expect(publicLog).toHaveText([...expectedLog].reverse())
   for (const [color, start] of [['blue', 'HP'], ['red', 'HZ']]) {
     const destination = page.getByLabel(`Legal ${color} Investigator destinations`).getByRole('button').nth(1)
     const crossing = await destination.innerText()
     await destination.click()
     expectedLog.push(`M1: ${color} moved ${start}→${crossing}.`)
-    await expect(publicLog).toHaveText(expectedLog)
+    await expect(publicLog).toHaveText([...expectedLog].reverse())
   }
 
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
-  await expect(publicLog).toHaveText(expectedLog.slice(0, -1))
+  await expect(publicLog).toHaveText(expectedLog.slice(0, -1).reverse())
   await page.getByRole('button', { name: 'Redo', exact: true }).click()
-  await expect(publicLog).toHaveText(expectedLog)
+  await expect(publicLog).toHaveText([...expectedLog].reverse())
   await page.reload()
-  await expect(publicLog).toHaveText(expectedLog)
+  await expect(publicLog).toHaveText([...expectedLog].reverse())
 })
 
 test('moving to a hovered crossing clears its shortest-path indicators', async ({ page }) => {
@@ -1110,6 +1133,81 @@ test('keeps the mobile layout within the viewport', async ({ page }) => {
     content: document.documentElement.scrollWidth,
   }))
   expect(dimensions.content).toBeLessThanOrEqual(dimensions.viewport)
+})
+
+test('scrolls a long hunt log beside the map without stretching its natural bottom', async ({ page }) => {
+  const state = {
+    ...createInitialGame(),
+    stage: 'gameOver',
+    round: 3,
+    moveSlot: 15,
+    discoveryLocations: [33, 46, 147, 159],
+    reachedDiscoveries: [33, 46, 147],
+    currentJack: 148,
+    result: { winner: 'investigators', reason: 'Jack ran out of time.' },
+    publicLog: [
+      'M0: Jack began the hunt at Discovery Location 33.',
+      'M7: Jack reached Discovery Location 46.',
+      'M0: Round 2 begins from 46.',
+      'M8: Jack reached Discovery Location 147.',
+      'M0: Round 3 begins from 147.',
+      ...Array.from({ length: 15 }, (_, index) => [
+        `M${index + 1}: Jack advanced to move ${index + 1}.`,
+        `M${index + 1}: yellow moved BB→CC.`,
+        `M${index + 1}: blue searched 55: no clue.`,
+        `M${index + 1}: red passed the action phase.`,
+      ]).flat(),
+    ],
+  }
+  await page.addInitScript(state => {
+    localStorage.setItem('whitehall-mystery.game.v1', JSON.stringify({ version: 1, state }))
+  }, state)
+  await page.setViewportSize({ width: 1600, height: 1800 })
+  await page.goto('/')
+  await expect(page.locator('.public-log-section')).toHaveCount(3)
+
+  for (const viewport of [{ width: 1600, height: 1800 }, { width: 1051, height: 1400 }, { width: 1600, height: 500 }]) {
+    await page.setViewportSize(viewport)
+    const dimensions = await page.evaluate(() => {
+      const board = document.querySelector('.board-panel')!.getBoundingClientRect()
+      const legend = document.querySelector('.board-legend')!.getBoundingClientRect()
+      const panel = document.querySelector('.control-panel')!
+      const controls = panel.getBoundingClientRect()
+      return {
+        boardHeight: board.height,
+        panelHeight: controls.height,
+        blankBelowLegend: board.bottom - legend.bottom,
+        alignedAtTop: Math.abs(board.top - controls.top),
+        scrolls: panel.scrollHeight > panel.clientHeight,
+      }
+    })
+    expect(dimensions.alignedAtTop).toBeLessThanOrEqual(1)
+    expect(dimensions.panelHeight).toBeCloseTo(dimensions.boardHeight, 0)
+    expect(dimensions.blankBelowLegend).toBeLessThanOrEqual(13)
+    expect(dimensions.scrolls).toBe(true)
+  }
+
+  const lastEntry = page.locator('.public-log-section').first().getByText('M0: Round 3 begins from 147.')
+  await lastEntry.scrollIntoViewIfNeeded()
+  await expect(lastEntry).toBeInViewport()
+  expect(await page.locator('.control-panel').evaluate(panel => panel.scrollTop)).toBeGreaterThan(0)
+
+  await page.setViewportSize({ width: 1600, height: 1400 })
+  await page.locator('.control-panel').evaluate(panel => panel.scrollTop = 0)
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.screenshot({ path: test.info().outputPath('public-hunt-log-desktop.png'), fullPage: true })
+
+  await page.setViewportSize({ width: 1000, height: 1200 })
+  const stacked = await page.locator('.control-panel').evaluate(panel => ({
+    height: panel.getBoundingClientRect().height,
+    top: panel.getBoundingClientRect().top,
+    boardBottom: document.querySelector('.board-panel')!.getBoundingClientRect().bottom,
+    clientHeight: panel.clientHeight,
+    scrollHeight: panel.scrollHeight,
+  }))
+  expect(stacked.top).toBeCloseTo(stacked.boardBottom, 0)
+  expect(stacked.height).toBeGreaterThan(1200)
+  expect(stacked.scrollHeight).toBeLessThanOrEqual(stacked.clientHeight)
 })
 
 test('caps and aligns the map without an internal scrollbar', async ({ page }) => {

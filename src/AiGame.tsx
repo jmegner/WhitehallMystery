@@ -48,6 +48,6 @@ export default function AiGame({ id, history, role, library, onNewGame, onResume
       {paused && <p role="status">AI paused while reviewing earlier actions. <button onClick={() => library.saveLocal(id, resumeAiHistory(history))}>Resume AI turn</button></p>}
       {error && <p role="alert">{error} <button onClick={() => { setFailure(null); setRetry(value => value + 1) }}>Retry AI turn</button></p>}
     </section>
-    <App ai={{ history, role, waiting, paused, onChange: next => library.saveLocal(id, next) }} onNewGame={onNewGame} />
+    <App gameId={id} ai={{ history, role, waiting, paused, onChange: next => library.saveLocal(id, next) }} onNewGame={onNewGame} />
   </>
 }

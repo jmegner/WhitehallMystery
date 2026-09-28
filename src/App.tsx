@@ -33,7 +33,7 @@ import {
 } from './game/inference'
 import { automaticInvestigatorActions } from './game/investigatorAuto'
 import { aiHistoryReducer } from './game/aiSession'
-import { publicHuntLog } from './game/publicLog'
+import PublicHuntLog from './PublicHuntLog'
 import {
   actionCount,
   canBigUndo,
@@ -1563,6 +1563,7 @@ function HandoffScreen({
 }
 
 interface AppProps {
+  gameId?: string
   ai?: { history: GameHistory; role: PlayerView; waiting: boolean; paused: boolean; onChange: (history: GameHistory) => void }
   local?: { history: GameHistory; onChange: (history: GameHistory) => void }
   mail?: { history: GameHistory; role: PlayerView; turnStart: number; waiting: boolean; onChange: (history: GameHistory) => void }
@@ -1571,14 +1572,13 @@ interface AppProps {
   onResumeGame?: () => void
   onLeaveNewGame?: () => void
 }
-function App({ local, mail, online, ai, onNewGame, onResumeGame, onLeaveNewGame }: AppProps) {
+function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGame, onLeaveNewGame }: AppProps) {
   const [localHistory, setHistory] = useState(initializeHistory)
   const remote = mail ?? online ?? (ai ? { ...ai, turnStart: 0 } : undefined)
   const history = remote?.history ?? local?.history ?? localHistory
   const state = ai ? onlineBoardState(history, ai.role) : online ? onlineBoardState(history, online.role) : mail ? mailBoardState(history, mail.role) : currentHistoryState(history)
   const waitingForJack = !!online && online.role === 'investigators' && playerViewForState(currentHistoryState(history)) === 'jack'
   const recap = state.stage === 'gameOver' ? gameRecap(history) : []
-  const displayedPublicLog = publicHuntLog(state)
   const [showPossible, setShowPossible] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY) : false
@@ -2176,20 +2176,7 @@ function App({ local, mail, online, ai, onNewGame, onResumeGame, onLeaveNewGame 
             onUndoSecondLocation={handleUndo}
           />}
 
-          <details className="public-log" open>
-            <summary>Public hunt log</summary>
-            <ol>
-              {displayedPublicLog.map((entry, index) => (
-                <li key={`${index}-${entry}`}>{entry}</li>
-              ))}
-            </ol>
-            {recap.length > 0 && <details open>
-              <summary>Revealed action recap</summary>
-              <ol>
-                {recap.map((entry, index) => <li key={`${index}-${entry}`}>{entry}</li>)}
-              </ol>
-            </details>}
-          </details>
+          <PublicHuntLog key={gameId} state={state} recap={recap} gameId={gameId} />
         </aside>
       </main>
     </div>

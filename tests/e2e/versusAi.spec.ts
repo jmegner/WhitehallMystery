@@ -120,6 +120,35 @@ test('investigator AI advances distant pieces toward future actions in the 36 op
   expect(await savedHistory(page)).toEqual(completed)
 })
 
+test('Jack AI revisiting revealed discovery 54 keeps Round 2 and its existing move count', async ({ page }) => {
+  const positions = { yellow: 'FP', blue: 'HP', red: 'HZ' }
+  const history = createGameHistory({ ...createInitialGame(), stage: 'investigatorAction', activeInvestigator: 2,
+    inspectorActionMode: 'search',
+    round: 2, moveSlot: 2, currentJack: 54, discoveryLocations: [5, 54, 130, 139],
+    reachedDiscoveries: [5, 54], roundTrail: [54, 33, 54], investigatorPositions: positions,
+    publicLog: ['M4: Jack reached Discovery Location 54.', 'M0: Round 2 begins from 54.',
+      'M1: Jack advanced to move 1.', 'M2: Jack advanced to move 2.'],
+    publicRound: { start: 54, observations: [], moves: [1, 2].map(slot => ({
+      type: 'normal', startSlot: slot, endSlot: slot, investigatorPositions: positions,
+    })) },
+  })
+  await restoreGame(page, history, 'investigators')
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Pass', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move', exact: true })).toBeVisible({ timeout: 15000 })
+  const completed = await savedHistory(page)
+  const state = currentHistoryState(completed)
+  expect(state.round).toBe(2)
+  expect(state.moveSlot).toBeGreaterThan(2) // Coach can consume two slots.
+  expect(state.reachedDiscoveries).toEqual([5, 54])
+  expect(state.publicLog.filter(line => line.includes('reached Discovery Location 54'))).toHaveLength(1)
+  expect(state.publicLog.filter(line => line.includes('Round 2 begins'))).toHaveLength(1)
+  await expect(page.locator('.track-heading strong')).toHaveText(`Round 2 · Move ${state.moveSlot} · vs AI`)
+  await page.reload()
+  await expect(page.locator('.track-heading strong')).toHaveText(`Round 2 · Move ${state.moveSlot} · vs AI`)
+  expect(await savedHistory(page)).toEqual(completed)
+})
+
 test('restarts a pending AI turn on reload and does not overwrite another saved game', async ({ page }) => {
   const history = createGameHistory(createInitialGame())
   await page.addInitScript(history => {

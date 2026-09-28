@@ -155,6 +155,7 @@ export default function OnlineGame({ session, invitationCopyStatus, onChooseNewG
       <p role="status">{online.error || copyFeedback || automaticCopyFeedback}</p>
     </section>
     <App
+      gameId={`online-${session.apiBase}-${session.roomId}-${session.role}`}
       online={{
         history: online.history,
         role: session.role,
