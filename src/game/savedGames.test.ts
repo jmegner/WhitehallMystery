@@ -5,7 +5,7 @@ import { GAME_STORAGE_KEY, saveStoredHistory } from './persistence'
 import { MAIL_STORAGE_KEY } from './byMail'
 import { initialOnlineSeats } from './onlineSeats'
 import { ONLINE_SESSION_STORAGE_KEY, type OnlineSession } from '../online/onlineSession'
-import { ACTIVE_GAME_KEY, SAVED_GAME_PREFIX, SavedGameLibrary, savedGameStatus, savedGameTime, type GameStorage, type MailSession } from './savedGames'
+import { ACTIVE_GAME_KEY, SAVED_GAME_PREFIX, SavedGameLibrary, isSavedGameDone, savedGameStatus, savedGameTime, type GameStorage, type MailSession } from './savedGames'
 
 class MemoryStorage implements GameStorage {
   values = new Map<string, string>()
@@ -13,12 +13,50 @@ class MemoryStorage implements GameStorage {
   key(index: number) { return [...this.values.keys()][index] ?? null }
   getItem(key: string) { return this.values.get(key) ?? null }
   setItem(key: string, text: string) { this.values.set(key, text) }
+  removeItem(key: string) { this.values.delete(key) }
 }
 const initial = () => createGameHistory(createInitialGame())
 const session: OnlineSession = { apiBase: 'https://example.invalid', roomId: 'a'.repeat(64), role: 'jack', token: 'A'.repeat(43), investigatorsToken: 'B'.repeat(43) }
 const mail: MailSession = { id: 1700000000, role: 'jack', history: initial(), outgoing: '', turnStart: 0, baselineEndedAt: null }
 
 describe('saved game library', () => {
+  it('identifies a winner in every mode, using the current history rather than undone results', () => {
+    const library = new SavedGameLibrary(new MemoryStorage())
+    const local = library.getSnapshot().games[0]
+    const ai = library.addVersusAi('jack')
+    const letter = library.saveMail(mail)
+    const online = library.saveOnline(session)
+    for (const game of [local, ai, letter, online]) expect(isSavedGameDone(game)).toBe(false)
+    for (const winner of ['jack', 'investigators'] as const) {
+      const history = createGameHistory({ ...createInitialGame(), stage: 'gameOver', result: { winner, reason: 'Finished' } })
+      library.saveLocal(local.id, history)
+      library.saveLocal(ai.id, history)
+      library.saveMail({ ...mail, history })
+      library.updateOnline(online.id, history, null)
+      for (const game of [local, ai, letter, online]) expect(isSavedGameDone(library.get(game.id)!)).toBe(true)
+    }
+    const finished = createGameHistory({ ...createInitialGame(), stage: 'gameOver', result: { winner: 'jack', reason: 'Finished' } })
+    library.saveLocal(local.id, { ...initial(), entries: [...initial().entries, ...finished.entries] })
+    expect(isSavedGameDone(library.get(local.id)!)).toBe(false)
+  })
+
+  it('counts an opponent departure, but not unknown status, being offline, or our own departure', () => {
+    const library = new SavedGameLibrary(new MemoryStorage())
+    for (const role of ['jack', 'investigators'] as const) {
+      const game = library.saveOnline({ ...session, role })
+      expect(isSavedGameDone(game)).toBe(false)
+      const seats = initialOnlineSeats()
+      seats[role] = { leftAt: 1, generation: 1 }
+      library.updateOnline(game.id, initial(), null, seats, 1)
+      expect(isSavedGameDone(library.get(game.id)!)).toBe(false)
+      seats[role === 'jack' ? 'investigators' : 'jack'] = { leftAt: 2, generation: 2 }
+      library.updateOnline(game.id, initial(), null, seats, 2)
+      expect(isSavedGameDone(library.get(game.id)!)).toBe(true)
+      library.updateOnline(game.id, initial(), null, initialOnlineSeats(), 3)
+      expect(isSavedGameDone(library.get(game.id)!)).toBe(false)
+    }
+  })
+
   it('keeps AI roles, progress, names and active selection across refreshes', () => {
     const storage = new MemoryStorage()
     const library = new SavedGameLibrary(storage)
@@ -70,7 +108,59 @@ describe('saved game library', () => {
     expect(library.getSnapshot().games).toEqual([])
     expect(library.getSnapshot().activeId).toBe('')
     expect(new SavedGameLibrary(storage).getSnapshot().games).toEqual([])
-    expect(storage.getItem(SAVED_GAME_PREFIX + online.id)).not.toContain(session.token)
+    expect(storage.getItem(SAVED_GAME_PREFIX + online.id)).toBeNull()
+    expect(storage.getItem(SAVED_GAME_PREFIX + local)).toBeNull()
+    expect(storage.getItem(GAME_STORAGE_KEY)).toBeNull()
+  })
+
+  it('removes only matching legacy credentials, drafts and game preferences, even after an incomplete migration', () => {
+    const storage = new MemoryStorage()
+    saveStoredHistory(storage, initial())
+    storage.setItem(MAIL_STORAGE_KEY, JSON.stringify({ ...mail, history: undefined, actions: [], cursor: 0 }))
+    storage.setItem('whitehall-mystery.mail-draft', 'draft')
+    storage.setItem(ONLINE_SESSION_STORAGE_KEY, JSON.stringify(session))
+    storage.setItem(SAVED_GAME_PREFIX + 'broken', '{broken') // Migration remains incomplete.
+    const library = new SavedGameLibrary(storage)
+    const online = library.getSnapshot().games.find(game => game.mode === 'online')!
+    const letter = library.getSnapshot().games.find(game => game.mode === 'by-mail')!
+    const other = library.saveOnline({ ...session, roomId: 'b'.repeat(64) })
+    const logKey = `whitehall-mystery.hunt-log.online-${session.apiBase}-${session.roomId}-${session.role}`
+    storage.setItem(`${logKey}.round-1`, 'false')
+    storage.setItem(`whitehall-mystery.floating-pass.${online.id}`, 'pass')
+    storage.setItem('whitehall-mystery.investigator-auto', 'true')
+    expect(library.leave(other.id)).toBe(true)
+    expect(storage.getItem(ONLINE_SESSION_STORAGE_KEY)).not.toBeNull()
+    for (const game of [...library.getSnapshot().games]) expect(library.leave(game.id)).toBe(true)
+    library.updateOnline(online.id, initial(), 1234, initialOnlineSeats(), 20)
+    library.saveLocal('same-device-legacy', initial())
+    library.updateMailView(letter.id, { draft: 'late draft' })
+    expect(new SavedGameLibrary(storage).getSnapshot().games).toEqual([])
+    for (const key of [GAME_STORAGE_KEY, MAIL_STORAGE_KEY, ONLINE_SESSION_STORAGE_KEY, 'whitehall-mystery.mail-draft', `${logKey}.round-1`, `whitehall-mystery.floating-pass.${online.id}`]) expect(storage.getItem(key)).toBeNull()
+    expect(storage.getItem('whitehall-mystery.investigator-auto')).toBe('true')
+    expect(storage.getItem(SAVED_GAME_PREFIX + 'broken')).toBe('{broken')
+  })
+
+  it('keeps a game available when storage removal fails and allows a successful retry', () => {
+    class FailingStorage extends MemoryStorage {
+      fail = true
+      override removeItem(key: string) {
+        if (this.fail && key.startsWith(SAVED_GAME_PREFIX)) throw new Error('Storage unavailable')
+        super.removeItem(key)
+      }
+    }
+    const storage = new FailingStorage()
+    const library = new SavedGameLibrary(storage)
+    const id = library.getSnapshot().activeId
+    expect(library.leave(id)).toBe(false)
+    expect(library.get(id)).toBeDefined()
+    expect(library.getSnapshot().activeId).toBe(id)
+    expect(library.getSnapshot().error).toContain('Could not remove')
+    expect(new SavedGameLibrary(storage).get(id)).toBeDefined()
+    storage.fail = false
+    expect(library.leave(id)).toBe(true)
+    expect(storage.getItem(SAVED_GAME_PREFIX + id)).toBeNull()
+    expect(library.getSnapshot().error).toBe('')
+    expect(new SavedGameLibrary(storage).getSnapshot().games).toEqual([])
   })
 
   it('retains departure status and invitation credentials, ignoring late older status responses', () => {

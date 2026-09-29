@@ -1,10 +1,13 @@
 export interface IndicatorBox { x: number; y: number; width: number; height: number }
 export type IndicatorAngle = 'top' | 'top-right' | 'right'
 export type IndicatorKind = 'location' | 'crossingTurn' | 'crossingId'
-export type IndicatorObstacle =
+export const INDICATOR_OBSTACLE_PRIORITIES = ['piece', 'text', 'outline', 'location', 'crossing'] as const
+export type IndicatorObstaclePriority = typeof INDICATOR_OBSTACLE_PRIORITIES[number]
+export type IndicatorObstacle = { priority: IndicatorObstaclePriority } & (
   | { kind: 'box'; box: IndicatorBox; border?: number }
   | { kind: 'circle'; box: IndicatorBox; x: number; y: number; radius: number; innerRadius: number }
   | { kind: 'line'; box: IndicatorBox; x1: number; y1: number; x2: number; y2: number; radius: number }
+)
 
 const OFFSETS = {
   location: { top: 24, diagonalX: 17, diagonalY: 13, right: 24 },
@@ -42,9 +45,13 @@ function covers(obstacle: IndicatorObstacle, x: number, y: number): boolean {
   return (x - obstacle.x1 - t * dx) ** 2 + (y - obstacle.y1 - t * dy) ** 2 <= obstacle.radius ** 2
 }
 
-export function indicatorObscuring(box: IndicatorBox, obstacles: IndicatorObstacle[], viewport: IndicatorBox): number {
+function indicatorOverlap(box: IndicatorBox, obstacles: IndicatorObstacle[], viewport: IndicatorBox) {
   const nearby = obstacles.filter(obstacle => intersects(box, obstacle.box))
-  if (nearby.length === 0 && contains(viewport, box.x, box.y) && contains(viewport, box.x + box.width, box.y + box.height)) return 0
+  const costs = INDICATOR_OBSTACLE_PRIORITIES.map(() => 0)
+  if (nearby.length === 0 && contains(viewport, box.x, box.y) && contains(viewport, box.x + box.width, box.y + box.height)) {
+    return { obscuring: 0, costs }
+  }
+  const groups = INDICATOR_OBSTACLE_PRIORITIES.map(priority => nearby.filter(obstacle => obstacle.priority === priority))
   // Sample the union of visible marks, so stacked rings/pieces do not count the
   // same obscured area twice. Coordinates are SVG units, independent of zoom.
   const columns = Math.max(1, Math.ceil(box.width / 1.5))
@@ -54,10 +61,32 @@ export function indicatorObscuring(box: IndicatorBox, obstacles: IndicatorObstac
     const y = box.y + (row + 0.5) * box.height / rows
     for (let column = 0; column < columns; column += 1) {
       const x = box.x + (column + 0.5) * box.width / columns
-      if (!contains(viewport, x, y) || nearby.some(obstacle => covers(obstacle, x, y))) obscured += 1
+      let covered = false
+      for (const [priority, group] of groups.entries()) {
+        // Clipped text is unreadable, just like text hidden behind a piece.
+        if ((priority === 0 && !contains(viewport, x, y)) || group.some(obstacle => covers(obstacle, x, y))) {
+          costs[priority]! += 1
+          covered = true
+        }
+      }
+      if (covered) obscured += 1
     }
   }
-  return obscured / (columns * rows)
+  return { obscuring: obscured / (columns * rows), costs: costs.map(cost => cost / (columns * rows)) }
+}
+
+export function indicatorObscuring(box: IndicatorBox, obstacles: IndicatorObstacle[], viewport: IndicatorBox): number {
+  return indicatorOverlap(box, obstacles, viewport).obscuring
+}
+
+function compareCosts(a: number[], b: number[]): number {
+  // Strict priorities: even a small piece overlap beats any amount of lower
+  // priority clutter. A weighted sum could hide text to avoid a large outline.
+  for (let priority = 0; priority < INDICATOR_OBSTACLE_PRIORITIES.length; priority++) {
+    const difference = a[priority]! - b[priority]!
+    if (difference) return difference
+  }
+  return 0
 }
 
 export function rankIndicatorPositions(
@@ -79,6 +108,14 @@ export function rankIndicatorPositions(
       width: text.width + 2 * text.padding,
       height: text.height + 2 * text.padding,
     }
-    return { ...position, box, preference, obscuring: indicatorObscuring(box, obstacles, viewport) }
-  }).sort((a, b) => a.obscuring - b.obscuring || a.preference - b.preference)
+    return { ...position, box, preference, ...indicatorOverlap(box, obstacles, viewport) }
+  }).sort((a, b) => compareCosts(a.costs, b.costs) || a.preference - b.preference)
+}
+
+export function selectIndicatorPosition(ranked: ReturnType<typeof rankIndicatorPositions>, alternate: boolean) {
+  const best = ranked[0]!
+  const second = ranked[1]!
+  // Alt can trade lower-priority clutter for another angle, but must not hide
+  // more text behind pieces (or the board edge) than the safest position.
+  return alternate && second.costs[0] === best.costs[0] ? second : best
 }

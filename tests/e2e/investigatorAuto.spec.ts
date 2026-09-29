@@ -32,6 +32,35 @@ async function restoreGame(page: Page, state: GameState, mode: 'same-device' | '
 }
 
 for (const mode of ['same-device', 'versus-ai'] as const) {
+  test(`a started search ends when only a known clue remains with InvAuto off in ${mode}`, async ({ page }) => {
+    const state = knownClueState()
+    state.investigatorPositions = { yellow: 'DB', blue: 'CF', red: 'HZ' }
+    await restoreGame(page, state, mode)
+    await page.goto('/')
+    const blue = page.getByRole('heading', { name: 'Blue Investigator: Clues and Suspicion', exact: true })
+    await expect(blue).toBeVisible()
+    await expect(page.getByLabel('InvAuto', { exact: true })).not.toBeChecked()
+    await expect(page.getByRole('button', { name: 'Execute arrest', exact: true })).toBeEnabled()
+    const choices = page.getByLabel('Locations adjacent to the blue Investigator')
+    await choices.getByRole('button', { name: '37', exact: true }).click()
+    await expect(blue).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Execute arrest', exact: true })).toBeDisabled()
+    await choices.getByRole('button', { name: '56', exact: true }).click()
+    const red = page.getByRole('heading', { name: 'Red Investigator: Clues and Suspicion', exact: true })
+    await expect(red).toBeVisible()
+    await expect(page.getByLabel('InvAuto', { exact: true })).not.toBeChecked()
+    await expect(page.locator('.public-log')).toContainText('blue ended the clue search.')
+    await expect(page.locator('.public-log')).not.toContainText('blue searched 36:')
+    await page.getByRole('button', { name: 'Undo', exact: true }).click()
+    await expect(blue).toBeVisible()
+    await expect(choices.getByRole('button', { name: '36', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Redo', exact: true }).click()
+    await expect(red).toBeVisible()
+    await page.reload()
+    await expect(red).toBeVisible()
+    await expect(page.getByLabel('InvAuto', { exact: true })).not.toBeChecked()
+  })
+
   test(`InvAuto arrests on a known clue in ${mode}, with undo, redo and refresh`, async ({ page }) => {
     await restoreGame(page, knownClueState(), mode)
     await page.goto('/')

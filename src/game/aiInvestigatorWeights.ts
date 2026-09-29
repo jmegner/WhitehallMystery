@@ -1,5 +1,6 @@
-import { alleyDestinations, boatDestinations, circles, circlesById, jackTransitions } from './mapData'
+import { circles, circlesById, jackTransitions } from './mapData'
 import type { GameState } from './types'
+import { minimumDiscoveryMoves } from './aiDiscoveryDistance'
 
 type PublicProgress = Pick<GameState, 'publicRound' | 'reachedDiscoveries' | 'moveSlot' | 'specialRemaining'>
 
@@ -12,7 +13,7 @@ export interface InvestigatorWeights {
   pendingDiscoveryAllowed: boolean
 }
 
-const streetDistances = new Map(circles.map(({ id }) => {
+export const streetDistances = new Map(circles.map(({ id }) => {
   const distances = new Map<number, number>([[id, 0]])
   const queue = [id]
   for (let index = 0; index < queue.length; index += 1) {
@@ -25,38 +26,6 @@ const streetDistances = new Map(circles.map(({ id }) => {
   }
   return [id, distances] as const
 }))
-
-// An optimistic minimum in move-track slots, allowing the remaining Alley and
-// Boat tiles but ignoring investigators and unknown discovery restrictions en
-// route. The final arrival must be a Street move. Coach cannot improve this
-// lower bound: it costs two slots for two already-unblocked street edges.
-function minimumDiscoveryMoves(targets: Set<number>, special: PublicProgress['specialRemaining']): Map<number, number>[][] {
-  const layers: Map<number, number>[][] = []
-  for (let alley = 0; alley <= special.alley; alley += 1) {
-    const row: Map<number, number>[] = []
-    layers.push(row)
-    for (let boat = 0; boat <= special.boat; boat += 1) {
-      const distances = new Map(circles.map(({ id }) => {
-        let best = [...jackTransitions.get(id)!.keys()].some(to => targets.has(to)) ? 1 : Infinity
-        if (alley > 0) for (const to of alleyDestinations.get(id)!) best = Math.min(best, 1 + layers[alley - 1]![boat]!.get(to)!)
-        if (boat > 0) for (const to of boatDestinations.get(id)!) best = Math.min(best, 1 + row[boat - 1]!.get(to)!)
-        return [id, best] as const
-      }))
-      const queue = circles.filter(({ id }) => Number.isFinite(distances.get(id))).map(({ id }) => id)
-      for (let index = 0; index < queue.length; index += 1) {
-        const from = queue[index]!
-        for (const to of jackTransitions.get(from)!.keys()) {
-          const candidate = distances.get(from)! + 1
-          if (candidate >= distances.get(to)!) continue
-          distances.set(to, candidate)
-          queue.push(to)
-        }
-      }
-      row.push(distances)
-    }
-  }
-  return layers
-}
 
 export function createInvestigatorWeights(state: PublicProgress): InvestigatorWeights | undefined {
   const evidence = state.publicRound
@@ -79,7 +48,7 @@ export function createInvestigatorWeights(state: PublicProgress): InvestigatorWe
       distance = Math.min(distance, from.get(goal)!)
       detour = Math.min(detour, fromStart.get(id)! + from.get(goal)! - fromStart.get(goal)!)
     }
-    return [id, targets.size ? 0.2 + 0.8 * 2 ** (-(distance + detour) / 2) : 0] as const
+    return [id, targets.size ? 0.02 + 0.98 * 2 ** (-distance / 2 - detour) : 0] as const
   }))
   const distances = minimumDiscoveryMoves(targets, state.specialRemaining)
   return { targets, locationWeights, specialRemaining: { ...state.specialRemaining },

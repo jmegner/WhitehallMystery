@@ -1,6 +1,7 @@
 import { legalJackDestinations } from './gameEngine'
 import { adjacentCirclesForCrossing, jackTransitions, reachableCrossings } from './mapData'
 import { INVESTIGATOR_ORDER, type GameState } from './types'
+import { minimumDiscoveryMoves } from './aiDiscoveryDistance'
 
 type Positions = GameState['investigatorPositions']
 export interface JackEscapeForecast {
@@ -33,7 +34,9 @@ export function jackEscapeForecast(state: GameState): JackEscapeForecast {
   const from = state.currentJack
   if (from === null) return { minimumStreetExits: 0, minimumLegalExits: 0, minimumSafeExits: 0, trapPositions: null }
   const targets = new Set(state.discoveryLocations.filter(id => !state.reachedDiscoveries.includes(id)))
-  const viable = (id: number, cost: number) => state.moveSlot + cost < 15 || targets.has(id)
+  const minimumMoves = minimumDiscoveryMoves(targets, state.specialRemaining, true)
+  const viable = (id: number, cost: number, alley = state.specialRemaining.alley, boat = state.specialRemaining.boat) =>
+    state.moveSlot + cost + (targets.has(id) ? 0 : minimumMoves[alley]![boat]!.get(id)!) <= 15
   const street = [...(jackTransitions.get(from) ?? [])].filter(([id]) => viable(id, 1))
   const specials = new Set<number>()
   for (const type of ['alley', 'boat', 'coach'] as const) {
@@ -43,7 +46,8 @@ export function jackEscapeForecast(state: GameState): JackEscapeForecast {
         for (const last of legalJackDestinations({ ...planning, jackMoveSelection: { type, path: [first] } })) {
           if (viable(last, 2)) specials.add(last)
         }
-      } else if (viable(first, 1)) specials.add(first)
+      } else if (viable(first, 1, state.specialRemaining.alley - (type === 'alley' ? 1 : 0),
+        state.specialRemaining.boat - (type === 'boat' ? 1 : 0))) specials.add(first)
     }
   }
   const ids = [...new Set([...street.map(([id]) => id), ...specials])]

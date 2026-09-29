@@ -25,6 +25,37 @@ function knownClueState(moveSlot = 3): GameState {
 }
 
 describe('investigator auto actions', () => {
+  test.each([1, 2])('ends only the active search with InvAuto off when investigator %i has one known clue left', activeInvestigator => {
+    const state = { ...knownClueState(), activeInvestigator,
+      investigatorPositions: { yellow: 'DB', blue: 'CF', red: activeInvestigator === 2 ? 'CF' : 'HZ' } }
+    if (activeInvestigator === 2) state.investigatorPositions.blue = 'DD'
+    let history = createGameHistory(state)
+    const noInference = () => { throw new Error('InvAuto off should not run tactical inference') }
+    for (const circleId of [37, 56]) {
+      history = gameHistoryReducer(history, { type: 'apply', action: { type: 'searchCircle', circleId } })
+      if (circleId === 37) expect(automaticInvestigatorActions(history, noInference, false).commands).toEqual([])
+    }
+    const result = automaticInvestigatorActions(history, noInference, false)
+    expect(result.commands).toEqual([{ type: 'apply', action: { type: 'passInspectorAction' } }])
+    const next = currentHistoryState(result.next)
+    expect(next.stage).toBe(activeInvestigator === 2 ? 'investigatorTurnResult' : 'investigatorAction')
+    expect(next.activeInvestigator).toBe(2)
+    expect(next.checkedThisAction).toEqual([])
+    expect(next.publicLog.at(-1)).toBe(`M3: ${activeInvestigator === 2 ? 'red' : 'blue'} ended the clue search.`)
+    expect(next.publicRound?.observations).toEqual(currentHistoryState(history).publicRound?.observations)
+    const undone = gameHistoryReducer(result.next, { type: 'undo' })
+    expect(currentHistoryState(undone)).toEqual(currentHistoryState(history))
+    expect(currentHistoryState(gameHistoryReducer(undone, { type: 'redo' }))).toEqual(next)
+  })
+
+  test('InvAuto off preserves the arrest choice before searching and a final unknown search afterward', () => {
+    const initial = createGameHistory(knownClueState())
+    expect(automaticInvestigatorActions(initial, undefined, false).commands).toEqual([])
+    const state = { ...knownClueState(), clueLocations: [], checkedThisAction: [37, 56],
+      investigatorPositions: { yellow: 'DB', blue: 'CF', red: 'HZ' } }
+    expect(automaticInvestigatorActions(createGameHistory(state), undefined, false).commands).toEqual([])
+  })
+
   test.each([1, 3])('arrests on a known clue when it is the only useful target after move %i', moveSlot => {
     const state = knownClueState(moveSlot)
     const outcome = possibleJackSearchOutcomes(state.publicRound).get(36)!

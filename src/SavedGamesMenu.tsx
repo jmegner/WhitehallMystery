@@ -1,8 +1,9 @@
 import { useEffect, useId, useState } from 'react'
-import { SavedGameLibrary, savedGameMode, savedGameStatus, savedGameTime, type SavedGame } from './game/savedGames'
+import { SavedGameLibrary, isSavedGameDone, savedGameMode, savedGameStatus, savedGameTime, type SavedGame } from './game/savedGames'
 import { readOnlineGame, renameOnlineGame } from './online/onlineSession'
 import { confirmLeaveGame, leaveSavedGame } from './game/leaveGame'
 import { isGameName, MAX_GAME_NAME_LENGTH } from './game/gameName'
+import LeaveGameFailure from './LeaveGameFailure'
 
 export default function SavedGamesMenu({ library, activeId, onResume, onNewGame, onCancel }: {
   library: SavedGameLibrary; activeId: string; onResume: (id: string) => void; onNewGame: () => void; onCancel: () => void
@@ -10,6 +11,7 @@ export default function SavedGamesMenu({ library, activeId, onResume, onNewGame,
   const [busy, setBusy] = useState<string | null>(null)
   const [feedback, setFeedback] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [leaveErrors, setLeaveErrors] = useState<Record<string, string>>({})
   const [refresh, setRefresh] = useState(0)
   const [leaveIds] = useState(() => new Map<string, string>())
 
@@ -38,38 +40,73 @@ export default function SavedGamesMenu({ library, activeId, onResume, onNewGame,
     return () => { controller.abort(); window.clearTimeout(timer) }
   }, [library, refresh])
 
-  const leave = async (game: SavedGame) => {
-    if (!confirmLeaveGame(game)) return
-    setBusy(game.id)
+  const leave = async (games: SavedGame[], bulk?: 'all' | 'done') => {
+    if (busy !== null || !games.length) return
+    const scope = bulk === 'done' ? `${games.length} done games (someone won or the opponent left)` : `all ${games.length} saved games`
+    if (bulk ? !window.confirm(`Leave ${scope} in this browser? Saved progress and undo histories will be removed. Online partners will be notified and your credentials revoked. Games that cannot be left will be kept for you to retry or forget.`) : !confirmLeaveGame(games[0])) return
+    setBusy(bulk ? `leave-${bulk}` : games[0].id)
     setFeedback('')
+    let removed = 0
+    let skipped = 0
+    const notices: string[] = []
     try {
-      let requestId = leaveIds.get(game.id)
-      if (!requestId) { requestId = crypto.randomUUID(); leaveIds.set(game.id, requestId) }
-      setFeedback(await leaveSavedGame(library, game, requestId))
-    } catch (error) {
-      setFeedback(`${error instanceof Error ? error.message : 'Could not leave the game.'} The saved entry has been kept; retry Leave when connected.`)
+      for (const game of games) {
+        setLeaveErrors(previous => ({ ...previous, [game.id]: '' }))
+        try {
+          if (bulk === 'done') {
+            // Recheck online games before leaving: a saved departure or win
+            // may have been superseded by a returning opponent or an undo.
+            if (game.mode === 'online') {
+              const status = await readOnlineGame(game.session)
+              library.updateOnline(game.id, status.history, status.createdAt, status.seats, status.snapshot.revision, status.name)
+              setErrors(previous => ({ ...previous, [game.id]: '' }))
+            }
+            const latest = library.get(game.id)
+            if (!latest || !isSavedGameDone(latest)) { skipped++; continue }
+          }
+          let requestId = leaveIds.get(game.id)
+          if (!requestId) { requestId = crypto.randomUUID(); leaveIds.set(game.id, requestId) }
+          const notice = await leaveSavedGame(library, game, requestId)
+          if (notice) notices.push(notice)
+          removed++
+        } catch (error) {
+          setLeaveErrors(previous => ({ ...previous, [game.id]: error instanceof Error ? error.message : 'Could not leave the game.' }))
+        }
+      }
+      setFeedback(bulk ? `Left ${removed} of ${games.length} games.${skipped ? ` Kept ${skipped} that are no longer done.` : ''}${removed + skipped < games.length ? ' See the remaining games below to retry or forget them.' : ''} ${[...new Set(notices)].join(' ')}` : notices.join(' '))
     } finally { setBusy(null) }
   }
+  const forget = (game: SavedGame) => {
+    if (busy !== null) return
+    if (library.leave(game.id)) {
+      setLeaveErrors(previous => ({ ...previous, [game.id]: '' }))
+      setFeedback('Game forgotten from this browser.')
+    } else setLeaveErrors(previous => ({ ...previous, [game.id]: 'Could not remove the saved game from browser storage. Try Forget game again.' }))
+  }
   const games = [...library.getSnapshot().games].sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0) || b.savedAt - a.savedAt)
+  const doneGames = games.filter(isSavedGameDone)
   return <main className="mail-menu saved-game-menu">
     <h1>Resume game</h1>
     <p>Games saved in this browser. Start times use your local time zone. Online status refreshes here every 30 seconds; only an open game receives turn alerts.</p>
     <div className="button-row">
       <button type="button" onClick={onNewGame} disabled={busy !== null}>New game</button>
+      <button type="button" onClick={() => void leave(doneGames, 'done')} disabled={busy !== null || !doneGames.length}>{busy === 'leave-done' ? 'Leaving done games…' : 'Leave Done Games'}</button>
+      <button type="button" onClick={() => void leave(games, 'all')} disabled={busy !== null || !games.length}>{busy === 'leave-all' ? 'Leaving all…' : 'Leave All'}</button>
       {games.some(game => game.mode === 'online') && <button type="button" onClick={() => setRefresh(value => value + 1)} disabled={busy !== null}>Refresh status</button>}
     </div>
     {!games.length && <p>No saved games. Start a new game when you’re ready.</p>}
     <ul className="saved-game-list">
       {games.map(game => <SavedGameEntry key={game.id} game={game} library={library} active={game.id === activeId} busy={busy}
-        onResume={() => onResume(game.id)} onLeave={() => void leave(game)} onBusy={value => setBusy(value ? `rename:${game.id}` : null)} statusError={errors[game.id]} />)}
+        onResume={() => onResume(game.id)} onLeave={() => void leave([game])} onForget={() => forget(game)} leaveError={leaveErrors[game.id]}
+        onBusy={value => setBusy(value ? `rename:${game.id}` : null)} statusError={errors[game.id]} />)}
     </ul>
     {activeId && <button type="button" className="text-button" disabled={busy !== null} onClick={onCancel}>Cancel</button>}
     <p role="status">{feedback}</p>
   </main>
 }
 
-function SavedGameEntry({ game, library, active, busy, onResume, onLeave, onBusy, statusError }: {
-  game: SavedGame; library: SavedGameLibrary; active: boolean; busy: string | null; onResume: () => void; onLeave: () => void; onBusy: (busy: boolean) => void; statusError?: string
+function SavedGameEntry({ game, library, active, busy, onResume, onLeave, onForget, leaveError, onBusy, statusError }: {
+  game: SavedGame; library: SavedGameLibrary; active: boolean; busy: string | null; onResume: () => void; onLeave: () => void; onForget: () => void; leaveError?: string; onBusy: (busy: boolean) => void; statusError?: string
 }) {
   const labelId = useId()
   const disabled = busy !== null
@@ -109,6 +146,7 @@ function SavedGameEntry({ game, library, active, busy, onResume, onLeave, onBusy
       </div>
     </div>
     <button className="saved-game-leave" type="button" disabled={disabled} onClick={onLeave}>{busy === game.id ? 'Leaving…' : 'Leave'}</button>
+    {leaveError && <LeaveGameFailure error={leaveError} online={game.mode === 'online'} disabled={disabled} onForget={onForget} />}
     {edit && <div className="saved-game-name-editor" id={`${labelId}-editor`}>
     <form onSubmit={event => { event.preventDefault(); void save() }}>
       <label>Game name (optional)

@@ -15,14 +15,23 @@ type SearchOutcomeResolver = (evidence: PublicRoundEvidence | null) => Map<numbe
 const nextAutomaticActions = (
   history: GameHistory,
   resolveOutcomes: SearchOutcomeResolver,
+  runTactics: boolean,
 ): GameAction[] => {
   const state = currentHistoryState(history)
   if (state.stage !== 'investigatorAction' || state.inspectorActionMode !== 'search') return []
 
-  const outcomes = resolveOutcomes(state.publicRound)
-  const possible = possibleLocationsFromOutcomes(outcomes)
   const adjacent = legalInspectorActionCircles(state)
   const searching = state.checkedThisAction.length > 0
+  const remaining = adjacent.filter(id => !state.checkedThisAction.includes(id))
+  // A search already underway cannot switch to arrest. Its last known clue
+  // adds no information, so finish with a replayable action even with InvAuto off.
+  if (searching && remaining.length === 1 && state.clueLocations.includes(remaining[0]!)) {
+    return [{ type: 'passInspectorAction' }]
+  }
+  if (!runTactics) return []
+
+  const outcomes = resolveOutcomes(state.publicRound)
+  const possible = possibleLocationsFromOutcomes(outcomes)
   const color = INVESTIGATOR_ORDER[state.activeInvestigator]!
   const available = INVESTIGATOR_ORDER.slice(state.activeInvestigator + (searching ? 1 : 0))
   // Use ALL exact possibilities for a guaranteed capture, including positions
@@ -58,11 +67,12 @@ const nextAutomaticActions = (
 export const automaticInvestigatorActions = (
   initial: GameHistory,
   resolveOutcomes: SearchOutcomeResolver = possibleJackSearchOutcomes,
+  runTactics = true,
 ) => {
   const commands: HistoryCommand[] = []
   let next = initial
   while (true) {
-    const actions = nextAutomaticActions(next, resolveOutcomes)
+    const actions = nextAutomaticActions(next, resolveOutcomes, runTactics)
     if (actions.length === 0) break
     for (const action of actions) {
       const command = { type: 'apply' as const, action }

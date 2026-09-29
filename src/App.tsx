@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useBoardHover } from './useBoardHover'
 import type { CSSProperties } from 'react'
 import './App.css'
 import { normalizeMailHistory, mailHistoryReducer, mailBoardState } from './game/byMail'
@@ -34,6 +35,7 @@ import {
 import { automaticInvestigatorActions } from './game/investigatorAuto'
 import { aiHistoryReducer, needsAiEndConfirmation } from './game/aiSession'
 import PublicHuntLog from './PublicHuntLog'
+import FloatingMapControls from './FloatingMapControls'
 import { indicatorTextAttributes } from './indicatorLayout'
 import { useIndicatorLayout } from './useIndicatorLayout'
 import {
@@ -292,20 +294,17 @@ function GameBoard({
 }: BoardProps) {
   const board = useRef<SVGSVGElement>(null)
   useIndicatorLayout(board, alternateIndicatorAngle)
-  const [hoveredMaybeId, setHoveredMaybeId] = useState<number | null>(null)
-  const [hoveredInvestigator, setHoveredInvestigator] = useState<InvestigatorColor | null>(null)
-  const [hoveredInvestigatorStart, setHoveredInvestigatorStart] = useState<string | null>(null)
-  const [hoveredRouteTarget, setHoveredRouteTarget] = useState<number | null>(null)
-  const [hoveredInvestigatorRouteTarget, setHoveredInvestigatorRouteTarget] = useState<string | null>(null)
-  const [hoveredInvestigatorMoveChoice, setHoveredInvestigatorMoveChoice] = useState<string | null>(null)
+  const hover = useBoardHover(board)
+  const hoveredCircle = hover.target?.startsWith('location:') ? Number(hover.target.split(':')[1]) : null
+  const hoveredCrossing = hover.target?.startsWith('crossing:') ? hover.target.split(':')[1]! : null
   const [suppressedInvestigatorHoverCrossing, setSuppressedInvestigatorHoverCrossing] = useState<string | null>(null)
-  const [hoveredJack, setHoveredJack] = useState(false)
-  const [hoveredUnrestrictedRouteStart, setHoveredUnrestrictedRouteStart] = useState<number | null>(null)
-  const clearCrossingHoverPreviews = () => {
-    setHoveredInvestigatorStart(null)
-    setHoveredInvestigatorRouteTarget(null)
-    setHoveredInvestigatorMoveChoice(null)
-  }
+  const hoveredMaybeId = hover.moved && showPossible ? hoveredCircle : null
+  const hoveredJack = hover.target === `jack:${state.currentJack}`
+  const hoveredRouteTarget = state.stage === 'jackMove' && hoveredCircle !== state.currentJack &&
+    hoveredCircle !== null && !legalCircleIds.has(hoveredCircle) ? hoveredCircle : null
+  const hoveredUnrestrictedRouteStart = hoveredCircle !== null &&
+    (state.stage === 'jackDiscoverySetup' || state.stage === 'jackChooseStart' ||
+      (state.stage === 'jackMove' && legalCircleIds.has(hoveredCircle))) ? hoveredCircle : null
   const hoveredOutcome = hoveredMaybeId === null ? undefined : possibleOutcomes.get(hoveredMaybeId)
   const peekAtJack = showJackPeek && isInspectorInteraction(state.stage)
   const canPreviewJackDistances = !suppressTurnIndicators && (state.stage === 'jackMove' || peekAtJack)
@@ -337,6 +336,8 @@ function GameBoard({
   const investigatorOneTurnCrossings = activeInvestigatorStartId
     ? reachableCrossings(activeInvestigatorStartId, 2)
     : new Set<string>()
+  const hoveredInvestigatorRouteTarget = activeInvestigatorStartId && hoveredCrossing &&
+    !investigatorOneTurnCrossings.has(hoveredCrossing) ? hoveredCrossing : null
   const investigatorRoutePreview = !suppressTurnIndicators && hoveredInvestigatorRouteTarget
     ? shortestInvestigatorRoutePreview(state, hoveredInvestigatorRouteTarget)
     : { segments: [], turnLabels: new Map<string, string>() }
@@ -368,6 +369,13 @@ function GameBoard({
   const pastPathSegments = trimmedRouteSegments(pastPath)
   const canPreviewPlacedInvestigators = state.stage === 'jackChooseStart' || state.stage === 'jackMove'
   const canPreviewInvestigatorDistances = !suppressTurnIndicators && (canPreviewPlacedInvestigators || isInspectorInteraction(state.stage))
+  const hoveredInvestigator = canPreviewInvestigatorDistances ? INVESTIGATOR_ORDER.find(color =>
+    hover.target === `investigator:${color}:${state.investigatorPositions[color]}` &&
+    state.investigatorPositions[color] !== suppressedInvestigatorHoverCrossing) ?? null : null
+  const hoveredInvestigatorStart = state.stage === 'jackDiscoverySetup' && hoveredCrossing &&
+    crossingsById.get(hoveredCrossing)?.starting ? hoveredCrossing : null
+  const hoveredInvestigatorMoveChoice = state.stage === 'investigatorMove' && hoveredCrossing &&
+    legalCrossingIds.has(hoveredCrossing) ? hoveredCrossing : null
   const displayedInvestigatorColors = canPreviewPlacedInvestigators
     ? INVESTIGATOR_ORDER.filter((color) => showInvestigatorMaybes || hoveredInvestigator === color)
     : []
@@ -500,7 +508,7 @@ function GameBoard({
       role="img"
       aria-label="Whitehall game board"
       onClick={onMapClick}
-      onMouseLeave={() => setHoveredMaybeId(null)}
+      {...hover.events}
     >
       <image href={boardImage} x="0" y="0" width={BOARD_SIZE} height={BOARD_SIZE} />
 
@@ -828,24 +836,13 @@ function GameBoard({
               cx={circle.x}
               cy={circle.y}
               r="18"
+              data-board-hover={`location:${circle.id}`}
               onClick={() => selectable && onCircle(circle.id)}
               onMouseDown={(event) => {
                 if (event.button === 1 && (legal || (state.stage === 'jackDiscoverySetup' && circle.color === 'white'))) {
                   event.preventDefault()
                   onCircleMiddleClick(circle.id)
                 }
-              }}
-              onMouseEnter={() => {
-                if (routePreviewHoverTarget) setHoveredRouteTarget(circle.id)
-                if (unrestrictedDistanceHoverTarget) setHoveredUnrestrictedRouteStart(circle.id)
-              }}
-              // A rerender under a stationary pointer is not a request to
-              // preview an outcome. Require actual movement over the target.
-              onMouseMove={() => setHoveredMaybeId(inferenceHoverTarget ? circle.id : null)}
-              onMouseLeave={() => {
-                setHoveredMaybeId(null)
-                if (routePreviewHoverTarget) setHoveredRouteTarget(null)
-                if (unrestrictedDistanceHoverTarget) setHoveredUnrestrictedRouteStart(null)
               }}
               aria-label={`Location ${circle.id}${selectable ? ', selectable' : ''}`}
             />
@@ -903,20 +900,11 @@ function GameBoard({
               cx={crossing.x}
               cy={crossing.y}
               r="12"
+              data-board-hover={`crossing:${crossing.id}`}
               onClick={() => {
                 if (!legal) return
-                clearCrossingHoverPreviews()
-                setHoveredInvestigator(null)
                 setSuppressedInvestigatorHoverCrossing(crossing.id)
                 onCrossing(crossing.id)
-              }}
-              onMouseEnter={() => {
-                if (investigatorStartPreview) setHoveredInvestigatorStart(crossing.id)
-                if (investigatorRoutePreviewTarget) setHoveredInvestigatorRouteTarget(crossing.id)
-                if (investigatorMoveDistancePreviewTarget) setHoveredInvestigatorMoveChoice(crossing.id)
-              }}
-              onMouseLeave={() => {
-                clearCrossingHoverPreviews()
               }}
               aria-label={`Crossing ${crossing.id}${legal ? ', selectable' : ''}${investigatorStartPreview ? ', possible investigator start' : ''}`}
             />
@@ -992,13 +980,8 @@ function GameBoard({
             key={`investigator-${color}`}
             className={`investigator-piece ${color}${canPreviewInvestigatorDistances ? ' hoverable' : ''}${selectable ? ' selectable' : ''}`}
             style={investigatorPieceStyle(color)}
-            onMouseEnter={() => {
-              if (canPreviewInvestigatorDistances && suppressedInvestigatorHoverCrossing !== crossing.id) {
-                setHoveredInvestigator(color)
-              }
-            }}
-            onMouseLeave={() => {
-              if (canPreviewInvestigatorDistances) setHoveredInvestigator(null)
+            data-board-hover={`investigator:${color}:${crossing.id}`}
+            onPointerLeave={() => {
               if (suppressedInvestigatorHoverCrossing === crossing.id) {
                 setSuppressedInvestigatorHoverCrossing(null)
               }
@@ -1029,8 +1012,7 @@ function GameBoard({
           return circle ? (
             <g
               className={`jack-marker${canPreviewJackDistances ? ' hoverable' : ''}`}
-              onMouseEnter={() => canPreviewJackDistances && setHoveredJack(true)}
-              onMouseLeave={() => setHoveredJack(false)}
+              data-board-hover={`jack:${circle.id}`}
             >
               <circle cx={circle.x} cy={circle.y} r={JACK_PIECE_RADIUS} />
               <text x={circle.x} y={circle.y + 4} textAnchor="middle">
@@ -1243,6 +1225,7 @@ function GameControls({ state, dispatch, onUndoRoute, onUndoSecondLocation }: Ga
 
   if (state.stage === 'jackMove') {
     const legal = legalJackDestinations(state)
+    const validTypes = MOVE_TYPES.filter(type => legalJackDestinations({ ...state, jackMoveSelection: { type, path: [] } }).length > 0)
     const route = state.jackMoveSelection.path
     return (
       <>
@@ -1250,10 +1233,7 @@ function GameControls({ state, dispatch, onUndoRoute, onUndoSecondLocation }: Ga
         <div className="movement-tabs" role="group" aria-label="Jack movement type">
           {MOVE_TYPES.map((type) => {
             const remaining = type === 'normal' ? null : state.specialRemaining[type]
-            const disabled =
-              remaining === 0 ||
-              (type === 'coach' && state.moveSlot > 13) ||
-              (type === 'boat' && circlesById.get(state.currentJack ?? -1)?.color !== 'blue')
+            const disabled = !validTypes.includes(type)
             return (
               <button
                 key={type}
@@ -1510,10 +1490,19 @@ interface AppProps {
   onLeaveNewGame?: () => void
 }
 function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGame, onLeaveNewGame }: AppProps) {
+  const boardFrame = useRef<HTMLDivElement>(null)
   const [localHistory, setHistory] = useState(initializeHistory)
   const remote = mail ?? online ?? (ai ? { ...ai, turnStart: 0 } : undefined)
   const history = remote?.history ?? local?.history ?? localHistory
-  const state = ai ? onlineBoardState(history, ai.role) : online ? onlineBoardState(history, online.role) : mail ? mailBoardState(history, mail.role) : currentHistoryState(history)
+  const gameState = ai ? onlineBoardState(history, ai.role) : online ? onlineBoardState(history, online.role) : mail ? mailBoardState(history, mail.role) : currentHistoryState(history)
+  const validJackTypes = gameState.stage === 'jackMove' ? MOVE_TYPES.filter(type =>
+    legalJackDestinations({ ...gameState, jackMoveSelection: { type, path: [] } }).length > 0) : []
+  // With no type selector for a forced move, show its destinations immediately.
+  // Record the ordinary type-selection action when the player chooses a route;
+  // deriving the preview here leaves saved histories and their replay unchanged.
+  const onlyJackType = validJackTypes.length === 1 ? validJackTypes[0] : undefined
+  const state: GameState = onlyJackType && onlyJackType !== gameState.jackMoveSelection.type
+    ? { ...gameState, jackMoveSelection: { type: onlyJackType, path: [] } } : gameState
   const waitingForJack = !!online && online.role === 'investigators' && playerViewForState(currentHistoryState(history)) === 'jack'
   const recap = state.stage === 'gameOver' ? gameRecap(history) : []
   const [showPossible, setShowPossible] = useState(() => {
@@ -1559,6 +1548,12 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     runInvestigatorAuto = false,
   ) => {
     if (online?.waiting) return
+    const first = commands[0]
+    if (state.stage === 'jackMove' && first?.type === 'apply' &&
+      (first.action.type === 'selectJackDestination' || first.action.type === 'confirmJackMove') &&
+      state.jackMoveSelection.type !== currentHistoryState(history).jackMoveSelection.type) {
+      commands = [{ type: 'apply', action: { type: 'setJackMoveType', moveType: state.jackMoveSelection.type } }, ...commands]
+    }
     let next = history
     const acceptedCommands: HistoryCommand[] = []
     for (const command of commands) {
@@ -1569,8 +1564,9 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     }
     if (!ai && remote?.role === 'investigators' && commands.some(command => command.type === 'undo' || command.type === 'bigUndo') &&
       undoIncludesSecretInfo(history, next.cursor) && !window.confirm(SECRET_INFO_UNDO_WARNING)) return
-    if (runInvestigatorAuto && (!remote || (remote.role === 'investigators' && !remote.waiting))) {
-      const automatic = automaticInvestigatorActions(next)
+    const searched = acceptedCommands.some(command => command.type === 'apply' && command.action.type === 'searchCircle')
+    if ((runInvestigatorAuto || searched) && (!remote || (remote.role === 'investigators' && !remote.waiting))) {
+      const automatic = automaticInvestigatorActions(next, undefined, runInvestigatorAuto)
       if (remote) {
         const automaticCommands = online ? reviewOnlineAutomaticPasses(history, acceptedCommands, automatic.commands) : automatic.commands
         for (const command of automaticCommands) {
@@ -1878,7 +1874,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               </label>
               <label
                 className="alternate-angle-toggle"
-                title="use the second-least obscured angle for each indicator"
+                title="use the second-least obscured angle when it does not increase overlap with playing pieces or clip text at the map edge"
               >
                 <input
                   type="checkbox"
@@ -1997,6 +1993,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
           </div>
           <div className="board-stage">
             <div
+              ref={boardFrame}
               className={
                 waitingForJack ? 'board-frame active-jack' : isInspectorInteraction(state.stage)
                   ? `board-frame active-investigator-${activeInvestigatorColor(state)}`
@@ -2035,6 +2032,9 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 }}
               />
             </div>
+            <FloatingMapControls board={boardFrame} state={state} dispatch={dispatch} waiting={!!remote?.waiting && !ai?.awaitingEnd}
+              endTurnLabel={ai?.awaitingEnd ? 'End turn' : online && isInvestigatorReview(state)
+                ? state.stage === 'investigatorSetupResult' ? 'Confirm deployment' : 'End investigator turn' : undefined} />
             {showInvestigatorTurnAnnouncement && (
               <div className="investigator-turn-announcement" role="status" aria-live="assertive">
                 Investigators’ Turn

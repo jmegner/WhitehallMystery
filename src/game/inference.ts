@@ -25,7 +25,7 @@ const isCoachCircle = (circleId: number) => circlesById.get(circleId)?.color !==
 
 const occupied = (positions: Record<InvestigatorColor, string>) => new Set(Object.values(positions))
 
-const movementPaths = (from: number, move: PublicMoveEvidence): number[][] => {
+export const publicMovementPaths = (from: number, move: PublicMoveEvidence): number[][] => {
   if (move.type === 'normal') {
     const blocked = occupied(move.investigatorPositions)
     return [...(jackTransitions.get(from)?.entries() ?? [])]
@@ -48,7 +48,7 @@ const movementPaths = (from: number, move: PublicMoveEvidence): number[][] => {
   return routes
 }
 
-const buildInferenceContext = (evidence: PublicRoundEvidence): InferenceContext => {
+export const buildInferenceContext = (evidence: PublicRoundEvidence): InferenceContext => {
   const positiveIds = [
     ...new Set(
       evidence.observations
@@ -95,7 +95,7 @@ const remainingHypotheses = (context: InferenceContext): Hypothesis[] => {
     if (!move) continue
     const next = new Map<string, Hypothesis>()
     for (const hypothesis of hypotheses.values()) {
-      for (const path of movementPaths(hypothesis.position, move)) {
+      for (const path of publicMovementPaths(hypothesis.position, move)) {
         if (path.some((circleId) => (negativeUntil.get(circleId) ?? -1) >= moveIndex)) continue
         let mask = hypothesis.positiveMask
         for (const circleId of path) mask |= bitForCircle.get(circleId) ?? 0n

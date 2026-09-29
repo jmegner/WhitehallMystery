@@ -34,6 +34,27 @@ async function start(page: Page, role: 'Jack' | 'Investigator') {
   await page.getByRole('button', { name: `Play as ${role}`, exact: true }).click()
 }
 
+test('AI Jack keeps his last Round 1 Coach when a safe Street advance suffices', async ({ page }) => {
+  const history = createGameHistory({ ...createInitialGame(), stage: 'jackMove', currentJack: 168, moveSlot: 6,
+    discoveryLocations: [9, 77, 129, 161], reachedDiscoveries: [129],
+    roundTrail: [129, 126, 181, 183, 185, 186, 168],
+    investigatorPositions: { yellow: 'HB', blue: 'GS', red: 'FR' },
+    specialRemaining: { coach: 1, alley: 1, boat: 2 },
+    publicRound: { start: 129, moves: [], observations: [] },
+  })
+  await restoreGame(page, history, 'investigators')
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move', exact: true })).toBeVisible({ timeout: 15000 })
+  const after = currentHistoryState(await savedHistory(page))
+  expect(after.currentJack).toBe(145)
+  expect(after.moveSlot).toBe(7)
+  expect(after.specialRemaining.coach).toBe(1)
+  expect(after.publicRound!.moves.at(-1)?.type).toBe('normal')
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move', exact: true })).toBeVisible()
+  expect(currentHistoryState(await savedHistory(page))).toEqual(after)
+})
+
 test('WaitEnd holds Jack setup and middle-clicked moves until confirmation, including after refresh', async ({ page }) => {
   let workers = 0
   page.on('worker', () => { workers += 1 })
@@ -148,6 +169,7 @@ test('plays as Jack through AI deployment and a coordinated investigator turn, t
   for (const id of [33, 46, 147]) await page.getByLabel(`Location ${id}, selectable`, { exact: true }).click()
   await page.getByLabel('Location 159, selectable', { exact: true }).click({ button: 'middle' })
   await expect(page.getByRole('heading', { name: 'Jack: Choose the Starting Location' })).toBeVisible({ timeout: 20000 })
+  expect(Object.values(currentHistoryState(await savedHistory(page)).investigatorPositions).sort()).toEqual(['HP', 'JD', 'JH'])
   await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
   await page.getByLabel('Legal Jack destinations').getByRole('button').first().click()
   await page.getByRole('button', { name: 'Record move privately' }).click()

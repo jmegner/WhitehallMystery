@@ -1,7 +1,7 @@
 import { createInitialGame } from './gameEngine'
 import { createGameHistory, currentHistoryState, gameHistoryReducer, playerViewForState, type GameHistory, type PlayerView } from './history'
 import { decodeMail, MAIL_STORAGE_KEY, mailTimestamp, mailTurnStart } from './byMail'
-import { loadStoredHistory } from './persistence'
+import { GAME_STORAGE_KEY, loadStoredHistory } from './persistence'
 import { canonicalJson, onlineHistoryFromWire, onlineHistoryToWire } from './onlineProtocol'
 import { ONLINE_SESSION_STORAGE_KEY, parseOnlineSession, type OnlineSession } from '../online/onlineSession'
 import type { GameAction, GameState } from './types'
@@ -31,13 +31,14 @@ export type SavedGame = SavedGameBase & (
   | { mode: 'online'; session: OnlineSession; summary: GameSummary | null; seats?: OnlineSeats | null; revision?: number }
 )
 export interface GameLibraryState { games: SavedGame[]; activeId: string; error: string }
-export type GameStorage = Pick<Storage, 'length' | 'key' | 'getItem' | 'setItem'>
+export type GameStorage = Pick<Storage, 'length' | 'key' | 'getItem' | 'setItem' | 'removeItem'>
 const defaultMailView = (): MailView => ({ draft: '', showBoard: false, activeSharing: false })
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 const nullableRole = (value: unknown): value is PlayerView | null => value === null || value === 'jack' || value === 'investigators'
 const validTimestamp = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= 8.64e15
 const readHistory = (value: unknown) => loadStoredHistory({ getItem: () => JSON.stringify({ version: 2, history: value }), setItem: () => {} })
 const LEFT_GAME = JSON.stringify({ left: true })
+const REMOVE_ERROR = 'Could not remove the saved game from browser storage. Its entry has been kept; try again.'
 
 export function normalizeLocalResume(history: GameHistory): GameHistory {
   if (history.pendingReveal === 'investigators') history = gameHistoryReducer(history, { type: 'revealUndo' })
@@ -111,6 +112,8 @@ export const summarizeGame = (history: GameHistory): GameSummary => {
   return { round: state.round, move: state.moveSlot, stage: state.stage, turn, winner: state.result?.winner ?? null }
 }
 export const savedGameSummary = (game: SavedGame): GameSummary | null => game.mode === 'online' ? game.summary : summarizeGame(game.mode === 'by-mail' ? game.session.history : game.history)
+export const isSavedGameDone = (game: SavedGame): boolean => savedGameSummary(game)?.winner != null ||
+  (game.mode === 'online' && game.seats?.[opponentRole(game.session.role)].leftAt != null)
 export const savedGameTime = (game: SavedGame): string => game.startedAt === null ? 'Start time unknown (older saved game)' : mailTimestamp(game.startedAt / 1000)
 export const savedGameMode = (game: SavedGame): string => game.mode === 'versus-ai' ? `Versus AI · ${game.role === 'jack' ? 'Jack' : 'Investigator'}` : game.mode === 'same-device' ? 'Same device' : game.mode === 'by-mail' ? 'By Mail' : 'Online'
 export const savedGameStatus = (game: SavedGame): string => {
@@ -196,15 +199,48 @@ export class SavedGameLibrary {
     this.publish()
   }
   leave(id: string) {
-    // A tiny tombstone prevents legacy migration from resurrecting a departed
-    // game. It contains no history or credentials.
-    if (!this.get(id)) return true
-    if (!this.write(SAVED_GAME_PREFIX + id, LEFT_GAME)) { this.publish(); return false }
-    this.state.games = this.state.games.filter(game => game.id !== id)
-    if (this.state.activeId === id) {
-      this.state.activeId = ''
-      this.write(ACTIVE_GAME_KEY, '')
+    const game = this.get(id)
+    if (!game) return true
+    try {
+      if (!this.storage) throw new Error('Storage unavailable')
+      const keys = new Set<string>()
+      // Remove matching legacy copies as well, so even an incomplete migration
+      // cannot bring the game back after its saved-game entry is deleted.
+      if (id === 'same-device-legacy') keys.add(GAME_STORAGE_KEY)
+      if (game.mode === 'by-mail') {
+        const legacy = loadLegacyMail(this.storage)
+        if (legacy && legacy.id === game.session.id && legacy.role === game.session.role) {
+          for (const key of [MAIL_STORAGE_KEY, 'whitehall-mystery.mail-draft', 'whitehall-mystery.mail-show-board', 'whitehall-mystery.mail-active-sharing']) keys.add(key)
+        }
+      }
+      if (game.mode === 'online') {
+        let legacy: OnlineSession | null = null
+        const raw = this.storage.getItem(ONLINE_SESSION_STORAGE_KEY)
+        try { legacy = parseOnlineSession(JSON.parse(raw ?? 'null')) } catch { /* Keep unrelated damaged storage. */ }
+        if (legacy && this.onlineId(legacy) === id) keys.add(ONLINE_SESSION_STORAGE_KEY)
+      }
+      const gameIds = game.mode === 'online' ? [id, `online-${game.session.apiBase}-${game.session.roomId}-${game.session.role}`] : [id]
+      for (const gameId of gameIds) {
+        const logKey = `whitehall-mystery.hunt-log.${gameId}`
+        keys.add(`whitehall-mystery.floating-pass.${gameId}`)
+        for (let index = 0; index < this.storage.length; index++) {
+          const key = this.storage.key(index)
+          if (key === logKey || key?.startsWith(`${logKey}.`)) keys.add(key)
+        }
+      }
+      for (const key of keys) this.storage.removeItem(key)
+      // Keep an empty selection marker: absence means first visit and creates
+      // a starter game. Delete the saved entry last so failures remain retryable.
+      if (this.state.activeId === id) this.storage.setItem(ACTIVE_GAME_KEY, '')
+      this.storage.removeItem(SAVED_GAME_PREFIX + id)
+    } catch {
+      this.state.error = REMOVE_ERROR
+      this.publish()
+      return false
     }
+    this.state.games = this.state.games.filter(game => game.id !== id)
+    if (this.state.activeId === id) this.state.activeId = ''
+    if (this.state.error === REMOVE_ERROR) this.state.error = ''
     this.publish()
     return true
   }

@@ -1,6 +1,63 @@
 import { expect, test } from '@playwright/test'
+import { createInitialGame } from '../../src/game/gameEngine'
+import { createGameHistory } from '../../src/game/history'
+import type { SavedGame } from '../../src/game/savedGames'
 
 test.use({ timezoneId: 'America/Chicago' })
+
+test('Leave Done Games removes either winner, preserves ongoing games, and supports cancellation', async ({ page }) => {
+  const ongoing: SavedGame = { id: 'ongoing', mode: 'same-device', startedAt: Date.now(), savedAt: Date.now(), history: createGameHistory(createInitialGame()) }
+  const games: SavedGame[] = [ongoing, {
+    ...ongoing, id: 'jack-won', history: createGameHistory({ ...createInitialGame(), stage: 'gameOver', result: { winner: 'jack', reason: 'Escaped' } }),
+  }, {
+    ...ongoing, id: 'investigators-won', mode: 'versus-ai', role: 'jack', history: createGameHistory({ ...createInitialGame(), stage: 'gameOver', result: { winner: 'investigators', reason: 'Arrested' } }),
+  }]
+  await page.goto('/')
+  await page.evaluate(games => {
+    for (const key of Object.keys(localStorage)) if (key.startsWith('whitehall-mystery.saved-game.v1.')) localStorage.removeItem(key)
+    for (const game of games) localStorage.setItem('whitehall-mystery.saved-game.v1.' + game.id, JSON.stringify(game))
+    localStorage.setItem('whitehall-mystery.active-game.v1', '')
+  }, games)
+  await page.reload()
+  await expect(page.locator('.saved-game-resume')).toHaveCount(3)
+  page.once('dialog', dialog => dialog.dismiss())
+  await page.getByRole('button', { name: 'Leave Done Games', exact: true }).click()
+  await expect(page.locator('.saved-game-resume')).toHaveCount(3)
+  page.once('dialog', async dialog => { expect(dialog.message()).toContain('2 done games'); await dialog.accept() })
+  await page.getByRole('button', { name: 'Leave Done Games', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('Left 2 of 2 games.')
+  await expect(page.locator('.saved-game-resume')).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Leave Done Games', exact: true })).toBeDisabled()
+  expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('whitehall-mystery.saved-game.v1.')))).toEqual(['whitehall-mystery.saved-game.v1.ongoing'])
+  await page.reload()
+  await expect(page.locator('.saved-game-resume')).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Leave Done Games', exact: true })).toBeDisabled()
+})
+
+test('Leave All confirms once, removes every local mode, and stays empty after refresh', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'New game', exact: true }).click()
+  await page.getByRole('button', { name: 'By Mail', exact: true }).click()
+  await page.getByRole('button', { name: 'Start new game as Jack' }).click()
+  await page.getByRole('button', { name: 'New game', exact: true }).click()
+  await page.getByRole('button', { name: 'Versus AI', exact: true }).click()
+  await page.getByRole('button', { name: 'Play as Jack', exact: true }).click()
+  await page.getByRole('button', { name: 'Resume game', exact: true }).click()
+  await expect(page.locator('.saved-game-resume')).toHaveCount(3)
+  page.once('dialog', dialog => dialog.dismiss())
+  await page.getByRole('button', { name: 'Leave All', exact: true }).click()
+  await expect(page.locator('.saved-game-resume')).toHaveCount(3)
+  let confirmations = 0
+  page.on('dialog', async dialog => { confirmations++; await dialog.accept() })
+  await page.getByRole('button', { name: 'Leave All', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('Left 3 of 3 games.')
+  await expect(page.locator('.saved-game-resume')).toHaveCount(0)
+  expect(confirmations).toBe(1)
+  expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('whitehall-mystery.saved-game.v1.')))).toEqual([])
+  await page.reload()
+  await expect(page.getByText('No saved games.', { exact: false })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Leave All', exact: true })).toBeDisabled()
+})
 
 test('compact Edit name sits beside the name inside the card without resuming the game', async ({ page }) => {
   await page.goto('/')

@@ -13,7 +13,7 @@ export async function leaveSavedGame(library: SavedGameLibrary, game: SavedGame,
     try { await leaveOnlineGame(game.session, requestId) }
     catch (error) {
       // Expired/revoked credentials no longer have a usable seat to abandon.
-      if (!(error instanceof OnlineSessionHttpError) || error.status !== 401) throw error
+      if (!(error instanceof OnlineSessionHttpError) || error.status !== 401) throw new Error(`Could not confirm leaving the online game. ${error instanceof Error ? error.message : 'The multiplayer service could not be reached.'}`)
       notice = 'Removed locally. The game expired or this credential is no longer valid.'
     }
   }

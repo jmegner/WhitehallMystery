@@ -22,8 +22,8 @@ const currentOrNever = (id: number, others: number[]): SearchOutcome => ({
 describe('investigator progress weights', () => {
   test('values 73 over 54 when the round starts at 72, including their next-turn destinations', () => {
     const weights = createInvestigatorWeights(progress())!
-    expect(weights.locationWeights.get(73)).toBeCloseTo(0.6)
-    expect(weights.locationWeights.get(54)).toBeCloseTo(0.4)
+    expect(weights.locationWeights.get(73)).toBeCloseTo(0.51)
+    expect(weights.locationWeights.get(54)).toBeCloseTo(0.02 + 0.98 * 2 ** -2.5)
     expect(weights.minimumDiscoveryMoves(73)).toBe(2)
     expect(weights.minimumDiscoveryMoves(54)).toBe(3)
     expect(weightedNextPossibilities(new Set([73]), {}, weights)).toBeGreaterThan(weightedNextPossibilities(new Set([54]), {}, weights))
@@ -72,7 +72,7 @@ describe('investigator progress weights', () => {
     expect(changed.locationWeights).toEqual(original.locationWeights)
     expect(changed.targets).toEqual(original.targets)
     for (const [id, weight] of original.locationWeights) {
-      expect(weight).toBeGreaterThanOrEqual(0.2)
+      expect(weight).toBeGreaterThanOrEqual(0.02)
       expect(weight).toBeLessThanOrEqual(1)
       expect(changed.minimumDiscoveryMoves(id)).toBe(original.minimumDiscoveryMoves(id))
     }

@@ -9,6 +9,7 @@ import { createGameHistory, currentHistoryState, gameRecap, playerViewForState, 
 import { createInitialGame } from './game/gameEngine'
 import { SavedGameLibrary, normalizeLocalResume, type SavedGame, type MailSession, type MailView } from './game/savedGames'
 import SavedGamesMenu from './SavedGamesMenu'
+import LeaveGameFailure from './LeaveGameFailure'
 import OnlineGame from './online/OnlineGame'
 import { confirmLeaveGame, leaveSavedGame } from './game/leaveGame'
 import { MAX_GAME_NAME_LENGTH } from './game/gameName'
@@ -69,17 +70,31 @@ export default function GameApp() {
       await leaveSavedGame(library, game, requestId)
       setMenu('choose')
     } catch (error) {
-      setLeaveError(`${error instanceof Error ? error.message : 'Could not leave the game.'} Your saved game has been kept; retry Leave+New Game when connected.`)
+      setLeaveError(error instanceof Error ? error.message : 'Could not leave the game.')
     } finally { setLeaving(false) }
+  }
+  const forgetAndNew = () => {
+    if (!game || leaving) return
+    if (library.leave(game.id)) { setLeaveError(''); setMenu('choose') }
+    else setLeaveError('Could not remove the saved game from browser storage. Try Forget game again.')
+  }
+  const navigate = (next: GameMenu) => {
+    setLeaveError('')
+    if (next !== null) setInvitationCopy(null)
+    setMenu(next)
   }
   return <>
     {saved.error && <p className="storage-warning" role="alert">{saved.error}</p>}
     {leaving && <p className="storage-warning" role="status">Leaving the current game…</p>}
-    {leaveError && <p className="storage-warning" role="alert">{leaveError}</p>}
+    {leaveError && game && <LeaveGameFailure error={leaveError} online={game.mode === 'online'} disabled={leaving} onForget={forgetAndNew} />}
     <div inert={leaving}>
-      <GameWorkspace key={game?.id ?? 'no-game'} game={game} library={library} menu={menu}
-        setMenu={next => { setLeaveError(''); if (next !== null) setInvitationCopy(null); setMenu(next) }} onLeaveNewGame={() => void leaveAndNew()}
-        onStartOnline={startOnline} invitationCopyStatus={invitationCopy?.gameId === game?.id ? invitationCopy?.status : undefined} />
+      {/* Keep the resume menu mounted while Leave All removes the active game,
+          so pending departures, failures and retry IDs survive the change. */}
+      {menu === 'resume' ? <SavedGamesMenu library={library} activeId={game?.id ?? ''}
+        onResume={id => { library.activate(id); navigate(null) }} onNewGame={() => navigate('choose')} onCancel={() => navigate(null)} /> :
+        <GameWorkspace key={game?.id ?? 'no-game'} game={game} library={library} menu={menu}
+          setMenu={navigate} onLeaveNewGame={() => void leaveAndNew()}
+          onStartOnline={startOnline} invitationCopyStatus={invitationCopy?.gameId === game?.id ? invitationCopy?.status : undefined} />}
     </div>
   </>
 }
@@ -190,8 +205,6 @@ function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame, onStartOn
     <button type="button" className="primary-button" disabled={!draft.trim() || (!joining && !waiting)} onClick={() => receive(joining)}>{joining ? 'Join existing game' : 'Load partner’s reply'}</button>
     {!joining && <button type="button" onClick={receiveCorrection}>Load partner’s correction</button>}
   </>
-  if (menu === 'resume') return <SavedGamesMenu library={library} activeId={game?.id ?? ''}
-    onResume={id => { library.activate(id); setMenu(null) }} onNewGame={openMenu} onCancel={() => setMenu(null)} />
   if (menu) return <main className="mail-menu">
     <h1>{menu === 'choose' ? 'New game' : menu === 'mail' ? 'By Mail' : menu === 'ai' ? 'Versus AI' : 'Online'}</h1>
     {menu === 'choose' ? <>

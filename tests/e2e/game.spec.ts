@@ -22,7 +22,7 @@ test('keeps history buttons left-aligned ahead of the action count and options',
   await expect(page.locator('label.crossing-toggle')).toHaveAttribute('title', 'show crossing ids')
   await expect(page.locator('label.alternate-angle-toggle')).toHaveAttribute(
     'title',
-    'use the second-least obscured angle for each indicator',
+    'use the second-least obscured angle when it does not increase overlap with playing pieces or clip text at the map edge',
   )
   await expect(page.locator('label.past-path-toggle')).toHaveAttribute('title', "show Jack's taken path for this round")
   await expect(page.locator('label.investigator-maybes-toggle')).toHaveAttribute(

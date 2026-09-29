@@ -1,27 +1,15 @@
 import { possibleJackLocations, possibleJackSearchOutcomes, type SearchOutcome } from './inference'
-import { adjacentCirclesForCrossing, crossings, investigatorNeighbors, jackTransitions, reachableCrossings, startingCrossings } from './mapData'
+import { adjacentCirclesForCrossing, crossings, reachableCrossings, startingCrossings } from './mapData'
 import { INVESTIGATOR_ORDER, type GameAction, type GameState } from './types'
 import { randomChoice, rankWithRandomTies } from './aiRandom'
 import { createInvestigatorWeights, viableJackLocations, type InvestigatorWeights } from './aiInvestigatorWeights'
+import { planInvestigatorDeployment } from './aiDeployment'
+import { InvestigatorPlanning } from './aiInvestigatorPlanning'
+import { distanceToCircle } from './aiInvestigatorGeometry'
 import { coveringArrests, futureStreetLocations, intersection, investigatorTargets, orderedSearches, preferredArrest, usefulSearch, weightedNextPossibilities, type InvestigatorKnowledge, type Positions } from './investigatorTactics'
 export { coveringArrests, nextStreetLocations, orderedSearches, weightedNextPossibilities, type InvestigatorKnowledge } from './investigatorTactics'
 
 const adjacent = new Map(crossings.map(crossing => [crossing.id, adjacentCirclesForCrossing(crossing.id)]))
-const crossingDistances = new Map(crossings.map(crossing => {
-  const distances = new Map<string, number>([[crossing.id, 0]])
-  const queue = [crossing.id]
-  for (let i = 0; i < queue.length; i += 1) {
-    for (const next of investigatorNeighbors.get(queue[i]!) ?? []) {
-      if (distances.has(next)) continue
-      distances.set(next, distances.get(queue[i]!)! + 1)
-      queue.push(next)
-    }
-  }
-  return [crossing.id, distances] as const
-}))
-const distanceToCircle = new Map(crossings.map(start => [start.id, new Map([...jackTransitions.keys()].map(id => [id,
-  Math.min(...crossings.filter(crossing => adjacent.get(crossing.id)!.includes(id)).map(crossing => crossingDistances.get(start.id)!.get(crossing.id)!)),
-]))]))
 
 function targetsAt(state: InvestigatorKnowledge, crossing: string, outcomes: Map<number, SearchOutcome>, possible: Set<number>) {
   return investigatorTargets(adjacent.get(crossing) ?? [], outcomes, possible,
@@ -39,6 +27,16 @@ export function investigatorAction(state: InvestigatorKnowledge, random = Math.r
   const canArrest = state.checkedThisAction.length === 0
   const arrests = coveringArrests(possible, state.investigatorPositions, canArrest ? colors : colors.slice(1))
   if (arrests && arrests[color] === undefined) return [{ type: 'passInspectorAction' }]
+  if (arrests?.[color] !== undefined) return [{ type: 'setInspectorActionMode', mode: 'arrest' }, { type: 'arrestCircle', circleId: arrests[color]! }]
+  if (weights && possible.size) {
+    const planner = new InvestigatorPlanning(state, weights, outcomes, possible)
+    if (planner.belief.histories.length) {
+      const action = planner.forPositions(state.investigatorPositions).chooseAction(adjacent.get(crossing) ?? [])
+      if (action.id === undefined) return [{ type: 'passInspectorAction' }]
+      return [{ type: 'setInspectorActionMode', mode: action.type },
+        { type: action.type === 'arrest' ? 'arrestCircle' : 'searchCircle', circleId: action.id }]
+    }
+  }
   const arrest = arrests?.[color] ?? preferredArrest(targets, outcomes, possible, state.investigatorPositions, weights, random)
   if (arrest !== undefined) return [{ type: 'setInspectorActionMode', mode: 'arrest' }, { type: 'arrestCircle', circleId: arrest }]
   if (!targets.searches.length) return [{ type: 'passInspectorAction' }]
@@ -120,14 +118,16 @@ function legalDestinations(state: InvestigatorKnowledge, positions: Positions, i
 }
 
 export function planInvestigatorMoves(state: InvestigatorKnowledge, random = Math.random): Positions {
-  const setup = state.stage === 'investigatorSetup'
-  const weights = setup ? undefined : createInvestigatorWeights(state)
-  const possible = setup ? new Set(jackTransitions.keys()) : viableJackLocations(possibleJackLocations(state.publicRound), weights)
-  const outcomes = setup ? new Map<number, SearchOutcome>() : possibleJackSearchOutcomes(state.publicRound)
+  if (state.stage === 'investigatorSetup') return planInvestigatorDeployment(state, random)
+  const weights = createInvestigatorWeights(state)
+  const possible = viableJackLocations(possibleJackLocations(state.publicRound), weights)
+  const outcomes = possibleJackSearchOutcomes(state.publicRound)
+  const planning = weights && possible.size ? new InvestigatorPlanning(state, weights, outcomes, possible) : undefined
+  const planner = planning?.belief.histories.length ? planning : undefined
   const options = new Map<string, number[]>()
   for (const crossing of crossings) {
     const targets = targetsAt({ ...state, checkedThisAction: [] }, crossing.id, outcomes, possible)
-    options.set(crossing.id, [...new Set([...targets.searches, ...targets.arrests])])
+    options.set(crossing.id, planner ? adjacent.get(crossing.id)! : [...new Set([...targets.searches, ...targets.arrests])])
   }
   let bestScore = Infinity
   let bestPursuit = Infinity
@@ -145,11 +145,26 @@ export function planInvestigatorMoves(state: InvestigatorKnowledge, random = Mat
     }
     return false
   }
-  if (!setup && possible.size > 0 && possible.size <= 3 && findArrests(state.investigatorPositions, state.activeInvestigator)) return guaranteed!
+  if (possible.size > 0 && possible.size <= 3 && findArrests(state.investigatorPositions, state.activeInvestigator)) return guaranteed!
 
+  // Shortlist each piece once, then score combinations jointly. Re-ranking
+  // every piece under every partial layout repeats most route forecasts.
+  const candidatesByColor = new Map(INVESTIGATOR_ORDER.slice(state.activeInvestigator).map((color, offset) => {
+    const index = state.activeInvestigator + offset
+    const movable = { ...state.investigatorPositions }
+    for (const earlier of INVESTIGATOR_ORDER.slice(state.activeInvestigator, index)) delete movable[earlier]
+    const candidates = legalDestinations(state, movable, index).map(id => {
+      const next = { ...state.investigatorPositions, [color]: id }
+      return { id, score: planner ? planner.forPositions(next).expectedScore([options.get(id)!], [color]) :
+        expectedNextPossibilities(possible, next, [options.get(id)!], outcomes, [color], weights), pursuit: pursuitScore(possible, next, weights, [color]) }
+    })
+    return [color, rankWithRandomTies(candidates, (a, b) => a.score - b.score || a.pursuit - b.pursuit, random).slice(0, 6)] as const
+  }))
   const search = (positions: Positions, index: number) => {
     if (index === 3) {
-      const score = setup ? 0 : expectedNextPossibilities(possible, positions, INVESTIGATOR_ORDER.map(color => options.get(positions[color]!)!), outcomes, INVESTIGATOR_ORDER, weights)
+      const actions = INVESTIGATOR_ORDER.map(color => options.get(positions[color]!)!)
+      const score = planner ? planner.forPositions(positions).expectedScore(actions) :
+        expectedNextPossibilities(possible, positions, actions, outcomes, INVESTIGATOR_ORDER, weights)
       if (score > bestScore + 1e-9) return
       const pursuit = pursuitScore(possible, positions, weights)
       if (score < bestScore - 1e-9) { bestScore = score; bestPursuit = Infinity; finalists = [] }
@@ -158,13 +173,9 @@ export function planInvestigatorMoves(state: InvestigatorKnowledge, random = Mat
       return
     }
     const color = INVESTIGATOR_ORDER[index]!
-    const candidates = legalDestinations(state, positions, index).map(id => {
-      const next = { ...positions, [color]: id }
-      return { id, score: setup ? 0 : expectedNextPossibilities(possible, next, [options.get(id)!], outcomes, [color], weights), pursuit: pursuitScore(possible, next, weights, [color]) }
-    })
-    const ranked = rankWithRandomTies(candidates, (a, b) => a.score - b.score || a.pursuit - b.pursuit, random)
+    const legal = new Set(legalDestinations(state, positions, index))
     // A bounded joint greedy search keeps browser latency predictable.
-    for (const { id } of ranked.slice(0, 6)) search({ ...positions, [color]: id }, index + 1)
+    for (const { id } of candidatesByColor.get(color)!) if (legal.has(id)) search({ ...positions, [color]: id }, index + 1)
   }
   search(state.investigatorPositions, state.activeInvestigator)
   // Even a small approach improvement matters when a piece cannot act yet.

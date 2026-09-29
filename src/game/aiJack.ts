@@ -3,6 +3,8 @@ import { adjacentCirclesForCrossing, circlesById, crossings, jackTransitions, re
 import type { GameAction, GameState, JackMoveType } from './types'
 import { randomChoice } from './aiRandom'
 import { jackEscapeForecast } from './aiJackLookahead'
+import { minimumDiscoveryMoves } from './aiDiscoveryDistance'
+import { JACK_PROGRESS_WEIGHT, JACK_THREAT_WEIGHT, jackPacePenalty, jackSpecialCost } from './aiJackScoring'
 
 export interface JackPlan { type: JackMoveType; path: number[]; score: number }
 export const JACK_TIE_MARGIN = 0.5
@@ -24,6 +26,7 @@ function distancesTo(targets: number[]): Map<number, number> {
 function bestJackMoves(state: GameState): JackPlan[] {
   const targets = state.discoveryLocations.filter(id => !state.reachedDiscoveries.includes(id))
   const distances = distancesTo(targets)
+  const minimumMoves = minimumDiscoveryMoves(new Set(targets), state.specialRemaining, true)
   const threats = new Map<number, number>()
   for (const start of Object.values(state.investigatorPositions)) {
     const accessible = new Set([...reachableCrossings(start, 2)]
@@ -42,14 +45,19 @@ function bestJackMoves(state: GameState): JackPlan[] {
     const adjacentCrossings = crossings.filter(crossing => adjacentCirclesForCrossing(crossing.id).includes(destination)).length
     const visits = state.roundTrail.slice(-6).filter(id => id === destination).length
     const urgency = Math.max(0, 7 - remaining)
-    // Safety dominates ordinary progress; a retreat is always a candidate.
-    // At the deadline, making the discovery beats guaranteed timeout.
-    const score = -(threats.get(destination) ?? 0) * 100
+    const alley = state.specialRemaining.alley - (type === 'alley' ? 1 : 0)
+    const boat = state.specialRemaining.boat - (type === 'boat' ? 1 : 0)
+    const required = distance === 0 ? 0 : minimumMoves[alley]![boat]!.get(destination)!
+    // Arrest range is a risk, not a certain arrest. Balance it against progress
+    // and route slack rather than repeatedly retreating until escape is too late.
+    // Charge Coach's extra slot as well as its token, even early in the round.
+    const score = -(threats.get(destination) ?? 0) * JACK_THREAT_WEIGHT
       - (exits.length === 0 ? 250 : 0) + Math.min(exits.length, 12) * 0.8
       + safeExits * 1.5 + adjacentCrossings * 1.5
-      - distance * (7 + urgency * 4) + (distance === 0 ? 35 : 0)
-      - visits * 5 - (type === 'normal' ? 0 : 10 + cost * 2)
-      - (distance > remaining ? 600 + (distance - remaining) * 50 : 0)
+      - (distance + cost - 1) * (JACK_PROGRESS_WEIGHT + urgency * 3) + (distance === 0 ? 35 : 0)
+      - visits * 8 - jackSpecialCost(type, state.round, type === 'normal' ? 0 : state.specialRemaining[type])
+      - (distance === 0 ? 0 : jackPacePenalty(distance, remaining))
+      - (required > remaining ? 1000 + (required - remaining) * 100 : 0)
     candidates.push({ type, path, score })
   }
   for (const type of ['normal', 'alley', 'boat', 'coach'] as const) {
@@ -77,6 +85,7 @@ function bestJackMoves(state: GameState): JackPlan[] {
         const specialRemaining = { ...state.specialRemaining }
         if (candidate.type !== 'normal') specialRemaining[candidate.type] -= 1
         const next: GameState = { ...state, currentJack: destination, specialRemaining,
+          round: state.round + (discovered ? 1 : 0),
           moveSlot: discovered ? 0 : state.moveSlot + (candidate.type === 'coach' ? 2 : 1),
           reachedDiscoveries: discovered ? [...state.reachedDiscoveries, destination] : state.reachedDiscoveries,
           jackMoveSelection: { type: 'normal', path: [] } }
