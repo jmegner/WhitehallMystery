@@ -37,7 +37,7 @@ import { aiHistoryReducer, needsAiEndConfirmation } from './game/aiSession'
 import PublicHuntLog from './PublicHuntLog'
 import FloatingMapControls from './FloatingMapControls'
 import { indicatorTextAttributes } from './indicatorLayout'
-import { useIndicatorLayout } from './useIndicatorLayout'
+import { useShiftHeld } from './useShiftHeld'
 import {
   actionCount,
   canBigUndo,
@@ -293,7 +293,6 @@ function GameBoard({
   onMapClick,
 }: BoardProps) {
   const board = useRef<SVGSVGElement>(null)
-  useIndicatorLayout(board, alternateIndicatorAngle)
   const hover = useBoardHover(board)
   const hoveredCircle = hover.target?.startsWith('location:') ? Number(hover.target.split(':')[1]) : null
   const hoveredCrossing = hover.target?.startsWith('crossing:') ? hover.target.split(':')[1]! : null
@@ -850,42 +849,6 @@ function GameBoard({
         )
       })}
 
-      {showPossible &&
-        [...possibleOutcomes].filter(([, outcome]) => outcome.ifNo.size > 0).map(([id, outcome]) => {
-          const circle = circlesById.get(id)
-          if (!circle) return null
-          const position = indicatorTextAttributes(circle.x, circle.y, 'location')
-          return (
-            <text
-              key={`possible-count-${id}`}
-              className="possible-outcome-count"
-              {...position}
-              aria-label={`Search outcome at ${id}: ${outcome.ifNo.size} if no, ${outcome.ifYes.size} if yes`}
-            >
-              <tspan className="outcome-count-no">{outcome.ifNo.size}</tspan>
-              <tspan className="outcome-count-separator">/</tspan>
-              <tspan className="outcome-count-yes">{outcome.ifYes.size}</tspan>
-            </text>
-          )
-        })}
-
-      {[...displayedTurnLabels]
-        .map(([id, label]) => {
-          const circle = circlesById.get(id)
-          if (!circle) return null
-          const position = indicatorTextAttributes(circle.x, circle.y, 'location')
-          return (
-            <text
-              key={`route-turn-${id}`}
-              className="route-turn-count"
-              {...position}
-              aria-label={`Location ${id}: ${label} turns away`}
-            >
-              {label}
-            </text>
-          )
-        })}
-
       {crossings.map((crossing) => {
         const legal = legalCrossingIds.has(crossing.id)
         const investigatorStartPreview = state.stage === 'jackDiscoverySetup' && crossing.starting
@@ -911,64 +874,6 @@ function GameBoard({
           </g>
         )
       })}
-
-      {[...investigatorRoutePreview.turnLabels].map(([id, label]) => {
-        const crossing = crossingsById.get(id)
-        if (!crossing) return null
-        const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingTurn')
-        return (
-          <text
-            key={`investigator-route-turn-${id}`}
-            className="investigator-route-turn-count"
-            {...position}
-            aria-label={`Crossing ${id}: ${label} turns away`}
-          >
-            {label}
-          </text>
-        )
-      })}
-
-      {[...hoveredInvestigatorTurnLabels].map(([id, label]) => {
-        const crossing = crossingsById.get(id)
-        if (!crossing) return null
-        const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingTurn')
-        return (
-          <text
-            key={`investigator-hover-turn-${id}`}
-            className="investigator-hover-turn-count"
-            {...position}
-            aria-label={`Crossing ${id}: ${label} turns from ${investigatorDistanceStartId}`}
-          >
-            {label}
-          </text>
-        )
-      })}
-
-      {showCrossingIds && !showCrossingTurnLabels &&
-        crossings.map((crossing) => {
-          const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingId')
-          return (
-            <text
-              key={`crossing-label-${crossing.id}`}
-              className="crossing-id-label"
-              {...position}
-            >
-              {crossing.id}
-            </text>
-          )
-        })}
-
-      {pastPath.slice(1).map((circle, index) => (
-        <g
-          key={`past-path-step-${index + 1}`}
-          className="past-path-step"
-          transform={`translate(${circle.x + 21} ${circle.y - 17})`}
-          aria-label={`Past path move ${index + 1}, location ${circle.id}`}
-        >
-          <circle r="8" />
-          <text y="3" textAnchor="middle">{index + 1}</text>
-        </g>
-      ))}
 
       {INVESTIGATOR_ORDER.map((color) => {
         const crossingId = state.investigatorPositions[color]
@@ -1021,6 +926,104 @@ function GameBoard({
             </g>
           ) : null
         })()}
+
+      {/* Text paints last so pieces and their glow cannot hide indicators. */}
+      <g className="map-text-indicators" pointerEvents="none">
+        {showPossible &&
+          [...possibleOutcomes].filter(([, outcome]) => outcome.ifNo.size > 0).map(([id, outcome]) => {
+            const circle = circlesById.get(id)
+            if (!circle) return null
+            const position = indicatorTextAttributes(circle.x, circle.y, 'clue', alternateIndicatorAngle)
+            return (
+              <text
+                key={`possible-count-${id}`}
+                className="possible-outcome-count"
+                {...position}
+                aria-label={`Search outcome at ${id}: ${outcome.ifNo.size} if no, ${outcome.ifYes.size} if yes`}
+              >
+                <tspan className="outcome-count-no">{outcome.ifNo.size}</tspan>
+                <tspan className="outcome-count-separator">/</tspan>
+                <tspan className="outcome-count-yes">{outcome.ifYes.size}</tspan>
+              </text>
+            )
+          })}
+
+        {[...displayedTurnLabels]
+          .map(([id, label]) => {
+            const circle = circlesById.get(id)
+            if (!circle) return null
+            const hasClue = showPossible && (possibleOutcomes.get(id)?.ifNo.size ?? 0) > 0
+            const position = indicatorTextAttributes(circle.x, circle.y, 'locationDistance', alternateIndicatorAngle, hasClue)
+            return (
+              <text
+                key={`route-turn-${id}`}
+                className="route-turn-count"
+                {...position}
+                aria-label={`Location ${id}: ${label} turns away`}
+              >
+                {label}
+              </text>
+            )
+          })}
+
+        {[...investigatorRoutePreview.turnLabels].map(([id, label]) => {
+          const crossing = crossingsById.get(id)
+          if (!crossing) return null
+          const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingTurn', alternateIndicatorAngle)
+          return (
+            <text
+              key={`investigator-route-turn-${id}`}
+              className="investigator-route-turn-count"
+              {...position}
+              aria-label={`Crossing ${id}: ${label} turns away`}
+            >
+              {label}
+            </text>
+          )
+        })}
+
+        {[...hoveredInvestigatorTurnLabels].map(([id, label]) => {
+          const crossing = crossingsById.get(id)
+          if (!crossing) return null
+          const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingTurn', alternateIndicatorAngle)
+          return (
+            <text
+              key={`investigator-hover-turn-${id}`}
+              className="investigator-hover-turn-count"
+              {...position}
+              aria-label={`Crossing ${id}: ${label} turns from ${investigatorDistanceStartId}`}
+            >
+              {label}
+            </text>
+          )
+        })}
+
+        {showCrossingIds && !showCrossingTurnLabels &&
+          crossings.map((crossing) => {
+            const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingId', alternateIndicatorAngle)
+            return (
+              <text
+                key={`crossing-label-${crossing.id}`}
+                className="crossing-id-label"
+                {...position}
+              >
+                {crossing.id}
+              </text>
+            )
+          })}
+
+        {pastPath.slice(1).map((circle, index) => (
+          <g
+            key={`past-path-step-${index + 1}`}
+            className="past-path-step"
+            transform={`translate(${circle.x + 19} ${circle.y - 15})`}
+            aria-label={`Past path move ${index + 1}, location ${circle.id}`}
+          >
+            <circle r="8" />
+            <text y="3" textAnchor="middle">{index + 1}</text>
+          </g>
+        ))}
+      </g>
     </svg>
   )
 }
@@ -1490,7 +1493,7 @@ interface AppProps {
   onLeaveNewGame?: () => void
 }
 function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGame, onLeaveNewGame }: AppProps) {
-  const boardFrame = useRef<HTMLDivElement>(null)
+  const [boardPanel, setBoardPanel] = useState<HTMLElement | null>(null)
   const [localHistory, setHistory] = useState(initializeHistory)
   const remote = mail ?? online ?? (ai ? { ...ai, turnStart: 0 } : undefined)
   const history = remote?.history ?? local?.history ?? localHistory
@@ -1526,6 +1529,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, ALT_ANGLE_STORAGE_KEY) : false
   })
+  const shiftHeld = useShiftHeld()
   const [showPastPath, setShowPastPath] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, PAST_PATH_STORAGE_KEY) : false
@@ -1840,7 +1844,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
       <MoveTrack state={state} showJackPeek={showJackPeek} mode={mail ? 'ByMail' : online ? 'Online' : ai ? 'vs AI' : 'SameDevice'} />
 
       <main className="game-layout">
-        <section className="board-panel">
+        <section ref={setBoardPanel} className="board-panel">
           <div className="board-toolbar">
             <div className="board-options">
               <HistoryControls
@@ -1874,7 +1878,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               </label>
               <label
                 className="alternate-angle-toggle"
-                title="use the second-least obscured angle when it does not increase overlap with playing pieces or clip text at the map edge"
+                title="place clues to the right and distances above; hold Shift to temporarily invert alt"
               >
                 <input
                   type="checkbox"
@@ -1993,7 +1997,6 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
           </div>
           <div className="board-stage">
             <div
-              ref={boardFrame}
               className={
                 waitingForJack ? 'board-frame active-jack' : isInspectorInteraction(state.stage)
                   ? `board-frame active-investigator-${activeInvestigatorColor(state)}`
@@ -2017,7 +2020,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 possibleOutcomes={possibleOutcomes}
                 showPossible={showPossibilityMarkers}
                 showCrossingIds={showCrossingIds}
-                alternateIndicatorAngle={alternateIndicatorAngle}
+                alternateIndicatorAngle={alternateIndicatorAngle !== shiftHeld}
                 showPastPath={showPastPath}
                 showInvestigatorMaybes={showInvestigatorMaybes}
                 showInvestigatorKnowledge={showInvestigatorKnowledge && state.stage === 'jackMove'}
@@ -2032,7 +2035,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 }}
               />
             </div>
-            <FloatingMapControls board={boardFrame} state={state} dispatch={dispatch} waiting={!!remote?.waiting && !ai?.awaitingEnd}
+            <FloatingMapControls panel={boardPanel} state={state} dispatch={dispatch} waiting={!!remote?.waiting && !ai?.awaitingEnd}
               endTurnLabel={ai?.awaitingEnd ? 'End turn' : online && isInvestigatorReview(state)
                 ? state.stage === 'investigatorSetupResult' ? 'Confirm deployment' : 'End investigator turn' : undefined} />
             {showInvestigatorTurnAnnouncement && (

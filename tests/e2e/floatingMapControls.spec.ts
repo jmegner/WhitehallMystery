@@ -38,6 +38,41 @@ async function fillViewport(page: Page) {
 }
 const floating = (page: Page) => page.getByRole('group', { name: 'Floating map controls', exact: true })
 
+for (const side of ['Jack', 'Investigators'] as const) {
+  test(`${side} floats when the board panel fills the viewport with its toolbar or legend still visible`, async ({ page }) => {
+    await restore(page, side === 'Jack' ? jackState() : investigatorState())
+    await page.setViewportSize({ width: 1000, height: 1600 })
+    await page.goto('/')
+    const map = (await page.locator('.board-frame').boundingBox())!
+    const panel = (await page.locator('.board-panel').boundingBox())!
+    // Make the viewport taller than the map, but shorter than the whole panel.
+    const height = Math.floor((map.height + panel.height) / 2)
+    await page.setViewportSize({ width: 1000, height })
+    for (const edge of ['top', 'bottom'] as const) {
+      await page.locator('.board-panel').evaluate((element, edge) => {
+        const rect = element.getBoundingClientRect()
+        window.scrollTo(0, window.scrollY + (edge === 'top' ? rect.top + 2 : rect.bottom - window.innerHeight - 2))
+      }, edge)
+      const bounds = (await page.locator('.board-frame').boundingBox())!
+      expect(bounds.height).toBeLessThan(height)
+      if (edge === 'top') expect(bounds.y).toBeGreaterThan(10)
+      else expect(bounds.y + bounds.height).toBeLessThan(height - 10)
+      await expect(floating(page)).toHaveCount(1)
+      await expect(floating(page)).toHaveCSS('position', 'fixed')
+      await expect(floating(page)).toBeInViewport()
+      await expect(page.locator('.map-top-controls')).toHaveCount(0)
+      await page.screenshot({ path: test.info().outputPath(`${side}-panel-${edge}-floating.png`) })
+    }
+    // Once the control panel begins to enter view, return to map-top controls.
+    await page.locator('.board-panel').evaluate(element => {
+      window.scrollTo(0, window.scrollY + element.getBoundingClientRect().bottom - window.innerHeight + 40)
+    })
+    await expect(floating(page)).toHaveCount(1)
+    await expect(floating(page)).toHaveCSS('position', 'absolute')
+    await expect(page.locator('body > .floating-map-controls')).toHaveCount(0)
+  })
+}
+
 async function expectClearMapTop(page: Page) {
   await expect(floating(page)).toHaveCSS('position', 'absolute')
   await expect.poll(() => page.locator('.map-top-controls').evaluate(controls => {

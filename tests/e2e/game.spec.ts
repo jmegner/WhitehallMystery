@@ -22,7 +22,7 @@ test('keeps history buttons left-aligned ahead of the action count and options',
   await expect(page.locator('label.crossing-toggle')).toHaveAttribute('title', 'show crossing ids')
   await expect(page.locator('label.alternate-angle-toggle')).toHaveAttribute(
     'title',
-    'use the second-least obscured angle when it does not increase overlap with playing pieces or clip text at the map edge',
+    'place clues to the right and distances above; hold Shift to temporarily invert alt',
   )
   await expect(page.locator('label.past-path-toggle')).toHaveAttribute('title', "show Jack's taken path for this round")
   await expect(page.locator('label.investigator-maybes-toggle')).toHaveAttribute(
@@ -232,7 +232,7 @@ test('Jack can preview unrestricted Street distances while choosing discovery an
   }
 })
 
-test('alt selects the second-ranked map indicator angle and persists', async ({ page }) => {
+test('alt moves crossing IDs right, keeps unaccompanied distances above, and persists', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('xings').check()
   await page.getByLabel('Location 33, selectable').hover()
@@ -240,83 +240,22 @@ test('alt selects the second-ranked map indicator angle and persists', async ({ 
   const crossingLabel = page.locator('.crossing-id-label').filter({ hasText: /^FP$/ })
   const routeLabel = page.locator('.route-turn-count[aria-label^="Location 34:"]')
   await page.evaluate(() => document.fonts.ready)
-  const defaultCrossingAngle = await crossingLabel.getAttribute('data-indicator-angle')
-  const defaultRouteAngle = await routeLabel.getAttribute('data-indicator-angle')
-  expect(defaultCrossingAngle).toMatch(/^(top|top-right|right)$/)
-  expect(defaultRouteAngle).toMatch(/^(top|top-right|right)$/)
+  await expect(crossingLabel).toHaveAttribute('data-indicator-angle', 'top')
+  await expect(routeLabel).toHaveAttribute('data-indicator-angle', 'top')
 
   await page.getByLabel('alt').check()
   await page.getByLabel('Location 33, selectable').hover()
 
-  await expect(crossingLabel).not.toHaveAttribute('data-indicator-angle', defaultCrossingAngle!)
-  await expect(routeLabel).not.toHaveAttribute('data-indicator-angle', defaultRouteAngle!)
+  await expect(crossingLabel).toHaveAttribute('data-indicator-angle', 'right')
+  await expect(routeLabel).toHaveAttribute('data-indicator-angle', 'top')
 
   await page.reload()
   await expect(page.getByLabel('alt')).toBeChecked()
   await page.getByLabel('alt').uncheck()
   await page.getByLabel('Location 33, selectable').hover()
   await page.evaluate(() => document.fonts.ready)
-  await expect(crossingLabel).toHaveAttribute('data-indicator-angle', defaultCrossingAngle!)
-  await expect(routeLabel).toHaveAttribute('data-indicator-angle', defaultRouteAngle!)
-})
-
-test('location 99 search counts avoid an investigator above them and update ranked angles after resize', async ({ page }) => {
-  const investigatorPositions = { yellow: 'FD', blue: 'HP', red: 'HZ' }
-  const state = {
-    ...createInitialGame(), stage: 'investigatorMove', moveSlot: 4, currentJack: 99,
-    discoveryLocations: [72, 46, 147, 159], reachedDiscoveries: [72], investigatorPositions,
-    publicRound: { start: 72, observations: [], moves: [1, 2, 3, 4].map(slot => ({
-      type: 'normal', startSlot: slot, endSlot: slot, investigatorPositions,
-    })) },
-  }
-  await page.addInitScript(state => {
-    if (localStorage.getItem('whitehall-mystery.game.v1')) return
-    localStorage.setItem('whitehall-mystery.game.v1', JSON.stringify({ version: 1, state }))
-    localStorage.setItem('whitehall-mystery.show-possible-locations', 'true')
-    localStorage.setItem('whitehall-mystery.show-crossing-ids', 'true')
-  }, state)
-  await page.setViewportSize({ width: 1500, height: 1400 })
-  await page.goto('/')
-  const label = page.locator('.possible-outcome-count[aria-label^="Search outcome at 99:"]')
-  await expect(label).toHaveText('102/1')
-  await page.evaluate(() => document.fonts.ready)
-  const best = await label.getAttribute('data-indicator-angle')
-  expect(best).not.toBe('top')
-  const overlapsPiece = await label.evaluate(element => {
-    const box = (element as SVGTextElement).getBBox()
-    const piece = document.querySelector<SVGCircleElement>('.investigator-piece.yellow .active-investigator-ring')!
-    const x = piece.cx.baseVal.value
-    const y = piece.cy.baseVal.value
-    const closestX = Math.max(box.x, Math.min(x, box.x + box.width))
-    const closestY = Math.max(box.y, Math.min(y, box.y + box.height))
-    return Math.hypot(x - closestX, y - closestY) < piece.r.baseVal.value + 1
-  })
-  expect(overlapsPiece).toBe(false)
-  await page.locator('.game-board').screenshot({ path: test.info().outputPath('adaptive-indicators.png') })
-  await page.getByLabel('alt', { exact: true }).check()
-  await expect(label).not.toHaveAttribute('data-indicator-angle', best!)
-  const second = await label.getAttribute('data-indicator-angle')
-  await page.reload()
-  await expect(page.getByLabel('alt', { exact: true })).toBeChecked()
-  await page.evaluate(() => document.fonts.ready)
-  await expect(label).toHaveAttribute('data-indicator-angle', second!)
-  await page.getByLabel('alt', { exact: true }).uncheck()
-  await expect(label).toHaveAttribute('data-indicator-angle', best!)
-  await page.setViewportSize({ width: 700, height: 1100 })
-  // Allow ResizeObserver to remeasure hinted glyphs at the new scale.
-  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
-  const narrowBest = await label.getAttribute('data-indicator-angle')
-  expect(narrowBest).not.toBe('top')
-  await page.getByLabel('alt', { exact: true }).check()
-  await expect(label).not.toHaveAttribute('data-indicator-angle', narrowBest!)
-  await page.getByLabel('alt', { exact: true }).uncheck()
-  await expect(label).toHaveAttribute('data-indicator-angle', narrowBest!)
-  // Unrelated React commits must not make placement drift between angles.
-  for (let repeat = 0; repeat < 2; repeat += 1) {
-    await page.getByLabel('xings', { exact: true }).uncheck()
-    await page.getByLabel('xings', { exact: true }).check()
-    await expect(label).toHaveAttribute('data-indicator-angle', narrowBest!)
-  }
+  await expect(crossingLabel).toHaveAttribute('data-indicator-angle', 'top')
+  await expect(routeLabel).toHaveAttribute('data-indicator-angle', 'top')
 })
 
 test('reveals a private handoff when the handoff card is clicked', async ({ page }) => {
@@ -687,10 +626,10 @@ test('Jack peek uses Street turn distances when hovering over Jack', async ({ pa
   const investigatorRouteTurn = page.locator('.investigator-route-turn-count', { hasText: /^2a$/ }).first()
   await expect(investigatorRouteTurn).toBeVisible()
   await page.evaluate(() => document.fonts.ready)
-  const investigatorRouteAngle = await investigatorRouteTurn.getAttribute('data-indicator-angle')
+  await expect(investigatorRouteTurn).toHaveAttribute('data-indicator-angle', 'top')
   await page.getByLabel('alt').check()
   await distantCrossing.hover()
-  await expect(investigatorRouteTurn).not.toHaveAttribute('data-indicator-angle', investigatorRouteAngle!)
+  await expect(investigatorRouteTurn).toHaveAttribute('data-indicator-angle', 'top')
   await page.getByLabel('alt').uncheck()
   await distantCrossing.hover()
   await expect(page.locator('.investigator-route-turn-count', { hasText: /^1a$/ }).first()).toBeVisible()

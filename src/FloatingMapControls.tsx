@@ -1,22 +1,21 @@
-import type { RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { jackMoveReadyToConfirm, legalJackDestinations } from './game/gameEngine'
 import { movementLabel } from './game/inference'
 import type { GameAction, GameState, JackMoveType } from './game/types'
-import { useMapViewport } from './useMapViewport'
+import { useBoardPanelViewport } from './useBoardPanelViewport'
 
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
 
 interface Props {
-  board: RefObject<HTMLDivElement | null>
+  panel: HTMLElement | null
   state: GameState
   dispatch: (action: GameAction) => void
   waiting: boolean
   endTurnLabel?: string
 }
 
-export default function FloatingMapControls({ board, state, dispatch, waiting, endTurnLabel }: Props) {
-  const viewport = useMapViewport(board)
+export default function FloatingMapControls({ panel, state, dispatch, waiting, endTurnLabel }: Props) {
+  const viewport = useBoardPanelViewport(panel)
   if (waiting) return null
   let controls
   if (endTurnLabel) {
@@ -56,7 +55,7 @@ export default function FloatingMapControls({ board, state, dispatch, waiting, e
   } else return null
 
   // The CSS breakpoint matches the control panel's single-column layout. This
-  // fallback stays anchored to the map; viewport-filling maps use the portal.
+  // fallback stays anchored to the map; viewport-filling board panels use the portal.
   if (!viewport) return <div className="floating-map-controls map-top-controls" role="group" aria-label="Floating map controls">
     {controls}
   </div>

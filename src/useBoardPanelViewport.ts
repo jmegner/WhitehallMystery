@@ -1,6 +1,6 @@
-import { useLayoutEffect, useState, type RefObject } from 'react'
+import { useLayoutEffect, useState } from 'react'
 
-interface MapViewport {
+interface BoardPanelViewport {
   left: number
   bottom: number
   width: number
@@ -9,11 +9,10 @@ interface MapViewport {
 
 // Browser zoom changes the layout viewport; pinch zoom changes the visual
 // viewport. Follow both, including panning, without changing the map's layout.
-export function useMapViewport(board: RefObject<HTMLDivElement | null>): MapViewport | null {
-  const [position, setPosition] = useState<MapViewport | null>(null)
+export function useBoardPanelViewport(panel: HTMLElement | null): BoardPanelViewport | null {
+  const [position, setPosition] = useState<BoardPanelViewport | null>(null)
   useLayoutEffect(() => {
-    const element = board.current
-    if (!element) return
+    if (!panel) return
     let frame = 0
     const measure = () => {
       frame = 0
@@ -23,12 +22,11 @@ export function useMapViewport(board: RefObject<HTMLDivElement | null>): MapView
       const width = viewport?.width ?? document.documentElement.clientWidth
       const height = viewport?.height ?? window.innerHeight
       const scale = viewport?.scale ?? 1
-      const rect = element.getBoundingClientRect()
+      const rect = panel.getBoundingClientRect()
       const visibleWidth = Math.max(0, Math.min(rect.right, left + width) - Math.max(rect.left, left))
       const visibleHeight = Math.max(0, Math.min(rect.bottom, top + height) - Math.max(rect.top, top))
-      // A narrow desktop window can show the entire map while it occupies over
-      // 75% of the viewport. Keep the map-top controls in that case. Float only
-      // when the map spans the viewport vertically (allow subpixel rounding).
+      // Include the toolbar, map and legend: the panel can span the viewport
+      // even while the map itself still fits. Allow subpixel edge rounding.
       const next = visibleWidth >= width * 0.8 && visibleHeight >= height - 1
         ? { left: left + width / 2, bottom: Math.min(rect.bottom, top + height) - 12 / scale,
           width: width * scale - 24, scale }
@@ -37,8 +35,8 @@ export function useMapViewport(board: RefObject<HTMLDivElement | null>): MapView
     }
     const schedule = () => { if (!frame) frame = requestAnimationFrame(measure) }
     const observer = new ResizeObserver(schedule)
-    observer.observe(element)
-    // Header/toolbar wrapping can move the map without resizing the map itself.
+    observer.observe(panel)
+    // Header wrapping can move the panel without resizing the panel itself.
     observer.observe(document.body)
     window.addEventListener('scroll', schedule, true)
     window.addEventListener('resize', schedule)
@@ -53,6 +51,6 @@ export function useMapViewport(board: RefObject<HTMLDivElement | null>): MapView
       window.visualViewport?.removeEventListener('scroll', schedule)
       window.visualViewport?.removeEventListener('resize', schedule)
     }
-  }, [board])
+  }, [panel])
   return position
 }
