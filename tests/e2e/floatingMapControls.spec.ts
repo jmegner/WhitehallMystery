@@ -268,7 +268,8 @@ test('Jack cycles only legal move types, completes both Coach steps, and submits
   await submit.click()
   expect(await saved(page)).toMatchObject({ stage: 'investigatorMove', currentJack: second,
     moveSlot: 3, specialRemaining: { coach: 1 } })
-  await expect(floating(page)).toHaveCount(0)
+  await expect(floating(page).getByRole('button')).toHaveCount(1)
+  await expect(focusButton(page)).toBeVisible()
 })
 
 test('hides the move cycle with only one valid type and removes floating controls when the map leaves view', async ({ page }) => {
@@ -326,7 +327,7 @@ test('investigators toggle only Search/Arrest and can pass directly from either 
   await page.reload()
   await fillViewport(page)
   await expect(toggle()).toHaveAccessibleName('Toggle search/arrest: Arrest')
-  await expect(floating(page).getByRole('button')).toHaveCount(2)
+  await expect(floating(page).getByRole('button')).toHaveCount(3)
   await page.screenshot({ path: test.info().outputPath('investigator-floating-controls.png') })
   await pass().click()
   expect((await saved(page)).activeInvestigator).toBe(1)
@@ -395,3 +396,96 @@ test('floating Submit respects WaitEnd and hides during the AI turn', async ({ p
   // The worker is held, so any stale controls here would act on the AI's turn.
   expect((await saved(page)).stage).toBe('investigatorMove')
 })
+
+const focusButton = (page: Page) => page.getByRole('button', { name: 'Focus', exact: true })
+const activePiece = (page: Page) => page.locator('[data-active-playing-piece]')
+async function pieceViewport(page: Page) {
+  return activePiece(page).evaluate(element => {
+    const piece = element.getBoundingClientRect()
+    const viewport = window.visualViewport!
+    return { x: piece.x + piece.width / 2, y: piece.y + piece.height / 2,
+      left: viewport.offsetLeft, top: viewport.offsetTop, width: viewport.width, height: viewport.height,
+      scale: viewport.scale }
+  })
+}
+
+for (const stage of ['jackMove', 'investigatorMove', 'investigatorAction'] as const) {
+  test(`Focus stays available and centers the visible active piece during ${stage} without changing the game`, async ({ page }) => {
+    const state = stage === 'jackMove' ? jackState() : {
+      ...investigatorState(), stage, investigatorPositions: { yellow: 'FP', blue: 'DC', red: 'HZ' },
+    }
+    await restore(page, state)
+    await page.goto('/')
+    await fillViewport(page)
+    await expect(activePiece(page)).toBeInViewport()
+    await expect(focusButton(page)).toBeVisible()
+    await expect(floating(page)).toHaveCSS('position', 'fixed')
+    const before = await saved(page)
+    await focusButton(page).click()
+    await expect(focusButton(page)).toBeVisible()
+    await expect.poll(async () => {
+      const piece = await pieceViewport(page)
+      return Math.abs(piece.y - piece.top - piece.height / 2)
+    }).toBeLessThan(2)
+    expect(await saved(page)).toEqual(before)
+    // Focus has no map-top counterpart when the whole map fits.
+    await page.setViewportSize({ width: 1000, height: 1600 })
+    await expect(focusButton(page)).toHaveCount(0)
+  })
+}
+
+test('Focus follows the active investigator, stays for a partly visible piece, and respects the panel boundary', async ({ page }) => {
+  const state = { ...investigatorState(), investigatorPositions: { yellow: 'LH', blue: 'DC', red: 'HZ' } }
+  await restore(page, state)
+  await page.goto('/')
+  await fillViewport(page)
+  await page.locator('.board-panel').evaluate(element => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top + 1))
+  await expect(focusButton(page)).toBeVisible()
+  await floating(page).getByRole('button', { name: 'Pass', exact: true }).click()
+  // Blue is near the top and in view. This update requires no scroll/resize.
+  await expect(activePiece(page)).toHaveClass(/blue/)
+  await expect(focusButton(page)).toBeVisible()
+  await activePiece(page).evaluate(element => {
+    const rect = element.getBoundingClientRect()
+    window.scrollBy(0, rect.top + rect.height / 2)
+  })
+  await expect(focusButton(page)).toBeVisible() // The lower half remains visible.
+  await page.evaluate(() => window.scrollBy(0, 60))
+  await expect(focusButton(page)).toBeVisible()
+  await page.locator('.board-panel').evaluate(element => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().bottom - window.innerHeight + 40))
+  await expect(focusButton(page)).toHaveCount(0)
+  await expect(page.locator('body > .floating-map-controls')).toHaveCount(0)
+})
+
+test('Focus centers horizontally and vertically after pinch zoom without changing zoom', async ({ page, context }) => {
+  await restore(page, jackState())
+  await page.goto('/')
+  await fillViewport(page)
+  const cdp = await context.newCDPSession(page)
+  try {
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 3 })
+    await expect(focusButton(page)).toBeVisible()
+    await focusButton(page).click()
+    await expect(focusButton(page)).toBeVisible()
+    await expect.poll(async () => {
+      const piece = await pieceViewport(page)
+      return Math.max(Math.abs(piece.x - piece.left - piece.width / 2), Math.abs(piece.y - piece.top - piece.height / 2))
+    }).toBeLessThan(2)
+    expect((await pieceViewport(page)).scale).toBe(3)
+    await page.screenshot({ path: test.info().outputPath('focus-pinched.png') })
+  } finally {
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 })
+    await cdp.detach()
+  }
+})
+
+for (const stage of ['jackDiscoverySetup', 'investigatorTurnResult', 'gameOver'] as const) {
+  test(`Focus is absent when there is no active piece in ${stage}`, async ({ page }) => {
+    await restore(page, stage === 'jackDiscoverySetup' ? createInitialGame() : { ...investigatorState(), stage,
+      result: stage === 'gameOver' ? { winner: 'investigators', reason: 'Jack was arrested.' } : null })
+    await page.goto('/')
+    await fillViewport(page)
+    await expect(focusButton(page)).toHaveCount(0)
+    await expect(activePiece(page)).toHaveCount(0)
+  })
+}

@@ -52,16 +52,23 @@ export default function FloatingMapControls({ panel, state, dispatch, waiting, e
         title={state.checkedThisAction.length ? 'End this investigator’s search' : 'Pass this investigator’s action'}
         onClick={() => dispatch({ type: 'passInspectorAction' })}>Pass</button>
     </>
-  } else return null
+  }
 
   // The CSS breakpoint matches the control panel's single-column layout. This
   // fallback stays anchored to the map; viewport-filling board panels use the portal.
-  if (!viewport) return <div className="floating-map-controls map-top-controls" role="group" aria-label="Floating map controls">
+  if (!viewport) return controls ? <div className="floating-map-controls map-top-controls" role="group" aria-label="Floating map controls">
     {controls}
-  </div>
+  </div> : null
+  if (!controls && !viewport.hasActivePiece) return null
   return createPortal(<div className="floating-map-controls" role="group" aria-label="Floating map controls"
     style={{ left: viewport.left, top: viewport.bottom, maxWidth: viewport.width,
       transform: `translate(-50%, -100%) scale(${1 / viewport.scale})` }}>
+    {viewport.hasActivePiece && <button type="button" className="secondary-button"
+      title="Center the view on the active playing piece"
+      // Scroll the shape: Firefox scrolls an SVG group to the document origin.
+      onClick={() => panel?.querySelector('[data-active-playing-piece] circle')?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' })}>
+      Focus
+    </button>}
     {controls}
   </div>, document.body)
 }

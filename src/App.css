@@ -473,6 +473,7 @@ button:disabled {
   max-height: 900px;
   height: auto;
   user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .investigator-turn-announcement,

@@ -293,7 +293,10 @@ function GameBoard({
   onMapClick,
 }: BoardProps) {
   const board = useRef<SVGSVGElement>(null)
-  const hover = useBoardHover(board)
+  const hover = useBoardHover(board, JSON.stringify([
+    state.stage, state.round, state.moveSlot, state.activeInvestigator,
+    state.investigatorPositions, state.publicRound, suppressTurnIndicators,
+  ]))
   const hoveredCircle = hover.target?.startsWith('location:') ? Number(hover.target.split(':')[1]) : null
   const hoveredCrossing = hover.target?.startsWith('crossing:') ? hover.target.split(':')[1]! : null
   const [suppressedInvestigatorHoverCrossing, setSuppressedInvestigatorHoverCrossing] = useState<string | null>(null)
@@ -507,7 +510,6 @@ function GameBoard({
       role="img"
       aria-label="Whitehall game board"
       onClick={onMapClick}
-      {...hover.events}
     >
       <image href={boardImage} x="0" y="0" width={BOARD_SIZE} height={BOARD_SIZE} />
 
@@ -886,6 +888,7 @@ function GameBoard({
             className={`investigator-piece ${color}${canPreviewInvestigatorDistances ? ' hoverable' : ''}${selectable ? ' selectable' : ''}`}
             style={investigatorPieceStyle(color)}
             data-board-hover={`investigator:${color}:${crossing.id}`}
+            data-active-playing-piece={active && (state.stage === 'investigatorMove' || state.stage === 'investigatorAction') ? 'true' : undefined}
             onPointerLeave={() => {
               if (suppressedInvestigatorHoverCrossing === crossing.id) {
                 setSuppressedInvestigatorHoverCrossing(null)
@@ -918,6 +921,7 @@ function GameBoard({
             <g
               className={`jack-marker${canPreviewJackDistances ? ' hoverable' : ''}`}
               data-board-hover={`jack:${circle.id}`}
+              data-active-playing-piece={!suppressTurnIndicators && state.stage === 'jackMove' ? 'true' : undefined}
             >
               <circle cx={circle.x} cy={circle.y} r={JACK_PIECE_RADIUS} />
               <text x={circle.x} y={circle.y + 4} textAnchor="middle">
