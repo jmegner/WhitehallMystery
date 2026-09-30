@@ -132,6 +132,24 @@ const recapMoveLabels: Record<JackMoveType, string> = {
 const recapInvestigatorName = (color: InvestigatorColor) =>
   `${color.slice(0, 1).toUpperCase()}${color.slice(1)}`
 
+export interface JackRoundPath {
+  round: number
+  locations: number[]
+}
+
+export const gameOverJackPaths = (history: GameHistory): JackRoundPath[] => {
+  if (currentHistoryState(history).stage !== 'gameOver') return []
+  const rounds = new Map<number, number[]>()
+  // Each snapshot contains committed moves for its current round, including
+  // both Coach steps. Ignore drafts and the redo tail of a rewound history.
+  for (let index = 0; index <= history.cursor; index += 1) {
+    const { round, roundTrail } = history.entries[index]!.state
+    rounds.set(round, roundTrail)
+  }
+  return [...rounds].filter(([, locations]) => locations.length > 0)
+    .map(([round, locations]) => ({ round, locations }))
+}
+
 export const gameRecap = (history: GameHistory): string[] => {
   const recap: string[] = []
 

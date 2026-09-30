@@ -46,10 +46,12 @@ import {
   createGameHistory,
   currentHistoryState,
   gameRecap,
+  gameOverJackPaths,
   gameHistoryReducer,
   playerViewForState,
   undoMode,
   type GameHistory,
+  type JackRoundPath,
   type HistoryCommand,
   type PlayerView,
 } from './game/history'
@@ -70,6 +72,7 @@ import {
   INVESTIGATOR_MAYBES_STORAGE_KEY,
   JACK_PEEK_STORAGE_KEY,
   PAST_PATH_STORAGE_KEY,
+  PAST_PATH_ROUND_STORAGE_KEY,
   POSSIBLE_LOCATIONS_STORAGE_KEY,
   loadBooleanPreference,
   loadStoredHistory,
@@ -135,6 +138,7 @@ const INVESTIGATOR_MAYBE_CROSSING_SIZE = 15
 const HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE = 24
 const QUADRANTS: Quadrant[] = ['NW', 'NE', 'SW', 'SE']
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
+type PastPathRound = '1' | '2' | '3' | 'all'
 const INVESTIGATOR_COLORS: Record<InvestigatorColor, string> = {
   yellow: '#ffff00',
   blue: '#1f68ab',
@@ -231,6 +235,7 @@ interface BoardProps {
   showCrossingIds: boolean
   alternateIndicatorAngle: boolean
   showPastPath: boolean
+  pastRoundPaths: JackRoundPath[]
   showInvestigatorMaybes: boolean
   showInvestigatorKnowledge: boolean
   showJackPeek: boolean
@@ -284,6 +289,7 @@ function GameBoard({
   showCrossingIds,
   alternateIndicatorAngle,
   showPastPath,
+  pastRoundPaths,
   showInvestigatorMaybes,
   showInvestigatorKnowledge,
   showJackPeek,
@@ -365,10 +371,13 @@ function GameBoard({
   const privateJackLocation = (isPrivateJackView(state.stage) || peekAtJack) && state.currentJack !== null
     ? circlesById.get(state.currentJack)
     : undefined
-  const pastPath = (showPastPath && isPrivateJackView(state.stage)) || peekAtJack
-    ? state.roundTrail.map((id) => circlesById.get(id)).filter((circle) => circle !== undefined)
-    : []
-  const pastPathSegments = trimmedRouteSegments(pastPath)
+  const pastPaths = ((showPastPath && isPrivateJackView(state.stage)) || peekAtJack
+    ? [{ round: state.round, locations: state.roundTrail }]
+    : showPastPath && state.stage === 'gameOver' ? pastRoundPaths : []).map(({ round, locations }) => ({
+      round, circles: locations.map(id => circlesById.get(id)).filter(circle => circle !== undefined),
+    }))
+  const pastPathSegments = pastPaths.flatMap(({ round, circles }) =>
+    trimmedRouteSegments(circles).map(segment => ({ ...segment, round })))
   const canPreviewPlacedInvestigators = state.stage === 'jackChooseStart' || state.stage === 'jackMove'
   const canPreviewInvestigatorDistances = !suppressTurnIndicators && (canPreviewPlacedInvestigators || isInspectorInteraction(state.stage))
   const hoveredInvestigator = canPreviewInvestigatorDistances ? INVESTIGATOR_ORDER.find(color =>
@@ -537,6 +546,7 @@ function GameBoard({
         <line
           key={`past-path-${index}`}
           className="past-path-line"
+          data-round={segment.round}
           x1={segment.x1}
           y1={segment.y1}
           x2={segment.x2}
@@ -1016,17 +1026,18 @@ function GameBoard({
             )
           })}
 
-        {pastPath.slice(1).map((circle, index) => (
+        {pastPaths.flatMap(({ round, circles }) => circles.slice(1).map((circle, index) => (
           <g
-            key={`past-path-step-${index + 1}`}
+            key={`past-path-step-${round}-${index + 1}`}
             className="past-path-step"
+            data-round={round}
             transform={`translate(${circle.x + 19} ${circle.y - 15})`}
-            aria-label={`Past path move ${index + 1}, location ${circle.id}`}
+            aria-label={`${state.stage === 'gameOver' ? `Round ${round} ` : ''}Past path move ${index + 1}, location ${circle.id}`}
           >
-            <circle r="8" />
-            <text y="3" textAnchor="middle">{index + 1}</text>
+            <circle r={pastPaths.length > 1 ? 12 : 8} />
+            <text y="3" textAnchor="middle">{pastPaths.length > 1 ? `${round}.${index + 1}` : index + 1}</text>
           </g>
-        ))}
+        )))}
       </g>
     </svg>
   )
@@ -1538,6 +1549,15 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, PAST_PATH_STORAGE_KEY) : false
   })
+  const [pastPathRound, setPastPathRound] = useState<PastPathRound>(() => {
+    try {
+      const saved = browserStorage()?.getItem(PAST_PATH_ROUND_STORAGE_KEY)
+      return saved === '1' || saved === '2' || saved === '3' ? saved : 'all'
+    } catch { return 'all' }
+  })
+  const completedPaths = gameOverJackPaths(history)
+  const selectedPastRound = pastPathRound === 'all' || completedPaths.some(path => String(path.round) === pastPathRound)
+    ? pastPathRound : 'all'
   const [showInvestigatorMaybes, setShowInvestigatorMaybes] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, INVESTIGATOR_MAYBES_STORAGE_KEY) : false
@@ -1896,8 +1916,8 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 />
                 alt
               </label>
-              {isPrivateJackView(state.stage) && (
-                <label className="past-path-toggle" title="show Jack's taken path for this round">
+              {(isPrivateJackView(state.stage) || state.stage === 'gameOver') && (
+                <label className="past-path-toggle" title={state.stage === 'gameOver' ? "show Jack's taken path for the selected round" : "show Jack's taken path for this round"}>
                   <input
                     type="checkbox"
                     checked={showPastPath}
@@ -1909,6 +1929,20 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                     }}
                   />
                   past
+                </label>
+              )}
+              {state.stage === 'gameOver' && (
+                <label className="past-round-select">
+                  round
+                  <select value={selectedPastRound} onChange={event => {
+                    const round = event.target.value as PastPathRound
+                    setPastPathRound(round)
+                    try { browserStorage()?.setItem(PAST_PATH_ROUND_STORAGE_KEY, round) } catch { /* Display preferences are optional. */ }
+                  }}>
+                    {[1, 2, 3].map(round => <option key={round} value={round}
+                      disabled={!completedPaths.some(path => path.round === round)}>{round}</option>)}
+                    <option value="all">all</option>
+                  </select>
                 </label>
               )}
               {state.stage === 'jackMove' && (
@@ -2026,6 +2060,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 showCrossingIds={showCrossingIds}
                 alternateIndicatorAngle={alternateIndicatorAngle !== shiftHeld}
                 showPastPath={showPastPath}
+                pastRoundPaths={completedPaths.filter(path => selectedPastRound === 'all' || String(path.round) === selectedPastRound)}
                 showInvestigatorMaybes={showInvestigatorMaybes}
                 showInvestigatorKnowledge={showInvestigatorKnowledge && state.stage === 'jackMove'}
                 showJackPeek={showJackPeek}

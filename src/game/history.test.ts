@@ -8,6 +8,7 @@ import {
   createGameHistory,
   currentHistoryState,
   gameRecap,
+  gameOverJackPaths,
   gameHistoryReducer,
   undoMode,
   type GameHistory,
@@ -276,6 +277,31 @@ describe('game action history', () => {
     const history = gameHistoryReducer(readyForInvestigatorView(), { type: 'undo' })
     saveStoredHistory(storage, history)
     expect(loadStoredHistory(storage)).toEqual(history)
+  })
+
+  test('finished-game paths preserve every round, Coach steps and backtracking without revealing drafts or redo entries', () => {
+    const initial = createInitialGame()
+    const first = { ...initial, roundTrail: [33, 44, 55, 44] }
+    const second = { ...first, round: 2, roundTrail: [44, 60, 77] }
+    const third = { ...second, round: 3, roundTrail: [77, 86, 85] }
+    const history: GameHistory = {
+      entries: [
+        { state: initial, action: null, counted: false },
+        { state: { ...first, roundTrail: [33] }, action: { type: 'chooseJackStart', circleId: 33 }, counted: true },
+        ...[first, second, third].map(state => ({ state, action: { type: 'confirmJackMove' as const }, counted: true })),
+        { state: { ...third, stage: 'gameOver', jackMoveSelection: { type: 'coach', path: [54, 72] } }, action: { type: 'arrestCircle', circleId: 85 }, counted: true },
+        { state: { ...third, stage: 'gameOver', roundTrail: [77, 86, 85, 105] }, action: { type: 'confirmJackMove' }, counted: true },
+      ], cursor: 5, pendingReveal: null,
+    }
+    expect(gameOverJackPaths(history)).toEqual([
+      { round: 1, locations: [33, 44, 55, 44] },
+      { round: 2, locations: [44, 60, 77] },
+      { round: 3, locations: [77, 86, 85] },
+    ])
+    expect(gameOverJackPaths({ ...history, cursor: 4 })).toEqual([])
+    expect(gameOverJackPaths(createGameHistory({ ...second, stage: 'gameOver' }))).toEqual([
+      { round: 2, locations: [44, 60, 77] },
+    ])
   })
 
   test('builds a complete game-over recap from the active action history', () => {

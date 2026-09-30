@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { jackMoveReadyToConfirm, legalJackDestinations } from './game/gameEngine'
+import { activeInvestigatorColor, jackMoveReadyToConfirm, legalJackDestinations } from './game/gameEngine'
 import { movementLabel } from './game/inference'
 import type { GameAction, GameState, JackMoveType } from './game/types'
 import { useBoardPanelViewport } from './useBoardPanelViewport'
@@ -17,7 +17,10 @@ interface Props {
 export default function FloatingMapControls({ panel, state, dispatch, waiting, endTurnLabel }: Props) {
   const viewport = useBoardPanelViewport(panel)
   if (waiting) return null
+  const investigator = state.stage === 'investigatorMove' || state.stage === 'investigatorAction'
+    ? activeInvestigatorColor(state) : undefined
   let controls
+  let pass
   if (endTurnLabel) {
     controls = <button type="button" className="primary-button" onClick={() => dispatch({ type: 'continueHandoff' })}>{endTurnLabel}</button>
   } else if (state.stage === 'jackDiscoverySetup') {
@@ -41,34 +44,35 @@ export default function FloatingMapControls({ panel, state, dispatch, waiting, e
     </>
   } else if (state.stage === 'investigatorAction') {
     const mode = state.inspectorActionMode === 'arrest' ? 'Arrest' : 'Search'
-    controls = <>
-      {state.checkedThisAction.length === 0 && <button type="button" className={mode === 'Arrest' ? 'danger-button' : 'secondary-button'}
+    controls = state.checkedThisAction.length === 0 ? <button type="button" className={mode === 'Arrest' ? 'danger-button' : 'secondary-button'}
         aria-label={`Toggle search/arrest: ${mode}`}
         title={`Change to ${mode === 'Search' ? 'Arrest' : 'Search'}`}
         onClick={() => dispatch({ type: 'setInspectorActionMode', mode: mode === 'Search' ? 'arrest' : 'search' })}>
         {mode} <span aria-hidden="true">↔</span>
-      </button>}
-      <button type="button" className="secondary-button"
-        title={state.checkedThisAction.length ? 'End this investigator’s search' : 'Pass this investigator’s action'}
-        onClick={() => dispatch({ type: 'passInspectorAction' })}>Pass</button>
-    </>
+      </button> : null
+    pass = <button type="button" className="secondary-button"
+      title={state.checkedThisAction.length ? 'End this investigator’s search' : 'Pass this investigator’s action'}
+      onClick={() => dispatch({ type: 'passInspectorAction' })}>Pass {investigator?.[0].toUpperCase()}</button>
   }
 
   // The CSS breakpoint matches the control panel's single-column layout. This
   // fallback stays anchored to the map; viewport-filling board panels use the portal.
-  if (!viewport) return controls ? <div className="floating-map-controls map-top-controls" role="group" aria-label="Floating map controls">
+  if (!viewport) return controls || pass ? <div className="floating-map-controls map-top-controls" data-investigator={investigator}
+    role="group" aria-label="Floating map controls">
     {controls}
+    {pass}
   </div> : null
-  if (!controls && !viewport.hasActivePiece) return null
-  return createPortal(<div className="floating-map-controls" role="group" aria-label="Floating map controls"
-    style={{ left: viewport.left, top: viewport.bottom, maxWidth: viewport.width,
+  if (!controls && !pass && !viewport.hasActivePiece) return null
+  return createPortal(<div className="floating-map-controls" data-investigator={investigator} role="group" aria-label="Floating map controls"
+    style={{ left: viewport.left, top: viewport.bottom, width: viewport.width,
       transform: `translate(-50%, -100%) scale(${1 / viewport.scale})` }}>
-    {viewport.hasActivePiece && <button type="button" className="secondary-button"
+    {viewport.hasActivePiece && <div className="floating-control-cluster floating-controls-left"><button type="button" className="secondary-button"
       title="Center the view on the active playing piece"
       // Scroll the shape: Firefox scrolls an SVG group to the document origin.
       onClick={() => panel?.querySelector('[data-active-playing-piece] circle')?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' })}>
       Focus
-    </button>}
-    {controls}
+    </button></div>}
+    {controls && <div className="floating-control-cluster floating-controls-center">{controls}</div>}
+    {pass && <div className="floating-control-cluster floating-controls-right">{pass}</div>}
   </div>, document.body)
 }

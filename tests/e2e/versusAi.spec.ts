@@ -328,6 +328,8 @@ for (const role of ['jack', 'investigators'] as const) {
     page.on('dialog', async dialog => { dialogs.push(dialog.message()); await dialog.dismiss() })
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'Jack Was Stopped' })).toBeVisible()
+    await page.getByRole('checkbox', { name: 'past', exact: true }).check()
+    await expect(page.getByRole('combobox', { name: 'round', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Undo', exact: true }).click()
     await expect(page.getByRole('heading', { name: role === 'jack' ? 'Jack: Escape in the Night' : 'AI turn paused', exact: true })).toBeVisible()
     const undone = await savedHistory(page)

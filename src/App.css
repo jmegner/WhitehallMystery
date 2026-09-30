@@ -329,6 +329,7 @@ button:disabled {
 .crossing-toggle,
 .alternate-angle-toggle,
 .past-path-toggle,
+.past-round-select,
 .investigator-maybes-toggle,
 .investigator-knowledge-toggle,
 .jack-peek-toggle {
@@ -388,27 +389,82 @@ button:disabled {
   background: #a98964;
 }
 
+.past-round-select select {
+  padding: 2px 5px;
+  border: 1px solid #aa9272;
+  border-radius: 4px;
+  background: #f7eedf;
+  color: var(--ink);
+  font: inherit;
+}
+
 .floating-map-controls {
   position: fixed;
   z-index: 30;
+  display: grid;
+  /* Keep the middle at the viewport center even when either side is empty. */
+  grid-template-columns: minmax(84px, 1fr) minmax(0, 2fr) minmax(84px, 1fr);
+  align-items: end;
+  gap: 8px;
+  width: max-content;
+  pointer-events: none;
+  transform-origin: center bottom;
+}
+
+.floating-control-cluster {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
   width: max-content;
-  padding: 8px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 4px;
   box-sizing: border-box;
   border: 1px solid #bfa783;
   border-radius: 12px;
   background: rgb(242 232 213 / 95%);
   box-shadow: 0 3px 14px rgb(0 0 0 / 35%);
-  transform-origin: center bottom;
+  pointer-events: auto;
 }
+
+.floating-controls-left { grid-column: 1; grid-row: 1; justify-self: start; }
+.floating-controls-center { grid-column: 2; grid-row: 1; justify-self: center; }
+.floating-controls-right { grid-column: 3; grid-row: 1; justify-self: end; }
 
 .floating-map-controls button {
   min-height: 44px;
   min-width: 44px;
+  max-width: 100%;
+  padding: 8px;
   touch-action: manipulation;
+  pointer-events: auto;
+}
+
+.floating-controls-left button,
+.floating-controls-right button {
+  white-space: nowrap;
+}
+
+.floating-map-controls[data-investigator='yellow'] {
+  --control-tint: #fff8bf;
+  --control-border: #c1aa52;
+}
+
+.floating-map-controls[data-investigator='blue'] {
+  --control-tint: #e3edf7;
+  --control-border: #829eb9;
+}
+
+.floating-map-controls[data-investigator='red'] {
+  --control-tint: #f6e3e1;
+  --control-border: #c29490;
+}
+
+.floating-map-controls[data-investigator] button {
+  background: var(--control-tint);
+  border-color: var(--control-border);
+  color: var(--ink);
 }
 
 .map-top-controls {

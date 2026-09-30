@@ -38,6 +38,49 @@ async function fillViewport(page: Page) {
 }
 const floating = (page: Page) => page.getByRole('group', { name: 'Floating map controls', exact: true })
 
+async function expectFloatingPositions(page: Page) {
+  await expect.poll(() => floating(page).evaluate(element => {
+    const viewport = window.visualViewport!
+    const groups = [...element.querySelectorAll<HTMLElement>('.floating-control-cluster')]
+    const bounds = groups.map(group => group.getBoundingClientRect())
+    return groups.every((group, index) => {
+      const rect = bounds[index]!
+      const offset = group.classList.contains('floating-controls-left') ? rect.left - viewport.offsetLeft - 12 / viewport.scale
+        : group.classList.contains('floating-controls-right') ? rect.right - viewport.offsetLeft - viewport.width + 12 / viewport.scale
+          : rect.left + rect.width / 2 - viewport.offsetLeft - viewport.width / 2
+      return Math.abs(offset * viewport.scale) < 2 &&
+        Math.abs((rect.bottom - viewport.offsetTop - viewport.height) * viewport.scale + 12) < 2 &&
+        [...group.querySelectorAll('button')].every(button => {
+          const buttonRect = button.getBoundingClientRect()
+          return buttonRect.left >= rect.left && buttonRect.right <= rect.right &&
+            buttonRect.top >= rect.top && buttonRect.bottom <= rect.bottom
+        }) && bounds.every((other, otherIndex) => index === otherIndex || rect.right <= other.left || other.right <= rect.left)
+    })
+  })).toBe(true)
+}
+
+for (const width of [320, 390, 1000]) {
+  test(`floating buttons have stable left/center/right anchors and investigator colors at ${width}px`, async ({ page }) => {
+    await restore(page, investigatorState())
+    await page.setViewportSize({ width, height: Math.min(600, Math.floor(width * 0.7)) })
+    await page.goto('/')
+    await page.locator('.board-frame').evaluate(element => {
+      const rect = element.getBoundingClientRect()
+      window.scrollTo(0, window.scrollY + rect.top + (rect.height - window.innerHeight) / 2)
+    })
+    for (const [letter, color] of [['Y', 'rgb(255, 248, 191)'], ['B', 'rgb(227, 237, 247)'], ['R', 'rgb(246, 227, 225)']]) {
+      const pass = floating(page).getByRole('button', { name: `Pass ${letter}`, exact: true })
+      await expect(pass).toBeVisible()
+      await expectFloatingPositions(page)
+      expect((await pass.boundingBox())!.height).toBe((await floating(page).getByRole('button', { name: 'Focus', exact: true }).boundingBox())!.height)
+      for (const button of await floating(page).getByRole('button').all()) await expect(button).toHaveCSS('background-color', color!)
+      if (width === 390) await page.screenshot({ path: test.info().outputPath(`floating-${letter}.png`) })
+      await pass.click()
+    }
+    await expect(floating(page)).toHaveCount(0)
+  })
+}
+
 for (const side of ['Jack', 'Investigators'] as const) {
   test(`${side} floats when the board panel fills the viewport with its toolbar or legend still visible`, async ({ page }) => {
     await restore(page, side === 'Jack' ? jackState() : investigatorState())
@@ -136,7 +179,7 @@ test.describe('narrow desktop with the whole map visible', () => {
         expect(Math.abs(controls.x + controls.width / 2 - map.x - map.width / 2)).toBeLessThan(1)
       }
       await checkMapTop()
-      await expect(floating(page).getByRole('button', { name: side === 'Jack' ? 'Submit move' : 'Pass', exact: true })).toBeVisible()
+      await expect(floating(page).getByRole('button', { name: side === 'Jack' ? 'Submit move' : 'Pass Y', exact: true })).toBeVisible()
       await page.screenshot({ path: test.info().outputPath(`${side}-narrow-desktop.png`) })
       // Scroll until the top of the map reaches the viewport; it still fits.
       await page.locator('.board-frame').evaluate(element => {
@@ -215,7 +258,7 @@ test('map-top Submit handles discovery setup and a separate Pass works in the st
   await page.reload()
   await expect(floating(page)).toHaveCSS('position', 'absolute')
   await expect(floating(page).getByRole('button', { name: 'Toggle search/arrest: Search' })).toBeVisible()
-  await floating(page).getByRole('button', { name: 'Pass', exact: true }).click()
+  await floating(page).getByRole('button', { name: 'Pass Y', exact: true }).click()
   expect((await saved(page)).activeInvestigator).toBe(1)
 })
 
@@ -314,7 +357,7 @@ test('investigators toggle only Search/Arrest and can pass directly from either 
   await page.goto('/')
   await fillViewport(page)
   const toggle = () => floating(page).getByRole('button', { name: /^Toggle search\/arrest:/ })
-  const pass = () => floating(page).getByRole('button', { name: 'Pass', exact: true })
+  const pass = () => floating(page).getByRole('button', { name: /^Pass [YBR]$/, exact: true })
   await expect(toggle()).toHaveAccessibleName('Toggle search/arrest: Search')
   await expect(pass()).toBeEnabled()
   expect(await page.locator('.map-hit-target.selectable').count()).toBeGreaterThan(0)
@@ -348,12 +391,18 @@ test('starting a search hides the toggle while keeping Pass available', async ({
   await restore(page, state)
   await page.goto('/')
   await fillViewport(page)
+  await expectFloatingPositions(page)
+  const focusBefore = await page.getByRole('button', { name: 'Focus', exact: true }).boundingBox()
+  const passBefore = await floating(page).getByRole('button', { name: 'Pass Y', exact: true }).boundingBox()
   const miss = legalInspectorActionCircles(state).find(id => !state.roundTrail.includes(id))!
   await page.getByLabel(`Location ${miss}, selectable`, { exact: true }).click()
   await fillViewport(page)
   expect((await saved(page)).checkedThisAction).toEqual([miss])
   await expect(floating(page).getByRole('button', { name: /^Toggle search\/arrest:/ })).toHaveCount(0)
-  await floating(page).getByRole('button', { name: 'Pass', exact: true }).click()
+  await expectFloatingPositions(page)
+  expect(await page.getByRole('button', { name: 'Focus', exact: true }).boundingBox()).toEqual(focusBefore)
+  expect(await floating(page).getByRole('button', { name: 'Pass Y', exact: true }).boundingBox()).toEqual(passBefore)
+  await floating(page).getByRole('button', { name: 'Pass Y', exact: true }).click()
   expect((await saved(page)).activeInvestigator).toBe(1)
 })
 
@@ -366,6 +415,7 @@ test('floating controls stay inside the visual viewport during pinch zoom and pa
   await expect.poll(() => page.evaluate(() => window.visualViewport!.scale)).toBe(2)
   await expect(floating(page)).toBeVisible()
   const checkBounds = async () => {
+    await expectFloatingPositions(page)
     await expect.poll(() => floating(page).evaluate(element => {
       const rect = element.getBoundingClientRect()
       const viewport = window.visualViewport!
@@ -441,7 +491,7 @@ test('Focus follows the active investigator, stays for a partly visible piece, a
   await fillViewport(page)
   await page.locator('.board-panel').evaluate(element => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top + 1))
   await expect(focusButton(page)).toBeVisible()
-  await floating(page).getByRole('button', { name: 'Pass', exact: true }).click()
+  await floating(page).getByRole('button', { name: 'Pass Y', exact: true }).click()
   // Blue is near the top and in view. This update requires no scroll/resize.
   await expect(activePiece(page)).toHaveClass(/blue/)
   await expect(focusButton(page)).toBeVisible()
