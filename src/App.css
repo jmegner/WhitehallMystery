@@ -299,11 +299,6 @@ button:disabled {
   font-size: 0.62rem;
 }
 
-.action-counter {
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
 .handoff-card .history-controls {
   justify-content: flex-start;
   margin-top: 22px;
@@ -315,13 +310,6 @@ button:disabled {
 
 .handoff-card .history-controls .side-history-button {
   padding-inline: 4px;
-}
-
-.handoff-card .action-counter {
-  min-width: auto;
-  color: #cfc4b4;
-  font-size: 0.78rem;
-  font-weight: 700;
 }
 
 .possibility-toggle,

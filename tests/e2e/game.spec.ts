@@ -16,7 +16,7 @@ test('uses the new 162–HB street connection and corrected alley boundaries on 
   await expect(targets).toHaveText(['140', '141', '161', '163', '164'])
 })
 
-test('keeps history buttons left-aligned ahead of the action count and options', async ({ page }) => {
+test('keeps history buttons left-aligned ahead of the options without an action counter', async ({ page }) => {
   await page.goto('/')
 
   await expect(page.locator('label.crossing-toggle')).toHaveAttribute('title', 'show crossing ids')
@@ -33,16 +33,14 @@ test('keeps history buttons left-aligned ahead of the action count and options',
   const historyControls = page.getByLabel('Action history controls')
   const undoSideBox = await historyControls.getByRole('button', { name: 'Undo Side' }).boundingBox()
   const randSideBox = await historyControls.getByRole('button', { name: 'Rand Side' }).boundingBox()
-  const actionBox = await historyControls.getByLabel(/player actions/).boundingBox()
+  await expect(historyControls.locator('.action-counter')).toHaveCount(0)
   const crossingBox = await page.getByLabel('xings').boundingBox()
 
   expect(undoSideBox).not.toBeNull()
   expect(randSideBox).not.toBeNull()
-  expect(actionBox).not.toBeNull()
   expect(crossingBox).not.toBeNull()
   expect(undoSideBox!.x).toBeLessThan(randSideBox!.x)
-  expect(randSideBox!.x).toBeLessThan(actionBox!.x)
-  expect(actionBox!.x).toBeLessThan(crossingBox!.x)
+  expect(randSideBox!.x).toBeLessThan(crossingBox!.x)
   await expect(page.locator('.board-options')).toHaveCSS('justify-content', 'flex-start')
 })
 
@@ -560,7 +558,6 @@ for (const scenario of [
     await page.getByLabel('Location 33, selectable', { exact: true }).click({ button: 'middle' })
     await page.getByLabel('Location 33, selectable', { exact: true }).click({ button: 'middle' })
     await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
-    await expect(page.getByLabel('1 player actions')).toHaveText('Actions 1')
     for (const id of scenario.initial.slice(1)) await page.getByLabel(`Location ${id}, selectable`, { exact: true }).click()
     await page.getByLabel(new RegExp(`^Location ${scenario.target}(, selectable)?$`)).click({ button: 'middle' })
     await expect(page.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
@@ -791,7 +788,7 @@ test('Rand Side completes each side without showing that side its results', asyn
   const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })
 
   const historyControls = page.getByLabel('Action history controls')
-  await expect(historyControls.locator(':scope > *').last()).toHaveClass(/action-counter/)
+  await expect(historyControls.locator(':scope > *').last()).toHaveText('Rand Side')
   const undoSide = page.getByRole('button', { name: 'Undo Side', exact: true })
   const undo = page.getByRole('button', { name: 'Undo', exact: true })
   expect(Number.parseFloat(await undoSide.evaluate((button) => getComputedStyle(button).fontSize)))
@@ -869,7 +866,6 @@ test('undoes Coach route locations onto the redo stack', async ({ page }) => {
   await second.click()
   const undoSecond = page.getByRole('button', { name: 'Undo 2nd Loc.', exact: true })
   await expect(undoSecond).toBeVisible()
-  await expect(page.getByLabel('12 player actions')).toHaveText('Actions 12')
   await expect(page.locator('.private-route-summary strong')).toHaveText(`33 → ${firstId} → ${secondId}`)
   await expect(page.getByRole('button', { name: 'Record move privately' })).toBeEnabled()
   await expect(undoSecond.evaluate((button) => button.previousElementSibling?.textContent?.trim())).resolves.toBe(
@@ -878,7 +874,6 @@ test('undoes Coach route locations onto the redo stack', async ({ page }) => {
 
   await undoSecond.click()
   await expect(undoSecond).toHaveCount(0)
-  await expect(page.getByLabel('11 player actions')).toHaveText('Actions 11')
   await expect(page.locator('.private-route-summary strong')).toHaveText(`33 → ${firstId}`)
   await expect(page.getByRole('button', { name: 'Record move privately' })).toBeDisabled()
   await expect(destinations.getByRole('button', { name: secondId, exact: true })).toBeVisible()
@@ -886,17 +881,14 @@ test('undoes Coach route locations onto the redo stack', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Redo', exact: true }).click()
   await expect(undoSecond).toBeVisible()
-  await expect(page.getByLabel('12 player actions')).toHaveText('Actions 12')
   await expect(page.locator('.private-route-summary strong')).toHaveText(`33 → ${firstId} → ${secondId}`)
 
   await page.getByRole('button', { name: 'Undo route', exact: true }).click()
   await expect(page.locator('.private-route-summary strong')).toHaveText('33')
-  await expect(page.getByLabel('10 player actions')).toHaveText('Actions 10')
   await expect(page.getByRole('button', { name: 'Undo route', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeEnabled()
   await page.getByRole('button', { name: 'Redo', exact: true }).click()
   await expect(page.locator('.private-route-summary strong')).toHaveText(`33 → ${firstId}`)
-  await expect(page.getByLabel('11 player actions')).toHaveText('Actions 11')
 })
 
 test('plays a complete hot-seat turn without exposing Jack during handoffs', async ({ page }) => {
@@ -1300,21 +1292,21 @@ test('scales pieces and outline strokes with the map', async ({ page }) => {
 
 test('undoes and redoes actions across private-view handoffs', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByLabel('0 player actions')).toHaveText('Actions 0')
+  await expect(page.locator('.discovery-checklist li')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled()
 
   for (const id of [33, 46, 147, 159]) {
     await page.getByLabel(`Location ${id}, selectable`).click()
   }
-  await expect(page.getByLabel('4 player actions')).toHaveText('Actions 4')
+  await expect(page.locator('.discovery-checklist li')).toHaveCount(4)
 
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
-  await expect(page.getByLabel('2 player actions')).toHaveText('Actions 2')
+  await expect(page.locator('.discovery-checklist li')).toHaveCount(2)
   await page.getByLabel('Location 147, selectable').click()
   await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeEnabled()
   await page.getByRole('button', { name: 'Redo', exact: true }).click()
-  await expect(page.getByLabel('4 player actions')).toHaveText('Actions 4')
+  await expect(page.locator('.discovery-checklist li')).toHaveCount(4)
 
   await page.getByRole('button', { name: 'Lock in four locations' }).click()
   await expect(page.getByRole('button', { name: 'Undo!', exact: true })).toBeEnabled()
@@ -1325,10 +1317,10 @@ test('undoes and redoes actions across private-view handoffs', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeEnabled()
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
-  await expect(page.getByLabel('3 player actions')).toHaveText('Actions 3')
+  await expect(page.locator('.discovery-checklist li')).toHaveCount(3)
   await page.getByRole('button', { name: 'Redo', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Jack: Plan the Crime' })).toBeVisible()
-  await expect(page.getByLabel('4 player actions')).toHaveText('Actions 4')
+  await expect(page.locator('.discovery-checklist li')).toHaveCount(4)
 
   await page.getByRole('button', { name: 'Lock in four locations' }).click()
   await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeDisabled()
@@ -1343,7 +1335,6 @@ test('bulk redo from a handoff dismisses the handoff screen', async ({ page }) =
   for (const id of [33, 46, 147, 159]) await page.getByLabel(`Location ${id}, selectable`).click()
   await page.getByRole('button', { name: 'Lock in four locations' }).click()
   await page.getByLabel('Available deployment crossings').getByRole('button', { name: 'FP', exact: true }).click()
-  await expect(page.getByLabel('6 player actions')).toHaveText('Actions 6')
 
   await page.getByRole('button', { name: 'Undo Side', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Pass the device to Jack' })).toBeVisible()
@@ -1352,7 +1343,6 @@ test('bulk redo from a handoff dismisses the handoff screen', async ({ page }) =
   await page.getByRole('button', { name: 'Redo Side', exact: true }).click()
   await expect(page.getByRole('heading', { name: /Deploy the Blue Investigator/i })).toBeVisible()
   await expect(page.getByRole('heading', { name: /Pass the device to Investigators/i })).toHaveCount(0)
-  await expect(page.getByLabel('6 player actions')).toHaveText('Actions 6')
   await expect(page.getByRole('button', { name: 'Redo Side', exact: true })).toBeDisabled()
 })
 

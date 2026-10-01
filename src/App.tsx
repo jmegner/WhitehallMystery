@@ -3,7 +3,7 @@ import { useBoardHover } from './useBoardHover'
 import type { CSSProperties } from 'react'
 import './App.css'
 import { normalizeMailHistory, mailHistoryReducer, mailBoardState } from './game/byMail'
-import { isInvestigatorReview, onlineBoardState, onlineHistoryReducer, onlineInvestigatorActionCount, reviewOnlineAutomaticPasses } from './game/remoteHistory'
+import { isInvestigatorReview, onlineBoardState, onlineHistoryReducer, remoteBoardState, reviewOnlineAutomaticPasses } from './game/remoteHistory'
 import { SECRET_INFO_UNDO_WARNING, undoIncludesSecretInfo } from './game/undoWarning'
 import { contrastingBlackOrWhite } from './colorContrast'
 import {
@@ -39,7 +39,6 @@ import FloatingMapControls from './FloatingMapControls'
 import { indicatorTextAttributes } from './indicatorLayout'
 import { useShiftHeld } from './useShiftHeld'
 import {
-  actionCount,
   canBigUndo,
   canRedo,
   canRedoAll,
@@ -1104,7 +1103,6 @@ function TargetButtons<T extends number | string>({
 
 interface HistoryControlsProps {
   history: GameHistory
-  publicActionCount?: number
   onUndo: () => void
   onBigUndo: () => void
   onRedo: () => void
@@ -1114,9 +1112,8 @@ interface HistoryControlsProps {
   mailControls?: { canUndo: boolean; canRequestUndo?: boolean; canRedo: boolean; waiting: boolean }
 }
 
-function HistoryControls({ history, publicActionCount, onUndo, onBigUndo, onRedo, onRedoAll, onRand, onRandSide, mailControls }: HistoryControlsProps) {
+function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand, onRandSide, mailControls }: HistoryControlsProps) {
   const mode = mailControls ? mailControls.canUndo || mailControls.canRequestUndo ? 'undo' : 'disabled' : undoMode(history)
-  const count = publicActionCount ?? actionCount(history)
   return (
     <div className="history-controls" aria-label="Action history controls">
       <button className="side-history-button" type="button" disabled={mailControls ? !mailControls.canUndo : !canBigUndo(history)} onClick={onBigUndo}>
@@ -1137,9 +1134,6 @@ function HistoryControls({ history, publicActionCount, onUndo, onBigUndo, onRedo
       <button type="button" disabled={mailControls?.waiting} onClick={onRandSide}>
         Rand Side
       </button>
-      <span className="action-counter" aria-label={`${count} ${publicActionCount === undefined ? 'player' : 'public'} actions`}>
-        {publicActionCount === undefined ? 'Actions' : 'Public actions'} {count}
-      </span>
     </div>
   )
 }
@@ -1512,7 +1506,15 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const [localHistory, setHistory] = useState(initializeHistory)
   const remote = mail ?? online ?? (ai ? { ...ai, turnStart: 0 } : undefined)
   const history = remote?.history ?? local?.history ?? localHistory
-  const gameState = ai ? onlineBoardState(history, ai.role) : online ? onlineBoardState(history, online.role) : mail ? mailBoardState(history, mail.role) : currentHistoryState(history)
+  const [peekPreference, setShowJackPeek] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, JACK_PEEK_STORAGE_KEY) : false
+  })
+  const canPeek = !remote || ai?.role === 'investigators'
+  const showJackPeek = canPeek && peekPreference
+  const gameState = ai
+    ? showJackPeek ? remoteBoardState(history, ai.role) : onlineBoardState(history, ai.role)
+    : online ? onlineBoardState(history, online.role) : mail ? mailBoardState(history, mail.role) : currentHistoryState(history)
   const validJackTypes = gameState.stage === 'jackMove' ? MOVE_TYPES.filter(type =>
     legalJackDestinations({ ...gameState, jackMoveSelection: { type, path: [] } }).length > 0) : []
   // With no type selector for a forced move, show its destinations immediately.
@@ -1527,11 +1529,6 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY) : false
   })
-  const [peekPreference, setShowJackPeek] = useState(() => {
-    const storage = browserStorage()
-    return storage ? loadBooleanPreference(storage, JACK_PEEK_STORAGE_KEY) : false
-  })
-  const showJackPeek = !remote && peekPreference
   const [showCrossingIds, setShowCrossingIds] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY) : false
@@ -1872,7 +1869,6 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
           <div className="board-toolbar">
             <div className="board-options">
               <HistoryControls
-                publicActionCount={(online?.role === 'investigators' || ai?.role === 'investigators') && state.stage !== 'gameOver' ? onlineInvestigatorActionCount(history) : undefined}
                 mailControls={remote ? {
                   canUndo: !online?.waiting && history.cursor > remote.turnStart,
                   canRequestUndo: online?.requestUndo?.canRequest,
@@ -2016,7 +2012,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                   {showPossible && <strong>{possibleIds.size}</strong>}
                 </label>
               )}
-              {!remote && isInspectorInteraction(state.stage) && (
+              {canPeek && isInspectorInteraction(state.stage) && (
                 <label className="jack-peek-toggle" title="peek at Jack's current location and path this round">
                   <input
                     type="checkbox"

@@ -224,7 +224,7 @@ test('online departures: notify, preserve history, refresh the chooser, revoke o
     await onlineEntry(jack).getByRole('button', { name: 'Leave', exact: true }).click()
     await expect(onlineEntry(jack)).toHaveCount(0)
     await jack.getByRole('button', { name: 'Cancel', exact: true }).click()
-    await expect(jack.getByLabel('1 player actions', { exact: true })).toBeVisible()
+    await expect(jack.locator('.discovery-checklist li')).toHaveCount(1)
     await newInvestigators.getByRole('button', { name: 'Refresh status', exact: true }).click()
     await expect(onlineEntry(newInvestigators)).toContainText('Opponent left the game')
     await onlineEntry(newInvestigators).locator('.saved-game-resume').click()
