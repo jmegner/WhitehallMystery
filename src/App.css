@@ -377,7 +377,8 @@ button:disabled {
   background: #a98964;
 }
 
-.past-round-select select {
+.past-round-select select,
+.investigator-auto-toggle select {
   padding: 2px 5px;
   border: 1px solid #aa9272;
   border-radius: 4px;

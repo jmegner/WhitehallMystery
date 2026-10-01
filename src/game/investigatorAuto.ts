@@ -8,14 +8,14 @@ import {
   type GameHistory,
   type HistoryCommand,
 } from './history'
-import { INVESTIGATOR_ORDER, type GameAction, type PublicRoundEvidence } from './types'
+import { INVESTIGATOR_ORDER, type GameAction, type InvestigatorAutoMode, type PublicRoundEvidence } from './types'
 
 type SearchOutcomeResolver = (evidence: PublicRoundEvidence | null) => Map<number, SearchOutcome>
 
 const nextAutomaticActions = (
   history: GameHistory,
   resolveOutcomes: SearchOutcomeResolver,
-  runTactics: boolean,
+  mode: InvestigatorAutoMode,
 ): GameAction[] => {
   const state = currentHistoryState(history)
   if (state.stage !== 'investigatorAction' || state.inspectorActionMode !== 'search') return []
@@ -28,7 +28,7 @@ const nextAutomaticActions = (
   if (searching && remaining.length === 1 && state.clueLocations.includes(remaining[0]!)) {
     return [{ type: 'passInspectorAction' }]
   }
-  if (!runTactics) return []
+  if (mode === 'off') return []
 
   const outcomes = resolveOutcomes(state.publicRound)
   const possible = possibleLocationsFromOutcomes(outcomes)
@@ -43,12 +43,16 @@ const nextAutomaticActions = (
       { type: 'setInspectorActionMode', mode: 'arrest' }, { type: 'arrestCircle', circleId: id },
     ]
   }
-  const targets = investigatorTargets(adjacent, outcomes, possible,
-    new Set([...state.clueLocations, ...state.reachedDiscoveries.slice(-1)]), state.checkedThisAction)
+  const resolved = new Set([...state.clueLocations, ...state.reachedDiscoveries.slice(-1)])
+  const targets = investigatorTargets(adjacent, outcomes, possible, resolved, state.checkedThisAction)
 
   if (searching) {
+    const unsearched = remaining.filter(id => !resolved.has(id))
+    if (mode === 'med' && unsearched.length === 1) return [{ type: 'searchCircle', circleId: unsearched[0]! }]
     if (targets.searches.length === 0) return [{ type: 'passInspectorAction' }]
-    const id = orderedSearches(targets.searches, outcomes, possible, state.investigatorPositions,
+    const searches = mode === 'med' ? targets.searches.filter(id => outcomes.get(id)!.ifYes.size === 1) : targets.searches
+    if (!searches.length) return []
+    const id = orderedSearches(searches, outcomes, possible, state.investigatorPositions,
       undefined, createInvestigatorWeights(state))[0]!
     return [{ type: 'searchCircle', circleId: id }]
   }
@@ -67,12 +71,12 @@ const nextAutomaticActions = (
 export const automaticInvestigatorActions = (
   initial: GameHistory,
   resolveOutcomes: SearchOutcomeResolver = possibleJackSearchOutcomes,
-  runTactics = true,
+  mode: InvestigatorAutoMode = 'hi',
 ) => {
   const commands: HistoryCommand[] = []
   let next = initial
   while (true) {
-    const actions = nextAutomaticActions(next, resolveOutcomes, runTactics)
+    const actions = nextAutomaticActions(next, resolveOutcomes, mode)
     if (actions.length === 0) break
     for (const action of actions) {
       const command = { type: 'apply' as const, action }

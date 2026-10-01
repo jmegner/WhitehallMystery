@@ -52,7 +52,13 @@ export default function FloatingMapControls({ panel, state, dispatch, waiting, e
       </button> : null
     pass = <button type="button" className="secondary-button"
       title={state.checkedThisAction.length ? 'End this investigator’s search' : 'Pass this investigator’s action'}
-      onClick={() => dispatch({ type: 'passInspectorAction' })}>Pass {investigator?.[0].toUpperCase()}</button>
+      onClick={() => {
+        const next = investigator === 'yellow' ? 'blue' : investigator === 'blue' ? 'red' : 'yellow'
+        dispatch({ type: 'passInspectorAction' })
+        // Use the next color explicitly: Red ends the phase, but still focuses Yellow.
+        // Scroll the circle rather than its SVG group for Firefox compatibility.
+        panel?.querySelector(`.investigator-piece.${next} circle`)?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' })
+      }}>Pass</button>
   }
 
   // The CSS breakpoint matches the control panel's single-column layout. This
@@ -70,7 +76,7 @@ export default function FloatingMapControls({ panel, state, dispatch, waiting, e
       title="Center the view on the active playing piece"
       // Scroll the shape: Firefox scrolls an SVG group to the document origin.
       onClick={() => panel?.querySelector('[data-active-playing-piece] circle')?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' })}>
-      Focus
+      Focus{investigator ? ` ${investigator[0].toUpperCase()}` : ''}
     </button></div>}
     {controls && <div className="floating-control-cluster floating-controls-center">{controls}</div>}
     {pass && <div className="floating-control-cluster floating-controls-right">{pass}</div>}

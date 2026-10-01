@@ -34,6 +34,51 @@ async function start(page: Page, role: 'Jack' | 'Investigator') {
   await page.getByRole('button', { name: `Play as ${role}`, exact: true }).click()
 }
 
+test('repeating Jack’s move preserves recorded AI replies through refresh and Redo', async ({ page }) => {
+  let completed = jackMoveHistory()
+  for (const crossingId of ['FP', 'HP', 'HZ']) {
+    completed = gameHistoryReducer(completed, { type: 'apply', action: { type: 'moveInvestigator', crossingId } })
+  }
+  for (let index = 0; index < 3; index++) {
+    completed = normalizeRemoteHistory(gameHistoryReducer(completed, { type: 'apply', action: { type: 'passInspectorAction' } }))
+  }
+  await restoreGame(page, { ...completed, cursor: 1 }, 'jack')
+  let workers = 0
+  page.on('worker', () => { workers += 1 })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Record move privately' }).click()
+  await expect(page.getByRole('heading', { name: 'AI turn paused', exact: true })).toBeVisible()
+  expect((await savedHistory(page)).entries).toEqual(completed.entries)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'AI turn paused', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Redo Side', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Jack: Escape in the Night', exact: true })).toBeVisible()
+  expect(await savedHistory(page)).toEqual(completed)
+  expect(workers).toBe(0)
+})
+
+test('repeating an investigator move preserves redo choices without InvAuto replacing them', async ({ page }) => {
+  let completed = jackMoveHistory()
+  for (const crossingId of ['FP', 'HP']) {
+    completed = gameHistoryReducer(completed, { type: 'apply', action: { type: 'moveInvestigator', crossingId } })
+  }
+  const cursor = completed.cursor
+  for (const action of [{ type: 'moveInvestigator', crossingId: 'HZ' }, { type: 'setInspectorActionMode', mode: 'arrest' }] as const) {
+    completed = gameHistoryReducer(completed, { type: 'apply', action })
+  }
+  await restoreGame(page, { ...completed, cursor }, 'investigators')
+  await page.goto('/')
+  await page.getByLabel('InvAuto', { exact: true }).selectOption('hi')
+  await page.getByLabel('Legal red Investigator destinations').getByRole('button', { name: 'HZ', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Yellow Investigator: Clues and Suspicion', exact: true })).toBeVisible()
+  const repeated = await savedHistory(page)
+  expect(repeated.cursor).toBe(cursor + 1)
+  expect(repeated.entries).toEqual(completed.entries)
+  await page.reload()
+  await page.getByRole('button', { name: 'Redo', exact: true }).click()
+  expect(await savedHistory(page)).toEqual(completed)
+})
+
 test('AI Jack keeps his last Round 1 Coach when a safe Street advance suffices', async ({ page }) => {
   const history = createGameHistory({ ...createInitialGame(), stage: 'jackMove', currentJack: 168, moveSlot: 6,
     discoveryLocations: [9, 77, 129, 161], reachedDiscoveries: [129],
@@ -124,7 +169,7 @@ for (const finish of ['InvAuto', 'Rand Side'] as const) {
     const autoBounds = await page.locator('.investigator-auto-toggle').boundingBox()
     expect(waitBounds!.x + waitBounds!.width).toBeLessThanOrEqual(autoBounds!.x)
     if (finish === 'InvAuto') {
-      await page.getByLabel('InvAuto', { exact: true }).check()
+      await page.getByLabel('InvAuto', { exact: true }).selectOption('hi')
       for (const color of ['yellow', 'blue', 'red']) await page.getByLabel(`Legal ${color} Investigator destinations`).getByRole('button').first().click()
     } else {
       await page.getByRole('button', { name: 'Rand Side', exact: true }).click()

@@ -1,4 +1,4 @@
-import type { GameState } from './types'
+import type { GameState, InvestigatorAutoMode } from './types'
 import { createGameHistory, currentHistoryState, type GameHistory } from './history'
 
 export const GAME_STORAGE_KEY = 'whitehall-mystery.game.v1'
@@ -160,4 +160,16 @@ export const saveBooleanPreference = (storage: StorageLike, key: string, value: 
   } catch {
     // A display preference is non-critical when browser storage is unavailable.
   }
+}
+
+export const loadInvestigatorAutoPreference = (storage: StorageLike): InvestigatorAutoMode => {
+  try {
+    const value = storage.getItem(INVESTIGATOR_AUTO_STORAGE_KEY)
+    // Preserve the former checkbox setting when upgrading existing saves.
+    return value === 'true' || value === 'hi' ? 'hi' : value === 'med' ? 'med' : 'off'
+  } catch { return 'off' }
+}
+
+export const saveInvestigatorAutoPreference = (storage: StorageLike, value: InvestigatorAutoMode): void => {
+  try { storage.setItem(INVESTIGATOR_AUTO_STORAGE_KEY, value) } catch { /* Preferences are optional when storage is unavailable. */ }
 }

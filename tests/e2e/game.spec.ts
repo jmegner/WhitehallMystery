@@ -1102,9 +1102,12 @@ test('remembers the investigator auto preference', async ({ page }) => {
   await page.locator('.app-header').click()
 
   const investigatorAuto = page.getByLabel('InvAuto')
-  await investigatorAuto.check()
-  await page.reload()
-  await expect(page.getByLabel('InvAuto')).toBeChecked()
+  await expect(investigatorAuto.locator('option')).toHaveText(['off', 'med', 'hi'])
+  for (const mode of ['med', 'hi', 'off']) {
+    await investigatorAuto.selectOption(mode)
+    await page.reload()
+    await expect(investigatorAuto).toHaveValue(mode)
+  }
 })
 
 test('keeps the mobile layout within the viewport', async ({ page }) => {

@@ -47,8 +47,10 @@ import {
   JACK_PEEK_STORAGE_KEY,
   POSSIBLE_LOCATIONS_STORAGE_KEY,
   loadBooleanPreference,
+  loadInvestigatorAutoPreference,
   loadStoredGame,
   saveBooleanPreference,
+  saveInvestigatorAutoPreference,
   saveStoredGame,
 } from './persistence'
 import type { GameAction, GameState, PublicRoundEvidence } from './types'
@@ -423,7 +425,13 @@ describe('local persistence', () => {
     expect(loadBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY)).toBe(true)
     expect(loadBooleanPreference(storage, JACK_PEEK_STORAGE_KEY)).toBe(true)
     expect(loadBooleanPreference(storage, INVESTIGATOR_KNOW_STORAGE_KEY)).toBe(true)
-    expect(loadBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY)).toBe(true)
+    expect(loadInvestigatorAutoPreference(storage)).toBe('hi')
+    saveBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY, false)
+    expect(loadInvestigatorAutoPreference(storage)).toBe('off')
+    for (const mode of ['off', 'med', 'hi'] as const) {
+      saveInvestigatorAutoPreference(storage, mode)
+      expect(loadInvestigatorAutoPreference(storage)).toBe(mode)
+    }
   })
 
   test('rejects corrupt or outdated game snapshots', () => {

@@ -116,15 +116,25 @@ describe('Versus AI history', () => {
     expect(aiHistoryReducer(jack, { type: 'redoAll' }, 'jack')).toEqual(original)
   })
 
-  test('new human actions replace the undone future even when repeating the same move', () => {
+  test('repeating the next human action preserves the future exactly like Redo', () => {
     const original = roundHistory()
     let undone = original
     while (undone.cursor > 1) undone = aiHistoryReducer(undone, { type: 'undo' }, 'jack')
     const next = aiHistoryReducer(undone, { type: 'apply', action: { type: 'confirmJackMove' } }, 'jack')
-    expect(next.entries).toHaveLength(next.cursor + 1)
-    expect(next.entries.length).toBeLessThan(original.entries.length)
+    expect(next).toEqual(aiHistoryReducer(undone, { type: 'redo' }, 'jack'))
+    expect(next.entries).toBe(original.entries)
     expect(needsAiTurn(next, 'jack')).toBe(true)
     expect(currentHistoryState(next).publicRound?.moves).toHaveLength(1)
+  })
+
+  test('a different human move replaces the future, while a no-op preserves it', () => {
+    const original = roundHistory()
+    const undone = { ...original, cursor: 0 }
+    expect(aiHistoryReducer(undone, { type: 'apply', action: { type: 'setJackMoveType', moveType: 'normal' } }, 'jack')).toBe(undone)
+    const destination = legalNormalDestinations(currentHistoryState(undone)).find(id => id !== original.entries[1]!.state.jackMoveSelection.path[0])!
+    const next = aiHistoryReducer(undone, { type: 'apply', action: { type: 'selectJackDestination', circleId: destination } }, 'jack')
+    expect(next.entries).toHaveLength(next.cursor + 1)
+    expect(currentHistoryState(next).jackMoveSelection.path).toEqual([destination])
   })
 
   test('resuming from an AI action drops only its undone future and keeps the evidence at that point', () => {

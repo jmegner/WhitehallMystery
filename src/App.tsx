@@ -66,7 +66,6 @@ import {
   ALT_ANGLE_STORAGE_KEY,
   COACH_PREVIEW_STORAGE_KEY,
   CROSSING_IDS_STORAGE_KEY,
-  INVESTIGATOR_AUTO_STORAGE_KEY,
   INVESTIGATOR_KNOW_STORAGE_KEY,
   INVESTIGATOR_MAYBES_STORAGE_KEY,
   JACK_PEEK_STORAGE_KEY,
@@ -74,14 +73,17 @@ import {
   PAST_PATH_ROUND_STORAGE_KEY,
   POSSIBLE_LOCATIONS_STORAGE_KEY,
   loadBooleanPreference,
+  loadInvestigatorAutoPreference,
   loadStoredHistory,
   saveBooleanPreference,
+  saveInvestigatorAutoPreference,
   saveStoredHistory,
 } from './game/persistence'
 import {
   INVESTIGATOR_ORDER,
   type GameAction,
   type GameState,
+  type InvestigatorAutoMode,
   type InvestigatorColor,
   type JackMoveType,
   type Quadrant,
@@ -1566,11 +1568,11 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const [showInvestigatorTurnAnnouncement, setShowInvestigatorTurnAnnouncement] = useState(false)
   const [investigatorAuto, setInvestigatorAuto] = useState(() => {
     const storage = browserStorage()
-    return storage ? loadBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY) : false
+    return storage ? loadInvestigatorAutoPreference(storage) : 'off' as const
   })
   const applyHistoryCommands = (
     commands: Parameters<typeof gameHistoryReducer>[1][],
-    runInvestigatorAuto = false,
+    runInvestigatorAuto: InvestigatorAutoMode = 'off',
   ) => {
     if (online?.waiting) return
     const first = commands[0]
@@ -1590,7 +1592,8 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     if (!ai && remote?.role === 'investigators' && commands.some(command => command.type === 'undo' || command.type === 'bigUndo') &&
       undoIncludesSecretInfo(history, next.cursor) && !window.confirm(SECRET_INFO_UNDO_WARNING)) return
     const searched = acceptedCommands.some(command => command.type === 'apply' && command.action.type === 'searchCircle')
-    if ((runInvestigatorAuto || searched) && (!remote || (remote.role === 'investigators' && !remote.waiting))) {
+    const replaying = next.entries === history.entries && next.cursor > history.cursor
+    if (!replaying && (runInvestigatorAuto !== 'off' || searched) && (!remote || (remote.role === 'investigators' && !remote.waiting))) {
       const automatic = automaticInvestigatorActions(next, undefined, runInvestigatorAuto)
       if (remote) {
         const automaticCommands = online ? reviewOnlineAutomaticPasses(history, acceptedCommands, automatic.commands) : automatic.commands
@@ -2124,18 +2127,22 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               </label>}
               {isInspectorInteraction(state.stage) && (
                 <label className="investigator-auto-toggle">
-                  <input
-                    type="checkbox"
-                    checked={investigatorAuto}
-                    onChange={(event) => {
-                      const checked = event.target.checked
-                      setInvestigatorAuto(checked)
-                      const storage = browserStorage()
-                      if (storage) saveBooleanPreference(storage, INVESTIGATOR_AUTO_STORAGE_KEY, checked)
-                      if (checked) applyHistoryCommands([], true)
-                    }}
-                  />
                   InvAuto
+                  <select
+                    aria-label="InvAuto"
+                    value={investigatorAuto}
+                    onChange={(event) => {
+                      const mode = event.target.value as InvestigatorAutoMode
+                      setInvestigatorAuto(mode)
+                      const storage = browserStorage()
+                      if (storage) saveInvestigatorAutoPreference(storage, mode)
+                      if (mode !== 'off') applyHistoryCommands([], mode)
+                    }}
+                  >
+                    <option value="off">off</option>
+                    <option value="med">med</option>
+                    <option value="hi">hi</option>
+                  </select>
                 </label>
               )}
             </div>

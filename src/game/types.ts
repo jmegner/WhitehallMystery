@@ -73,6 +73,7 @@ export interface JackMoveSelection {
 }
 
 export type InspectorActionMode = 'choose' | 'search' | 'arrest'
+export type InvestigatorAutoMode = 'off' | 'med' | 'hi'
 
 export interface GameResult {
   winner: 'jack' | 'investigators'

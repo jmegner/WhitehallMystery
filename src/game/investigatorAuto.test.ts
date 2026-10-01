@@ -25,6 +25,41 @@ function knownClueState(moveSlot = 3): GameState {
 }
 
 describe('investigator auto actions', () => {
+  const medState = (): GameState => ({
+    ...knownClueState(), activeInvestigator: 2, investigatorPositions: { red: 'CQ' },
+    currentJack: 33, roundTrail: [33], clueLocations: [], reachedDiscoveries: [33], checkedThisAction: [44],
+    publicRound: { start: 33, moves: [], observations: [] },
+  })
+  const medOutcomes = () => new Map([42, 43, 59].map(id => [id, {
+    ifNo: new Set([33, 46, 147]), ifYes: new Set([33, 46]), positiveMeansJackIsThereNow: false,
+  }]))
+
+  test('Med pauses ordinary searches that Hi would continue', () => {
+    const history = createGameHistory(medState())
+    expect(automaticInvestigatorActions(history, medOutcomes, 'med').commands).toEqual([])
+    expect(automaticInvestigatorActions(history, medOutcomes, 'hi').commands[0]).toMatchObject({ action: { type: 'searchCircle' } })
+    expect(automaticInvestigatorActions(createGameHistory({ ...medState(), checkedThisAction: [] }), medOutcomes, 'med').commands).toEqual([])
+  })
+
+  test('Med searches yes=1 locations and reevaluates the counts after each answer', () => {
+    const result = automaticInvestigatorActions(createGameHistory(medState()), evidence => {
+      const outcomes = medOutcomes()
+      outcomes.get(42)!.ifYes = new Set([33])
+      if (!evidence?.observations.length) outcomes.get(43)!.ifYes = new Set([46])
+      return outcomes
+    }, 'med')
+    expect(result.commands).toEqual([{ type: 'apply', action: { type: 'searchCircle', circleId: 42 } }])
+    expect(currentHistoryState(result.next).checkedThisAction).toEqual([44, 42])
+  })
+
+  test('Med searches the last unsearched location excluding clues and only the most recent discovery', () => {
+    const state = { ...medState(), clueLocations: [42], reachedDiscoveries: [33, 59] }
+    const result = automaticInvestigatorActions(createGameHistory(state), medOutcomes, 'med')
+    expect(result.commands[0]).toEqual({ type: 'apply', action: { type: 'searchCircle', circleId: 43 } })
+    expect(currentHistoryState(result.next).stage).toBe('investigatorTurnResult')
+    expect(automaticInvestigatorActions(createGameHistory({ ...state, reachedDiscoveries: [59, 33] }), medOutcomes, 'med').commands).toEqual([])
+  })
+
   test.each([1, 2])('ends only the active search with InvAuto off when investigator %i has one known clue left', activeInvestigator => {
     const state = { ...knownClueState(), activeInvestigator,
       investigatorPositions: { yellow: 'DB', blue: 'CF', red: activeInvestigator === 2 ? 'CF' : 'HZ' } }
@@ -33,9 +68,9 @@ describe('investigator auto actions', () => {
     const noInference = () => { throw new Error('InvAuto off should not run tactical inference') }
     for (const circleId of [37, 56]) {
       history = gameHistoryReducer(history, { type: 'apply', action: { type: 'searchCircle', circleId } })
-      if (circleId === 37) expect(automaticInvestigatorActions(history, noInference, false).commands).toEqual([])
+      if (circleId === 37) expect(automaticInvestigatorActions(history, noInference, 'off').commands).toEqual([])
     }
-    const result = automaticInvestigatorActions(history, noInference, false)
+    const result = automaticInvestigatorActions(history, noInference, 'off')
     expect(result.commands).toEqual([{ type: 'apply', action: { type: 'passInspectorAction' } }])
     const next = currentHistoryState(result.next)
     expect(next.stage).toBe(activeInvestigator === 2 ? 'investigatorTurnResult' : 'investigatorAction')
@@ -50,10 +85,10 @@ describe('investigator auto actions', () => {
 
   test('InvAuto off preserves the arrest choice before searching and a final unknown search afterward', () => {
     const initial = createGameHistory(knownClueState())
-    expect(automaticInvestigatorActions(initial, undefined, false).commands).toEqual([])
+    expect(automaticInvestigatorActions(initial, undefined, 'off').commands).toEqual([])
     const state = { ...knownClueState(), clueLocations: [], checkedThisAction: [37, 56],
       investigatorPositions: { yellow: 'DB', blue: 'CF', red: 'HZ' } }
-    expect(automaticInvestigatorActions(createGameHistory(state), undefined, false).commands).toEqual([])
+    expect(automaticInvestigatorActions(createGameHistory(state), undefined, 'off').commands).toEqual([])
   })
 
   test.each([1, 3])('arrests on a known clue when it is the only useful target after move %i', moveSlot => {

@@ -39,7 +39,7 @@ for (const mode of ['same-device', 'versus-ai'] as const) {
     await page.goto('/')
     const blue = page.getByRole('heading', { name: 'Blue Investigator: Clues and Suspicion', exact: true })
     await expect(blue).toBeVisible()
-    await expect(page.getByLabel('InvAuto', { exact: true })).not.toBeChecked()
+    await expect(page.getByLabel('InvAuto', { exact: true })).toHaveValue('off')
     await expect(page.getByRole('button', { name: 'Execute arrest', exact: true })).toBeEnabled()
     const choices = page.getByLabel('Locations adjacent to the blue Investigator')
     await choices.getByRole('button', { name: '37', exact: true }).click()
@@ -48,7 +48,7 @@ for (const mode of ['same-device', 'versus-ai'] as const) {
     await choices.getByRole('button', { name: '56', exact: true }).click()
     const red = page.getByRole('heading', { name: 'Red Investigator: Clues and Suspicion', exact: true })
     await expect(red).toBeVisible()
-    await expect(page.getByLabel('InvAuto', { exact: true })).not.toBeChecked()
+    await expect(page.getByLabel('InvAuto', { exact: true })).toHaveValue('off')
     await expect(page.locator('.public-log')).toContainText('blue ended the clue search.')
     await expect(page.locator('.public-log')).not.toContainText('blue searched 36:')
     await page.getByRole('button', { name: 'Undo', exact: true }).click()
@@ -58,7 +58,7 @@ for (const mode of ['same-device', 'versus-ai'] as const) {
     await expect(red).toBeVisible()
     await page.reload()
     await expect(red).toBeVisible()
-    await expect(page.getByLabel('InvAuto', { exact: true })).not.toBeChecked()
+    await expect(page.getByLabel('InvAuto', { exact: true })).toHaveValue('off')
   })
 
   test(`InvAuto arrests on a known clue in ${mode}, with undo, redo and refresh`, async ({ page }) => {
@@ -68,15 +68,15 @@ for (const mode of ['same-device', 'versus-ai'] as const) {
     await expect(page.locator('.clue-marker')).toHaveCount(1)
     await expect(page.locator('.jack-marker')).toHaveCount(0)
     // The successful arrest immediately removes the in-game checkbox.
-    await expect(page.getByLabel('InvAuto', { exact: true })).not.toBeChecked()
-    await page.getByLabel('InvAuto', { exact: true }).click()
+    await expect(page.getByLabel('InvAuto', { exact: true })).toHaveValue('off')
+    await page.getByLabel('InvAuto', { exact: true }).selectOption('hi')
     await expect(page.getByRole('heading', { name: 'Jack Was Stopped', exact: true })).toBeVisible()
     await expect(page.locator('.public-log')).toContainText('blue arrested Jack at 36.')
     await expect(page.locator('.public-log')).not.toContainText('blue passed the action phase.')
 
     await page.getByRole('button', { name: 'Undo', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Blue Investigator: Clues and Suspicion', exact: true })).toBeVisible()
-    await expect(page.getByLabel('InvAuto', { exact: true })).toBeChecked()
+    await expect(page.getByLabel('InvAuto', { exact: true })).toHaveValue('hi')
     await expect(page.locator('.public-log')).not.toContainText('blue arrested Jack at 36.')
     await page.getByRole('button', { name: 'Redo', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Jack Was Stopped', exact: true })).toBeVisible()
@@ -106,7 +106,7 @@ test('InvAuto executes a coordinated three-investigator capture', async ({ page 
   }
   await restoreGame(page, state, 'versus-ai')
   await page.goto('/')
-  await page.getByLabel('InvAuto', { exact: true }).click()
+  await page.getByLabel('InvAuto', { exact: true }).selectOption('hi')
   await expect(page.getByRole('heading', { name: 'Jack Was Stopped', exact: true })).toBeVisible()
   const log = page.locator('.public-log')
   await expect(log).toContainText('yellow attempted an arrest at 62: missed.')
@@ -117,7 +117,7 @@ test('InvAuto executes a coordinated three-investigator capture', async ({ page 
   await expect(page.getByRole('heading', { name: 'Jack Was Stopped', exact: true })).toBeVisible()
 })
 
-test('InvAuto reorders searches after each answer once the player starts searching', async ({ page }) => {
+for (const level of ['med', 'hi']) test(`InvAuto ${level} continues the appropriate searches after the player starts searching`, async ({ page }) => {
   const positions = { yellow: 'FP', blue: 'HP', red: 'HZ' }
   const state: GameState = {
     ...createInitialGame(), stage: 'investigatorAction', inspectorActionMode: 'search', activeInvestigator: 2,
@@ -131,10 +131,17 @@ test('InvAuto reorders searches after each answer once the player starts searchi
   }
   await restoreGame(page, state, 'same-device')
   await page.goto('/')
-  await page.getByLabel('InvAuto', { exact: true }).check()
+  await page.getByLabel('InvAuto', { exact: true }).selectOption(level)
   await expect(page.getByRole('heading', { name: 'Red Investigator: Clues and Suspicion', exact: true })).toBeVisible()
   await expect(page.locator('.public-log')).not.toContainText('searched')
   await page.getByLabel('Locations adjacent to the red Investigator').getByRole('button', { name: '44', exact: true }).click()
+  if (level === 'med') {
+    await expect(page.locator('.public-log-section li')).toHaveText(['M6: red searched 44: no clue.'])
+    await page.reload()
+    await expect(page.getByLabel('InvAuto', { exact: true })).toHaveValue('med')
+    await page.getByLabel('Locations adjacent to the red Investigator').getByRole('button', { name: '43', exact: true }).click()
+    await page.getByLabel('Locations adjacent to the red Investigator').getByRole('button', { name: '59', exact: true }).click()
+  }
   await expect(page.getByText('Results shown · Click anywhere on the map to continue')).toBeVisible()
   // The log is newest first; the actual search order is 44, 43, 59, 42.
   await expect(page.locator('.public-log-section li')).toHaveText([

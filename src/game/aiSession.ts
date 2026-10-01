@@ -25,11 +25,10 @@ export function aiHistoryReducer(history: GameHistory, command: HistoryCommand, 
     if (waitEnd && command.action.type === 'placeInvestigator') {
       command = { ...command, action: { ...command.action, review: true } }
     }
-    // Playing from an earlier decision branches the game; only Redo replays the
-    // old future. This also restarts the opponent after a repeated human move.
-    const branch = resumeAiHistory(history)
-    const next = gameHistoryReducer(branch, command)
-    if (next === branch) return history
+    // The shared reducer preserves a matching redo entry and branches only
+    // for a different action. Keep recorded AI replies available for Redo too.
+    const next = gameHistoryReducer(history, command)
+    if (next === history) return history
     // Keep the existing handoff/result in history until the human confirms it.
     // Confirmation then normalizes every handoff before starting the AI.
     return waitEnd && !confirming && needsAiEndConfirmation(next, role) ? next : normalizeRemoteHistory(next)
