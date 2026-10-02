@@ -313,6 +313,7 @@ button:disabled {
 }
 
 .possibility-toggle,
+.worst-crossings-toggle,
 .coach-preview-toggle,
 .crossing-toggle,
 .alternate-angle-toggle,
@@ -330,6 +331,7 @@ button:disabled {
 }
 
 .possibility-toggle input,
+.worst-crossings-toggle input,
 .coach-preview-toggle input,
 .crossing-toggle input,
 .alternate-angle-toggle input,
@@ -769,6 +771,20 @@ button:disabled {
   paint-order: stroke fill;
   font: 900 11px 'Inter', sans-serif;
   letter-spacing: -0.04em;
+}
+
+.crossing-worst-count {
+  fill: #000;
+  font: 900 11px 'Inter', sans-serif;
+  pointer-events: none;
+}
+
+.crossing-worst-background {
+  fill: #fff;
+}
+
+.crossing-worst-indicator.highlighted .crossing-worst-background {
+  fill: #ff8c00;
 }
 
 .outcome-count-no {

@@ -1,4 +1,4 @@
-import { alleyDestinations, boatDestinations, circlesById, jackTransitions } from './mapData'
+import { adjacentCirclesForCrossing, alleyDestinations, boatDestinations, circlesById, crossings, jackTransitions } from './mapData'
 import type { InvestigatorColor, JackMoveType, PublicMoveEvidence, PublicRoundEvidence } from './types'
 
 interface Hypothesis {
@@ -198,6 +198,63 @@ export const possibleJackSearchOutcomesAfterMove = (
   currentMoveSlot: number,
 ): Map<number, SearchOutcome> =>
   possibleJackSearchOutcomes(evidenceAfterMove(evidence, type, investigatorPositions, currentMoveSlot))
+
+const crossingEliminationCache = new WeakMap<PublicRoundEvidence, Map<string, number>>()
+
+// A search ends at the first yes. Choose the next location to minimize the
+// largest surviving set, continuing only down the no branch. Re-run inference
+// with all preceding misses: intersecting individual outcomes loses correlations
+// between different possible trails that end at the same current location.
+export const worstCaseCrossingEliminations = (evidence: PublicRoundEvidence | null): Map<string, number> => {
+  if (!evidence) return new Map()
+  const cached = crossingEliminationCache.get(evidence)
+  if (cached) return cached
+  const context = buildInferenceContext(evidence)
+  const initial = remainingHypotheses(context)
+  const total = new Set(initial.map(hypothesis => hypothesis.position)).size
+  const hypothesesByMisses = new Map<string, Hypothesis[]>([['', initial]])
+  const afterMisses = (misses: number[]) => {
+    const key = misses.join(',')
+    const known = hypothesesByMisses.get(key)
+    if (known) return known
+    const negativeUntil = new Map(context.negativeUntil)
+    for (const id of misses) negativeUntil.set(id, evidence.moves.length)
+    const hypotheses = remainingHypotheses({ ...context, negativeUntil })
+    hypothesesByMisses.set(key, hypotheses)
+    return hypotheses
+  }
+  const counts = new Map<string, number>()
+  for (const crossing of crossings) {
+    // Guaranteed misses add no information and need no hypothetical branches.
+    const adjacent = adjacentCirclesForCrossing(crossing.id).filter(id =>
+      initial.some(hypothesis => (hypothesis.visitedUnion & visitedBit(id)) !== 0n))
+    const residuals = new Map<string, number>()
+    const worstRemaining = (misses: number[]): number => {
+      const key = misses.join(',')
+      const known = residuals.get(key)
+      if (known !== undefined) return known
+      const hypotheses = afterMisses(misses)
+      const possible = new Set(hypotheses.map(hypothesis => hypothesis.position))
+      let best = possible.size
+      if (best === 0) return 0 // This sequence of misses is impossible.
+      for (const id of adjacent) {
+        if (misses.includes(id)) continue
+        const bit = visitedBit(id)
+        const yes = new Set(hypotheses.filter(hypothesis => (hypothesis.visitedUnion & bit) !== 0n)
+          .map(hypothesis => hypothesis.position)).size
+        // This order already cannot improve on the best one found so far.
+        if (yes >= best) continue
+        const no = worstRemaining([...misses, id].sort((a, b) => a - b))
+        best = Math.min(best, Math.max(yes, no))
+      }
+      residuals.set(key, best)
+      return best
+    }
+    counts.set(crossing.id, total - worstRemaining([]))
+  }
+  crossingEliminationCache.set(evidence, counts)
+  return counts
+}
 
 export const movementLabel = (type: JackMoveType) =>
   ({ normal: 'Street', coach: 'Coach', alley: 'Alley', boat: 'Boat' })[type]

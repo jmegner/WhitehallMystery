@@ -30,6 +30,7 @@ import {
   movementLabel,
   possibleJackSearchOutcomes,
   possibleJackSearchOutcomesAfterMove,
+  worstCaseCrossingEliminations,
   type SearchOutcome,
 } from './game/inference'
 import { automaticInvestigatorActions } from './game/investigatorAuto'
@@ -38,6 +39,7 @@ import PublicHuntLog from './PublicHuntLog'
 import FloatingMapControls from './FloatingMapControls'
 import { indicatorTextAttributes } from './indicatorLayout'
 import { useShiftHeld } from './useShiftHeld'
+import { useControlHeld } from './useControlHeld'
 import {
   canBigUndo,
   canRedo,
@@ -72,6 +74,7 @@ import {
   PAST_PATH_STORAGE_KEY,
   PAST_PATH_ROUND_STORAGE_KEY,
   POSSIBLE_LOCATIONS_STORAGE_KEY,
+  WORST_CROSSINGS_STORAGE_KEY,
   loadBooleanPreference,
   loadInvestigatorAutoPreference,
   loadStoredHistory,
@@ -232,6 +235,7 @@ interface BoardProps {
   legalCrossingIds: Set<string>
   possibleIds: Set<number>
   possibleOutcomes: Map<number, SearchOutcome>
+  worstCrossingEliminations: Map<string, number>
   showPossible: boolean
   showCrossingIds: boolean
   alternateIndicatorAngle: boolean
@@ -286,6 +290,7 @@ function GameBoard({
   legalCrossingIds,
   possibleIds,
   possibleOutcomes,
+  worstCrossingEliminations,
   showPossible,
   showCrossingIds,
   alternateIndicatorAngle,
@@ -426,6 +431,10 @@ function GameBoard({
     : new Map<string, string>()
   const showCrossingTurnLabels =
     investigatorRoutePreview.turnLabels.size > 0 || hoveredInvestigatorTurnLabels.size > 0
+  const positiveWorstCounts = [...worstCrossingEliminations].filter(([, count]) => count > 0)
+  const occupiedCrossingIds = new Set(Object.values(state.investigatorPositions))
+  const rankedWorstCounts = positiveWorstCounts.map(([, count]) => count).sort((a, b) => b - a)
+  const highlightedWorstMinimum = rankedWorstCounts[Math.min(2, rankedWorstCounts.length - 1)] ?? Infinity
   const hoveredInvestigatorColor = hoveredInvestigatorStart ? 'yellow' : hoveredInvestigator
   const hoveredInvestigatorMaybeCircles = new Set<number>()
   for (const crossingId of hoveredInvestigatorMaybeCrossings) {
@@ -1013,9 +1022,32 @@ function GameBoard({
           )
         })}
 
+        {!showCrossingTurnLabels && positiveWorstCounts.map(([id, count]) => {
+          const crossing = crossingsById.get(id)
+          if (!crossing) return null
+          const width = Math.max(14, String(count).length * 7 + 4)
+          return (
+            <g
+              key={`crossing-worst-${id}`}
+              className={`crossing-worst-indicator${count >= highlightedWorstMinimum ? ' highlighted' : ''}`}
+              // Leave two board pixels of overlap with the top of the piece.
+              transform={occupiedCrossingIds.has(id) ? `translate(0 -${INVESTIGATOR_PIECE_RADIUS + 7 - 2})` : undefined}
+              aria-label={`Crossing ${id}: at least ${count} possible locations eliminated by searching in the best order`}
+            >
+              <rect className="crossing-worst-background" x={crossing.x - width / 2} y={crossing.y - 7} width={width} height={14} />
+              <text className="crossing-worst-count"
+                {...indicatorTextAttributes(crossing.x, crossing.y, 'crossingWorst', alternateIndicatorAngle)}>
+                {count}
+              </text>
+            </g>
+          )
+        })}
+
         {showCrossingIds && !showCrossingTurnLabels &&
           crossings.map((crossing) => {
-            const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingId', alternateIndicatorAngle)
+            const hasWorst = (worstCrossingEliminations.get(crossing.id) ?? 0) > 0
+            const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingId',
+              alternateIndicatorAngle || (hasWorst && occupiedCrossingIds.has(crossing.id)), hasWorst)
             return (
               <text
                 key={`crossing-label-${crossing.id}`}
@@ -1531,6 +1563,11 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY) : false
   })
+  const [showWorst, setShowWorst] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, WORST_CROSSINGS_STORAGE_KEY) : false
+  })
+  const controlHeld = useControlHeld()
   const [showCrossingIds, setShowCrossingIds] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY) : false
@@ -1777,6 +1814,8 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const showPossibilityMarkers =
     (showPossible && isInspectorInteraction(state.stage)) ||
     (showInvestigatorKnowledge && state.stage === 'jackMove')
+  const worstCrossingEliminations = showWorst !== controlHeld && isInspectorInteraction(state.stage)
+    ? worstCaseCrossingEliminations(state.publicRound) : new Map<string, number>()
   if (remote?.waiting) { legalCircleIds.clear(); legalCrossingIds.clear(); coachReachableCircleIds.clear() }
   const handleCircle = (circleId: number) => {
     if (remote?.waiting) return
@@ -1998,6 +2037,24 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               )}
               {isInspectorInteraction(state.stage) && state.publicRound && (
                 <label
+                  className="worst-crossings-toggle"
+                  title="show the guaranteed number of possible locations eliminated by searching adjacent locations in the best order, stopping at a clue; hold Ctrl to temporarily invert worst"
+                >
+                  <input
+                    type="checkbox"
+                    checked={showWorst}
+                    onChange={(event) => {
+                      const checked = event.target.checked
+                      setShowWorst(checked)
+                      const storage = browserStorage()
+                      if (storage) saveBooleanPreference(storage, WORST_CROSSINGS_STORAGE_KEY, checked)
+                    }}
+                  />
+                  worst
+                </label>
+              )}
+              {isInspectorInteraction(state.stage) && state.publicRound && (
+                <label
                   className="possibility-toggle"
                   title="show what places are useful to search/arrest because Jack may be/was there; does not show places that he could have been but can't be now and searching would not help narrow down where he is"
                 >
@@ -2055,6 +2112,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 legalCrossingIds={legalCrossingIds}
                 possibleIds={possibleIds}
                 possibleOutcomes={possibleOutcomes}
+                worstCrossingEliminations={worstCrossingEliminations}
                 showPossible={showPossibilityMarkers}
                 showCrossingIds={showCrossingIds}
                 alternateIndicatorAngle={alternateIndicatorAngle !== shiftHeld}
