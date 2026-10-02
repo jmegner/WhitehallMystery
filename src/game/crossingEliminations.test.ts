@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
-import { possibleJackLocations, publicMovementPaths, worstCaseCrossingEliminations } from './inference'
+import { possibleJackLocations, possibleJackSearchOutcomes, publicMovementPaths, worstCaseCrossingEliminations } from './inference'
 import { adjacentCirclesForCrossing, crossings } from './mapData'
-import type { PublicRoundEvidence } from './types'
+import type { InvestigatorColor, PublicRoundEvidence } from './types'
 
 const positions = { yellow: 'FP', blue: 'HP', red: 'HZ' }
 const street = (slot: number) => ({ type: 'normal' as const, startSlot: slot, endSlot: slot, investigatorPositions: positions })
@@ -24,12 +24,12 @@ function permutations(ids: number[]): number[][] {
   return ids.length === 0 ? [[]] : ids.flatMap(id => permutations(ids.filter(other => other !== id)).map(rest => [id, ...rest]))
 }
 
-function remainingForOrder(trails: number[][], order: number[]): number {
+function remainingForOrder(trails: number[][], order: number[], project = (id: number) => [id]): number {
   const groups = new Map<number | undefined, Set<number>>()
   for (const trail of trails) {
     const firstClue = order.find(id => trail.includes(id))
     const locations = groups.get(firstClue) ?? new Set()
-    locations.add(trail.at(-1)!)
+    for (const id of project(trail.at(-1)!)) locations.add(id)
     groups.set(firstClue, locations)
   }
   return Math.max(0, ...[...groups.values()].map(locations => locations.size))
@@ -82,5 +82,69 @@ describe('worst-case crossing eliminations', () => {
     expect(counts.size).toBe(crossings.length)
     for (const count of counts.values()) expect(count).toBeGreaterThanOrEqual(0)
     expect(worstCaseCrossingEliminations(round)).toBe(counts)
+  })
+
+  test.each([
+    evidence,
+    { ...evidence, moves: [{ ...street(1), type: 'coach' as const, endSlot: 2 }] },
+    { ...evidence, observations: [{ kind: 'clue' as const, circleId: 13, found: true, afterMove: 1, investigator: 'yellow' as const },
+      { kind: 'arrest' as const, circleId: 10, hit: false as const, afterMove: 2, investigator: 'blue' as const }] },
+  ])('projects current searches through a later Street move and optimizes that perspective for %#', round => {
+    const trails = trailsFor(round)
+    const forecastPositions = { yellow: 'DM', blue: 'FP', red: 'HZ' }
+    const project = (id: number) => publicMovementPaths(id, { ...street(3), investigatorPositions: forecastPositions })
+      .map(path => path.at(-1)!)
+    const projected = (paths: number[][]) => new Set(paths.flatMap(trail => project(trail.at(-1)!)))
+    const total = projected(trails).size
+    const outcomes = possibleJackSearchOutcomes(round, forecastPositions)
+    expect([...outcomes.keys()]).toEqual([...possibleJackSearchOutcomes(round).keys()])
+    for (const [id, outcome] of outcomes) {
+      expect(outcome.ifYes, `yes at ${id}`).toEqual(projected(trails.filter(trail => trail.includes(id))))
+      expect(outcome.ifNo, `no at ${id}`).toEqual(projected(trails.filter(trail => !trail.includes(id))))
+    }
+    const counts = worstCaseCrossingEliminations(round, forecastPositions)
+    for (const crossing of crossings) {
+      const residual = Math.min(...permutations(adjacentCirclesForCrossing(crossing.id))
+        .map(order => remainingForOrder(trails, order, project)))
+      expect(counts.get(crossing.id), crossing.id).toBe(total - residual)
+    }
+    expect(counts).not.toBe(worstCaseCrossingEliminations(round))
+    expect(worstCaseCrossingEliminations(round, { ...forecastPositions })).toBe(counts)
+  })
+
+  test('a future visit cannot be searched now, and a known current position can have many future destinations', () => {
+    const round = { ...evidence, moves: [] }
+    const next = possibleJackSearchOutcomes(round, positions)
+    expect([...next.keys()]).toEqual([33])
+    expect(next.get(33)!.ifYes.size).toBeGreaterThan(1)
+    expect(next.get(33)!.ifNo.size).toBe(0)
+    expect(next.get(33)!.positiveMeansJackIsThereNow).toBe(false)
+    expect(new Set(worstCaseCrossingEliminations(round, positions).values())).toEqual(new Set([0]))
+  })
+
+  test('forecasts respect current investigator blockers and invalidate cached scores when they move', () => {
+    const forecastPositions: Partial<Record<InvestigatorColor, string>> = {}
+    const open = worstCaseCrossingEliminations(evidence, forecastPositions)
+    const openOutcomes = possibleJackSearchOutcomes(evidence, forecastPositions)
+    const blockedPositions = { yellow: 'CZ', blue: 'DM', red: 'DG' }
+    const blocked = worstCaseCrossingEliminations(evidence, blockedPositions)
+    expect(blocked).not.toBe(open)
+    const trails = trailsFor(evidence)
+    const project = (id: number) => publicMovementPaths(id, { ...street(3), investigatorPositions: blockedPositions })
+      .map(path => path.at(-1)!)
+    const total = new Set(trails.flatMap(trail => project(trail.at(-1)!))).size
+    for (const crossing of crossings) {
+      const residual = Math.min(...permutations(adjacentCirclesForCrossing(crossing.id))
+        .map(order => remainingForOrder(trails, order, project)))
+      expect(blocked.get(crossing.id), crossing.id).toBe(total - residual)
+    }
+    const blockedOutcomes = possibleJackSearchOutcomes(evidence, blockedPositions)
+    expect([...blockedOutcomes.values()].some((outcome, index) =>
+      outcome.ifYes.size !== [...openOutcomes.values()][index]!.ifYes.size)).toBe(true)
+    for (const [id, outcome] of blockedOutcomes) {
+      expect(outcome.ifYes).toEqual(new Set(trails.filter(trail => trail.includes(id)).flatMap(trail => project(trail.at(-1)!))))
+      expect(outcome.ifNo).toEqual(new Set(trails.filter(trail => !trail.includes(id)).flatMap(trail => project(trail.at(-1)!))))
+    }
+    expect(worstCaseCrossingEliminations(evidence, {})).toBe(open)
   })
 })

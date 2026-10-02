@@ -314,6 +314,7 @@ button:disabled {
 
 .possibility-toggle,
 .worst-crossings-toggle,
+.next-turn-toggle,
 .coach-preview-toggle,
 .crossing-toggle,
 .alternate-angle-toggle,
@@ -332,6 +333,7 @@ button:disabled {
 
 .possibility-toggle input,
 .worst-crossings-toggle input,
+.next-turn-toggle input,
 .coach-preview-toggle input,
 .crossing-toggle input,
 .alternate-angle-toggle input,

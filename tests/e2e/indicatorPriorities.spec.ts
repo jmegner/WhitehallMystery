@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { createInitialGame } from '../../src/game/gameEngine'
-import { worstCaseCrossingEliminations } from '../../src/game/inference'
+import { possibleJackLocationsAfterMove, possibleJackSearchOutcomes, publicMovementPaths, worstCaseCrossingEliminations } from '../../src/game/inference'
+import { circles } from '../../src/game/mapData'
 
 async function openHunt(page: Page) {
   const investigatorPositions = { yellow: 'DM', blue: 'FP', red: 'HZ' }
@@ -139,6 +140,13 @@ test('worst counts use the public evidence, persist, and yield to crossing hover
     const badges = await page.locator('.crossing-worst-indicator').evaluateAll(elements => elements.map(element => {
       const text = element.querySelector('text')!
       const rect = element.querySelector('rect')!
+      const textBounds = text.getBBox()
+      const context = document.createElement('canvas').getContext('2d')!
+      context.font = getComputedStyle(text).font
+      const metrics = context.measureText(text.textContent!)
+      // SVG's box includes the font's unused ascent/descent space. Check the
+      // painted digits vertically, while reserving the full advance width.
+      const baselineY = textBounds.y + metrics.fontBoundingBoxAscent
       return {
         crossingId: element.getAttribute('aria-label')!.match(/^Crossing (\w+):/)![1],
         offsetY: (element as SVGGElement).transform.baseVal.consolidate()?.matrix.f ?? 0,
@@ -148,6 +156,8 @@ test('worst counts use the public evidence, persist, and yield to crossing hover
         angle: text.getAttribute('data-indicator-angle'),
         rectX: Number(rect.getAttribute('x')), rectY: Number(rect.getAttribute('y')),
         width: Number(rect.getAttribute('width')), height: Number(rect.getAttribute('height')),
+        textBounds: { x: textBounds.x, y: baselineY - metrics.actualBoundingBoxAscent,
+          width: textBounds.width, height: metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent },
         textFill: getComputedStyle(text).fill, textStroke: getComputedStyle(text).stroke,
         background: getComputedStyle(rect).fill,
       }
@@ -172,8 +182,12 @@ test('worst counts use the public evidence, persist, and yield to crossing hover
       } else {
         expect(badge.offsetY).toBe(0)
       }
-      expect(badge.width).toBe(Math.max(14, String(badge.count).length * 7 + 4))
-      expect(badge.height).toBe(14)
+      expect(badge.width).toBeLessThan(Math.max(14, String(badge.count).length * 7 + 4))
+      expect(badge.height).toBeLessThan(14)
+      expect(badge.rectX).toBeLessThan(badge.textBounds.x)
+      expect(badge.rectY).toBeLessThanOrEqual(badge.textBounds.y)
+      expect(badge.rectX + badge.width).toBeGreaterThan(badge.textBounds.x + badge.textBounds.width)
+      expect(badge.rectY + badge.height).toBeGreaterThanOrEqual(badge.textBounds.y + badge.textBounds.height)
       expect(badge.textFill).toBe('rgb(0, 0, 0)')
       expect(badge.textStroke).toBe('none')
       expect(badge.background).toBe(badge.count >= orangeCutoff ? 'rgb(255, 140, 0)' : 'rgb(255, 255, 255)')
@@ -207,39 +221,160 @@ test('worst counts use the public evidence, persist, and yield to crossing hover
   await expect(indicators).toHaveCount(expected.size)
 })
 
-test('Ctrl temporarily inverts worst and recovers from lost focus without persisting the override', async ({ page }) => {
+test('Ctrl temporarily inverts next and recovers from lost focus without persisting the override', async ({ page }) => {
   const state = await openHunt(page)
-  const positiveCount = [...worstCaseCrossingEliminations(state.publicRound).values()].filter(count => count > 0).length
+  const next = page.getByLabel('next', { exact: true })
   const worst = page.getByLabel('worst', { exact: true })
   const indicators = page.locator('.crossing-worst-count')
+  const currentOutcomes = possibleJackSearchOutcomes(state.publicRound)
+  const futureOutcomes = possibleJackSearchOutcomes(state.publicRound, state.investigatorPositions)
+  const currentIds = new Set([...currentOutcomes.values()].flatMap(outcome => [...outcome.ifYes]))
+  const futureIds = new Set([...futureOutcomes.values()].flatMap(outcome => [...outcome.ifYes]))
+  const currentCounts = [...worstCaseCrossingEliminations(state.publicRound).values()].filter(count => count > 0).map(String)
+  const futureCounts = [...worstCaseCrossingEliminations(state.publicRound, state.investigatorPositions).values()]
+    .filter(count => count > 0).map(String)
+  const clue = page.locator('.possible-outcome-count[aria-label^="Search outcome at 34:"]')
+  const expectPerspective = async (future: boolean, worstEnabled = true) => {
+    await expect(page.locator('.game-board')).toHaveAttribute('data-possibility-perspective', future ? 'next' : 'current')
+    const ids = future ? futureIds : currentIds
+    expect(await page.locator('.possible-marker').evaluateAll(elements => elements.map(element =>
+      `${element.getAttribute('cx')},${element.getAttribute('cy')}`).sort()))
+      .toEqual(circles.filter(circle => ids.has(circle.id)).map(circle => `${circle.x},${circle.y}`).sort())
+    const outcome = (future ? futureOutcomes : currentOutcomes).get(34)!
+    await expect(clue).toHaveText(`${outcome.ifNo.size}/${outcome.ifYes.size}`)
+    expect(await indicators.allTextContents()).toEqual(worstEnabled ? future ? futureCounts : currentCounts : [])
+  }
+  await worst.check()
   for (const saved of [false, true]) {
-    await worst.setChecked(saved)
-    await worst.hover()
-    const stored = await page.evaluate(() => localStorage.getItem('whitehall-mystery.show-worst-crossings'))
+    await next.setChecked(saved)
+    await next.hover()
+    const stored = await page.evaluate(() => localStorage.getItem('whitehall-mystery.show-next-turn'))
+    await expectPerspective(saved)
     for (const key of ['ControlLeft', 'ControlRight']) {
       await page.keyboard.down(key)
-      await expect(indicators).toHaveCount(saved ? 0 : positiveCount)
+      await expectPerspective(!saved)
       await page.keyboard.down(key)
-      await expect(indicators).toHaveCount(saved ? 0 : positiveCount)
-      await expect(worst).toBeChecked({ checked: saved })
-      expect(await page.evaluate(() => localStorage.getItem('whitehall-mystery.show-worst-crossings'))).toBe(stored)
+      await expectPerspective(!saved)
+      await expect(next).toBeChecked({ checked: saved })
+      await expect(worst).toBeChecked()
+      expect(await page.evaluate(() => localStorage.getItem('whitehall-mystery.show-next-turn'))).toBe(stored)
+      expect(await page.evaluate(() => localStorage.getItem('whitehall-mystery.show-worst-crossings'))).toBe('true')
       await page.keyboard.up(key)
-      await expect(indicators).toHaveCount(saved ? positiveCount : 0)
+      await expectPerspective(saved)
     }
     await page.reload()
-    await expect(worst).toBeChecked({ checked: saved })
+    await expect(next).toBeChecked({ checked: saved })
+    await expectPerspective(saved)
   }
+  await next.uncheck()
+  await next.hover()
   await worst.uncheck()
   await page.keyboard.down('ControlLeft')
-  await expect(indicators).toHaveCount(positiveCount)
+  await expectPerspective(true, false)
   await page.evaluate(() => window.dispatchEvent(new Event('blur')))
-  await expect(indicators).toHaveCount(0)
+  await expectPerspective(false, false)
   await page.mouse.move(0, 0)
-  await expect(indicators).toHaveCount(positiveCount)
+  await expectPerspective(true, false)
   await page.keyboard.up('ControlLeft')
-  await expect(indicators).toHaveCount(0)
+  await expectPerspective(false, false)
   await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Control', ctrlKey: true })))
-  await expect(indicators).toHaveCount(positiveCount)
+  await expectPerspective(true, false)
   await page.mouse.move(10, 10)
+  await expectPerspective(false, false)
+})
+
+test('next projects outlines, search outcomes, and worst counts through a Street move and persists independently', async ({ page }) => {
+  const state = await openHunt(page)
+  const next = page.getByLabel('next', { exact: true })
+  const worst = page.getByLabel('worst', { exact: true })
+  const maybes = page.getByLabel('maybes')
+  const indicators = page.locator('.crossing-worst-count')
+  const storedGame = await page.evaluate(() => localStorage.getItem('whitehall-mystery.game.v1'))
+  const currentOutcomes = possibleJackSearchOutcomes(state.publicRound)
+  const project = (ids: Set<number>) => new Set([...ids].flatMap(id => publicMovementPaths(id, {
+    type: 'normal', startSlot: 5, endSlot: 5, investigatorPositions: state.investigatorPositions,
+  }).map(path => path.at(-1)!)))
+  const future = possibleJackLocationsAfterMove(state.publicRound, 'normal', state.investigatorPositions, state.moveSlot)
+  const current = new Set([...currentOutcomes.values()].flatMap(outcome => [...outcome.ifYes]))
+  const expectMarkers = async (selector: string, ids: Set<number>) => {
+    const coordinates = await page.locator(selector).evaluateAll(elements => elements.map(element =>
+      `${element.getAttribute('cx')},${element.getAttribute('cy')}`).sort())
+    expect(coordinates).toEqual(circles.filter(circle => ids.has(circle.id)).map(circle => `${circle.x},${circle.y}`).sort())
+  }
+  await expect(next).not.toBeChecked()
+  await expectMarkers('.possible-marker', current)
+  await worst.check()
+  await next.check()
+  await next.hover()
+  await expect(page.locator('.game-board')).toHaveAttribute('data-possibility-perspective', 'next')
+  const labels = await next.evaluate(input => [...input.closest('label')!.parentElement!.querySelectorAll('label')]
+    .map(label => label.textContent?.trim().replace(/\d+$/, '')))
+  expect(labels[labels.indexOf('next') + 1]).toBe('worst')
+  await expect(next.locator('..')).toHaveAttribute('title', /searches this turn/)
+  expect(future).not.toEqual(current)
+  await expectMarkers('.possible-marker', future)
+  await expect(page.locator('.possibility-toggle strong')).toHaveText(String(future.size))
+  await expectMarkers('.possible-certainty-marker', new Set([...currentOutcomes].filter(([id, outcome]) => {
+    const projected = project(outcome.ifYes)
+    return future.has(id) && projected.size === 1 && projected.has(id)
+  }).map(([id]) => id)))
+  const expectedCounts = new Map([...worstCaseCrossingEliminations(state.publicRound, state.investigatorPositions)]
+    .filter(([, count]) => count > 0))
+  expect(await indicators.allTextContents()).toEqual([...expectedCounts.values()].map(String))
+  expect(expectedCounts).not.toEqual(new Map([...worstCaseCrossingEliminations(state.publicRound)].filter(([, count]) => count > 0)))
+  const ranked = [...expectedCounts.values()].sort((a, b) => b - a)
+  const cutoff = ranked[Math.min(2, ranked.length - 1)]!
+  expect(await page.locator('.crossing-worst-indicator.highlighted .crossing-worst-count').allTextContents())
+    .toEqual([...expectedCounts.values()].filter(count => count >= cutoff).map(String))
+  for (const [id, outcome] of currentOutcomes) {
+    const ifNo = project(outcome.ifNo), ifYes = project(outcome.ifYes)
+    if (ifNo.size === 0) continue
+    const clue = page.locator(`.possible-outcome-count[aria-label^="Search outcome at ${id}:"]`)
+    await expect(clue).toHaveText(`${ifNo.size}/${ifYes.size}`)
+    await expect(clue).toHaveAttribute('aria-label', /after Jack’s next Street move$/)
+  }
+  const [searchId, outcome] = [...currentOutcomes].find(([id, outcome]) => id !== state.currentJack && outcome.ifNo.size > 0 && outcome.ifYes.size > 0)!
+  await page.locator(`[data-board-hover="location:${searchId}"]`).hover()
+  await expectMarkers('.possible-outcome-no', project(outcome.ifNo))
+  await expectMarkers('.possible-outcome-yes', project(outcome.ifYes))
+  await page.keyboard.down('ControlLeft')
+  await expectMarkers('.possible-outcome-no', outcome.ifNo)
+  await expectMarkers('.possible-outcome-yes', outcome.ifYes)
+  await page.keyboard.up('ControlLeft')
+  await expectMarkers('.possible-outcome-no', project(outcome.ifNo))
+  await expectMarkers('.possible-outcome-yes', project(outcome.ifYes))
+  await next.hover()
+  await maybes.uncheck()
+  await next.hover()
+  await expect(page.locator('.possible-marker')).toHaveCount(0)
+  expect(await indicators.allTextContents()).toEqual([...expectedCounts.values()].map(String))
+  await page.keyboard.down('ControlLeft')
+  await expect(page.locator('.game-board')).toHaveAttribute('data-possibility-perspective', 'current')
+  expect(await indicators.allTextContents()).toEqual([...worstCaseCrossingEliminations(state.publicRound).values()]
+    .filter(count => count > 0).map(String))
+  await expect(next).toBeChecked()
+  await expect(worst).toBeChecked()
+  await page.keyboard.up('ControlLeft')
+  await expect(page.locator('.game-board')).toHaveAttribute('data-possibility-perspective', 'next')
+  await expect(indicators).toHaveCount(expectedCounts.size)
+  await maybes.check()
+  await page.locator('[data-board-hover="investigator:red:HZ"]').hover()
+  await expect(page.locator('.investigator-hover-turn-count').first()).toBeVisible()
   await expect(indicators).toHaveCount(0)
+  await next.hover()
+  await expect(indicators).toHaveCount(expectedCounts.size)
+  await page.locator('.game-board').screenshot({ path: test.info().outputPath('next-turn-indicators.png') })
+  await page.reload()
+  await expect(next).toBeChecked()
+  await expect(worst).toBeChecked()
+  await expect(maybes).toBeChecked()
+  await expectMarkers('.possible-marker', future)
+  expect(await page.evaluate(() => localStorage.getItem('whitehall-mystery.game.v1'))).toBe(storedGame)
+  await next.uncheck()
+  await next.hover()
+  await expectMarkers('.possible-marker', current)
+  await expect(worst).toBeChecked()
+  await expect(maybes).toBeChecked()
+  await page.reload()
+  await expect(next).not.toBeChecked()
 })

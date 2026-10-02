@@ -75,6 +75,7 @@ import {
   PAST_PATH_ROUND_STORAGE_KEY,
   POSSIBLE_LOCATIONS_STORAGE_KEY,
   WORST_CROSSINGS_STORAGE_KEY,
+  NEXT_TURN_STORAGE_KEY,
   loadBooleanPreference,
   loadInvestigatorAutoPreference,
   loadStoredHistory,
@@ -237,6 +238,7 @@ interface BoardProps {
   possibleOutcomes: Map<number, SearchOutcome>
   worstCrossingEliminations: Map<string, number>
   showPossible: boolean
+  nextTurn: boolean
   showCrossingIds: boolean
   alternateIndicatorAngle: boolean
   showPastPath: boolean
@@ -292,6 +294,7 @@ function GameBoard({
   possibleOutcomes,
   worstCrossingEliminations,
   showPossible,
+  nextTurn,
   showCrossingIds,
   alternateIndicatorAngle,
   showPastPath,
@@ -528,6 +531,7 @@ function GameBoard({
       viewBox={`${BOARD_VIEWPORT.x} ${BOARD_VIEWPORT.y} ${BOARD_VIEWPORT.width} ${BOARD_VIEWPORT.height}`}
       role="img"
       aria-label="Whitehall game board"
+      data-possibility-perspective={nextTurn ? 'next' : 'current'}
       onClick={onMapClick}
     >
       <image href={boardImage} x="0" y="0" width={BOARD_SIZE} height={BOARD_SIZE} />
@@ -963,7 +967,7 @@ function GameBoard({
                 key={`possible-count-${id}`}
                 className="possible-outcome-count"
                 {...position}
-                aria-label={`Search outcome at ${id}: ${outcome.ifNo.size} if no, ${outcome.ifYes.size} if yes`}
+                aria-label={`Search outcome at ${id}: ${outcome.ifNo.size} if no, ${outcome.ifYes.size} if yes${nextTurn ? ' after Jack’s next Street move' : ''}`}
               >
                 <tspan className="outcome-count-no">{outcome.ifNo.size}</tspan>
                 <tspan className="outcome-count-separator">/</tspan>
@@ -1025,16 +1029,17 @@ function GameBoard({
         {!showCrossingTurnLabels && positiveWorstCounts.map(([id, count]) => {
           const crossing = crossingsById.get(id)
           if (!crossing) return null
-          const width = Math.max(14, String(count).length * 7 + 4)
+          const width = Math.max(12, String(count).length * 7 + 2)
+          const height = 12
           return (
             <g
               key={`crossing-worst-${id}`}
               className={`crossing-worst-indicator${count >= highlightedWorstMinimum ? ' highlighted' : ''}`}
               // Leave two board pixels of overlap with the top of the piece.
-              transform={occupiedCrossingIds.has(id) ? `translate(0 -${INVESTIGATOR_PIECE_RADIUS + 7 - 2})` : undefined}
-              aria-label={`Crossing ${id}: at least ${count} possible locations eliminated by searching in the best order`}
+              transform={occupiedCrossingIds.has(id) ? `translate(0 -${INVESTIGATOR_PIECE_RADIUS + height / 2 - 2})` : undefined}
+              aria-label={`Crossing ${id}: at least ${count} possible locations eliminated${nextTurn ? ' after Jack’s next Street move' : ''} by searching in the best order`}
             >
-              <rect className="crossing-worst-background" x={crossing.x - width / 2} y={crossing.y - 7} width={width} height={14} />
+              <rect className="crossing-worst-background" x={crossing.x - width / 2} y={crossing.y - height / 2} width={width} height={height} />
               <text className="crossing-worst-count"
                 {...indicatorTextAttributes(crossing.x, crossing.y, 'crossingWorst', alternateIndicatorAngle)}>
                 {count}
@@ -1567,7 +1572,12 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, WORST_CROSSINGS_STORAGE_KEY) : false
   })
+  const [nextTurn, setNextTurn] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, NEXT_TURN_STORAGE_KEY) : false
+  })
   const controlHeld = useControlHeld()
+  const effectiveNextTurn = nextTurn !== controlHeld
   const [showCrossingIds, setShowCrossingIds] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY) : false
@@ -1795,7 +1805,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
 
   let possibleOutcomes = new Map<number, SearchOutcome>()
   if (showPossible && isInspectorInteraction(state.stage)) {
-    possibleOutcomes = possibleJackSearchOutcomes(state.publicRound)
+    possibleOutcomes = possibleJackSearchOutcomes(state.publicRound, effectiveNextTurn ? state.investigatorPositions : undefined)
   } else if (showInvestigatorKnowledge && state.stage === 'jackMove') {
     const { yellow, blue, red } = state.investigatorPositions
     if (yellow && blue && red) {
@@ -1814,8 +1824,8 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const showPossibilityMarkers =
     (showPossible && isInspectorInteraction(state.stage)) ||
     (showInvestigatorKnowledge && state.stage === 'jackMove')
-  const worstCrossingEliminations = showWorst !== controlHeld && isInspectorInteraction(state.stage)
-    ? worstCaseCrossingEliminations(state.publicRound) : new Map<string, number>()
+  const worstCrossingEliminations = showWorst && isInspectorInteraction(state.stage)
+    ? worstCaseCrossingEliminations(state.publicRound, effectiveNextTurn ? state.investigatorPositions : undefined) : new Map<string, number>()
   if (remote?.waiting) { legalCircleIds.clear(); legalCrossingIds.clear(); coachReachableCircleIds.clear() }
   const handleCircle = (circleId: number) => {
     if (remote?.waiting) return
@@ -2037,8 +2047,26 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               )}
               {isInspectorInteraction(state.stage) && state.publicRound && (
                 <label
+                  className="next-turn-toggle"
+                  title="show possibilities after Jack’s next Street move, including the effects of searches this turn; hold Ctrl to temporarily invert next"
+                >
+                  <input
+                    type="checkbox"
+                    checked={nextTurn}
+                    onChange={(event) => {
+                      const checked = event.target.checked
+                      setNextTurn(checked)
+                      const storage = browserStorage()
+                      if (storage) saveBooleanPreference(storage, NEXT_TURN_STORAGE_KEY, checked)
+                    }}
+                  />
+                  next
+                </label>
+              )}
+              {isInspectorInteraction(state.stage) && state.publicRound && (
+                <label
                   className="worst-crossings-toggle"
-                  title="show the guaranteed number of possible locations eliminated by searching adjacent locations in the best order, stopping at a clue; hold Ctrl to temporarily invert worst"
+                  title="show the guaranteed number of possible locations eliminated by searching adjacent locations in the best order, stopping at a clue"
                 >
                   <input
                     type="checkbox"
@@ -2114,6 +2142,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 possibleOutcomes={possibleOutcomes}
                 worstCrossingEliminations={worstCrossingEliminations}
                 showPossible={showPossibilityMarkers}
+                nextTurn={effectiveNextTurn && isInspectorInteraction(state.stage)}
                 showCrossingIds={showCrossingIds}
                 alternateIndicatorAngle={alternateIndicatorAngle !== shiftHeld}
                 showPastPath={showPastPath}

@@ -7,6 +7,7 @@ When doing almost anything...
 When writing the TypeScript+React side...
 
 - By default, every user setting/preference should be saved to local storage. A user's experience should be fairly undisturbed by a page refresh.
+- By default, every button, checkbox, and drop down should have hover text explaining what it does.
 - useEffect is for synchronizing a React component with external systems (anything outside of React's state and props); if you are not doing that, then do not use useEffect.
 - Most of the time you do not need useMemo. Ask me before using useMemo.
 

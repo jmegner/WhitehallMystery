@@ -76,6 +76,29 @@ export const buildInferenceContext = (evidence: PublicRoundEvidence): InferenceC
 
 const visitedBit = (circleId: number) => 1n << BigInt(circleId)
 
+// Searches happen this turn. Only their surviving current locations are
+// projected through the assumed Street move; the future visit is not a clue
+// that an investigator can find now. Cache each origin's legal destinations.
+const locationProjector = (nextStreetPositions?: Partial<Record<InvestigatorColor, string>>) => {
+  const blocked = new Set(Object.values(nextStreetPositions ?? {}))
+  const destinations = new Map<number, number[]>()
+  return (locations: Iterable<number>): Set<number> => {
+    if (!nextStreetPositions) return locations instanceof Set ? locations : new Set(locations)
+    const projected = new Set<number>()
+    for (const from of locations) {
+      let next = destinations.get(from)
+      if (!next) {
+        next = [...(jackTransitions.get(from) ?? [])]
+          .filter(([, paths]) => paths.some(path => path.every(id => !blocked.has(id))))
+          .map(([to]) => to)
+        destinations.set(from, next)
+      }
+      for (const to of next) projected.add(to)
+    }
+    return projected
+  }
+}
+
 const remainingHypotheses = (context: InferenceContext): Hypothesis[] => {
   const { evidence, bitForCircle, negativeUntil, observationsByMove } = context
 
@@ -166,12 +189,16 @@ export const possibleJackLocationsAfterMove = (
 ): Set<number> =>
   possibleJackLocations(evidenceAfterMove(evidence, type, investigatorPositions, currentMoveSlot))
 
-export const possibleJackSearchOutcomes = (evidence: PublicRoundEvidence | null): Map<number, SearchOutcome> => {
+export const possibleJackSearchOutcomes = (
+  evidence: PublicRoundEvidence | null,
+  nextStreetPositions?: Partial<Record<InvestigatorColor, string>>,
+): Map<number, SearchOutcome> => {
   const outcomes = new Map<number, SearchOutcome>()
   if (!evidence) return outcomes
 
   const context = buildInferenceContext(evidence)
   const hypotheses = remainingHypotheses(context)
+  const project = locationProjector(nextStreetPositions)
   for (const circleId of circlesById.keys()) {
     const bit = visitedBit(circleId)
     const ifYes = new Set<number>()
@@ -181,10 +208,11 @@ export const possibleJackSearchOutcomes = (evidence: PublicRoundEvidence | null)
       if ((hypothesis.visitedIntersection & bit) === 0n) ifNo.add(hypothesis.position)
     }
     if (ifYes.size === 0) continue
+    const projectedYes = project(ifYes)
     outcomes.set(circleId, {
-      ifNo,
-      ifYes,
-      positiveMeansJackIsThereNow: ifYes.size === 1 && ifYes.has(circleId),
+      ifNo: project(ifNo),
+      ifYes: projectedYes,
+      positiveMeansJackIsThereNow: projectedYes.size === 1 && projectedYes.has(circleId),
     })
   }
 
@@ -199,19 +227,27 @@ export const possibleJackSearchOutcomesAfterMove = (
 ): Map<number, SearchOutcome> =>
   possibleJackSearchOutcomes(evidenceAfterMove(evidence, type, investigatorPositions, currentMoveSlot))
 
-const crossingEliminationCache = new WeakMap<PublicRoundEvidence, Map<string, number>>()
+const crossingEliminationCache = new WeakMap<PublicRoundEvidence, Map<string, Map<string, number>>>()
 
 // A search ends at the first yes. Choose the next location to minimize the
 // largest surviving set, continuing only down the no branch. Re-run inference
 // with all preceding misses: intersecting individual outcomes loses correlations
 // between different possible trails that end at the same current location.
-export const worstCaseCrossingEliminations = (evidence: PublicRoundEvidence | null): Map<string, number> => {
+export const worstCaseCrossingEliminations = (
+  evidence: PublicRoundEvidence | null,
+  nextStreetPositions?: Partial<Record<InvestigatorColor, string>>,
+): Map<string, number> => {
   if (!evidence) return new Map()
-  const cached = crossingEliminationCache.get(evidence)
+  // Investigator moves can change the forecast even when public evidence does
+  // not change. Keep current and projected results in separate cache entries.
+  const cacheKey = nextStreetPositions ? `next:${Object.values(nextStreetPositions).sort().join(',')}` : 'current'
+  const cachedByPerspective = crossingEliminationCache.get(evidence) ?? new Map<string, Map<string, number>>()
+  const cached = cachedByPerspective.get(cacheKey)
   if (cached) return cached
   const context = buildInferenceContext(evidence)
   const initial = remainingHypotheses(context)
-  const total = new Set(initial.map(hypothesis => hypothesis.position)).size
+  const project = locationProjector(nextStreetPositions)
+  const total = project(initial.map(hypothesis => hypothesis.position)).size
   const hypothesesByMisses = new Map<string, Hypothesis[]>([['', initial]])
   const afterMisses = (misses: number[]) => {
     const key = misses.join(',')
@@ -234,13 +270,13 @@ export const worstCaseCrossingEliminations = (evidence: PublicRoundEvidence | nu
       const known = residuals.get(key)
       if (known !== undefined) return known
       const hypotheses = afterMisses(misses)
-      const possible = new Set(hypotheses.map(hypothesis => hypothesis.position))
+      const possible = project(hypotheses.map(hypothesis => hypothesis.position))
       let best = possible.size
-      if (best === 0) return 0 // This sequence of misses is impossible.
+      if (best === 0) return 0 // No locations survive in the displayed perspective.
       for (const id of adjacent) {
         if (misses.includes(id)) continue
         const bit = visitedBit(id)
-        const yes = new Set(hypotheses.filter(hypothesis => (hypothesis.visitedUnion & bit) !== 0n)
+        const yes = project(hypotheses.filter(hypothesis => (hypothesis.visitedUnion & bit) !== 0n)
           .map(hypothesis => hypothesis.position)).size
         // This order already cannot improve on the best one found so far.
         if (yes >= best) continue
@@ -252,7 +288,8 @@ export const worstCaseCrossingEliminations = (evidence: PublicRoundEvidence | nu
     }
     counts.set(crossing.id, total - worstRemaining([]))
   }
-  crossingEliminationCache.set(evidence, counts)
+  cachedByPerspective.set(cacheKey, counts)
+  crossingEliminationCache.set(evidence, cachedByPerspective)
   return counts
 }
 
