@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { SavedGameLibrary, isSavedGameDone, savedGameMode, savedGameStatus, savedGameTime, type SavedGame } from './game/savedGames'
-import { readOnlineGame, renameOnlineGame } from './online/onlineSession'
+import { readOnlineGame, renameOnlineGame, resolveOnlineSide } from './online/onlineSession'
 import { confirmLeaveGame, leaveSavedGame } from './game/leaveGame'
 import { isGameName, MAX_GAME_NAME_LENGTH } from './game/gameName'
 import LeaveGameFailure from './LeaveGameFailure'
@@ -25,7 +25,15 @@ export default function SavedGamesMenu({ library, activeId, onResume, onNewGame,
         if (controller.signal.aborted) return
         if (game.mode !== 'online') continue
         try {
-          const status = await readOnlineGame(game.session, controller.signal)
+          let session = game.session
+          if (session.sideChoice) {
+            const resolved = await resolveOnlineSide(session, undefined, controller.signal)
+            if (controller.signal.aborted) return
+            if (!resolved) continue
+            library.resolveOnlineSide(game.id, resolved)
+            session = resolved
+          }
+          const status = await readOnlineGame(session, controller.signal)
           if (controller.signal.aborted) return
           library.updateOnline(game.id, status.history, status.createdAt, status.seats, status.snapshot.revision, status.name)
           setErrors(previous => ({ ...previous, [game.id]: '' }))
@@ -135,7 +143,7 @@ function SavedGameEntry({ game, library, active, busy, onResume, onLeave, onForg
         aria-labelledby={`${labelId}-name ${labelId}-details`} onClick={onResume}>
         <span id={`${labelId}-details`} className="saved-game-details">
           <strong>{savedGameTime(game)}</strong>
-          <span>{savedGameMode(game)}{(game.mode === 'by-mail' || game.mode === 'online') && ` · ${game.session.role === 'jack' ? 'Jack' : 'Investigators'}`}{active && ' · Current game'}</span>
+          <span>{savedGameMode(game)}{(game.mode === 'by-mail' || (game.mode === 'online' && !game.session.sideChoice)) && ` · ${game.session.role === 'jack' ? 'Jack' : 'Investigators'}`}{active && ' · Current game'}</span>
           <span>{savedGameStatus(game)}{game.mode === 'online' && ' (last known)'}</span>
         </span>
       </button>

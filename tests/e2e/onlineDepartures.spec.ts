@@ -1,11 +1,9 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 import { observeInvitationClipboard } from './invitationClipboard'
 import { onlineEntry, sessionFor, start, post } from './onlineDepartureHelpers'
 
 test.beforeEach(async ({ page }) => { await observeInvitationClipboard(page) })
 
-// Each suite gets a separate local Worker so it stays within the simulated
-// per-network game-creation and connection limits (npm run test:e2e).
 test('online departures: create as Investigators, share and edit names, then Leave+New Game as Jack', async ({ page: investigators, browser, request }) => {
   const context = await browser.newContext()
   const jack = await context.newPage()

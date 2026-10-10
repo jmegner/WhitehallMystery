@@ -1,11 +1,9 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 import { observeInvitationClipboard } from './invitationClipboard'
 import { onlineEntry, sessionFor, start, post } from './onlineDepartureHelpers'
 
 test.beforeEach(async ({ page }) => { await observeInvitationClipboard(page) })
 
-// Each suite gets a separate local Worker so it stays within the simulated
-// per-network game-creation and connection limits (npm run test:e2e).
 test('online departures: Leave Done Games waits for an explicit opponent departure and retains retry or forget on failure', async ({ page, request }) => {
   const session = await start(page)
   const origin = new URL(page.url()).origin

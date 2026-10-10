@@ -69,28 +69,30 @@ describe('By Mail v1', () => {
       history = randomSide(history, () => .95)
     }
   })
-  test('replays complete deterministic games, including special moves, searches, arrests and game over', () => {
+  test.each(Array.from({ length: 35 }, (_, index) => index + 1))('replays complete deterministic game %i through game over', seed => {
     const actions = new Set<string>()
-    for (let seed = 1; seed <= 35; seed++) {
-      let rng = seed
-      const random = () => { rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0; return rng / 2 ** 32 }
-      let history = setup()
-      for (let turn = 0; turn < 100 && currentHistoryState(history).stage !== 'gameOver'; turn++) {
-        const previous = history
-        const recipient = otherPlayer(playerViewForState(currentHistoryState(previous))!)
-        history = randomSide(history, random)
-        expect(acceptMail(encodeMail(id, recipient, history), { id, role: recipient, history: previous }).updateNotice).toBeNull()
-        expect(isMailBoundary(history)).toBe(true)
-        const text = encodeMail(id, 'jack', history)
-        const decoded = decodeMail(text)
-        expect(mailBytes(decoded.history)).toEqual(mailBytes(history))
-        expect(currentHistoryState(decoded.history)).toEqual(currentHistoryState(history))
-        for (const entry of history.entries) if (entry.action) actions.add(entry.action.type === 'setJackMoveType' ? entry.action.moveType : entry.action.type)
-        history = decoded.history
-      }
-      expect(currentHistoryState(history).stage).toBe('gameOver')
+    let rng = seed
+    const random = () => { rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0; return rng / 2 ** 32 }
+    let history = setup()
+    for (let turn = 0; turn < 100 && currentHistoryState(history).stage !== 'gameOver'; turn++) {
+      const previous = history
+      const recipient = otherPlayer(playerViewForState(currentHistoryState(previous))!)
+      history = randomSide(history, random)
+      expect(acceptMail(encodeMail(id, recipient, history), { id, role: recipient, history: previous }).updateNotice).toBeNull()
+      expect(isMailBoundary(history)).toBe(true)
+      const text = encodeMail(id, 'jack', history)
+      const decoded = decodeMail(text)
+      expect(mailBytes(decoded.history)).toEqual(mailBytes(history))
+      expect(currentHistoryState(decoded.history)).toEqual(currentHistoryState(history))
+      for (const entry of history.entries) if (entry.action) actions.add(entry.action.type === 'setJackMoveType' ? entry.action.moveType : entry.action.type)
+      history = decoded.history
     }
-    for (const action of ['coach', 'alley', 'boat', 'searchCircle', 'arrestCircle', 'passInspectorAction']) expect(actions.has(action)).toBe(true)
+    expect(currentHistoryState(history).stage).toBe('gameOver')
+    // Seed 1 exercises every category itself, so coverage does not depend on
+    // shared state, test order, or running the other parameterized cases.
+    if (seed === 1) {
+      for (const action of ['coach', 'alley', 'boat', 'searchCircle', 'arrestCircle', 'passInspectorAction']) expect(actions.has(action)).toBe(true)
+    }
   })
   test('replays discovery arrivals and all three rounds through a Jack victory', () => {
     let h = setup()

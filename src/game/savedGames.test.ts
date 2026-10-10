@@ -20,6 +20,21 @@ const session: OnlineSession = { apiBase: 'https://example.invalid', roomId: 'a'
 const mail: MailSession = { id: 1700000000, role: 'jack', history: initial(), outgoing: '', turnStart: 0, baselineEndedAt: null }
 
 describe('saved game library', () => {
+  it('resolves an online side in its existing saved slot and keeps it across refreshes and repeat invitations', () => {
+    const storage = new MemoryStorage()
+    const library = new SavedGameLibrary(storage)
+    const pending = library.saveOnline({ ...session, sideChoice: 'creator' })
+    library.activate(pending.id)
+    expect(savedGameStatus(pending)).toContain('Waiting for opponent')
+    const resolved = { ...session, role: 'investigators' as const }
+    library.resolveOnlineSide(pending.id, resolved)
+    const refreshed = new SavedGameLibrary(storage)
+    const game = refreshed.get(pending.id)!
+    expect(game.mode === 'online' && game.session).toEqual(resolved)
+    expect(refreshed.getSnapshot().activeId).toBe(pending.id)
+    expect(refreshed.saveOnline(resolved).id).toBe(pending.id)
+    expect(refreshed.getSnapshot().games.filter(game => game.mode === 'online')).toHaveLength(1)
+  })
   it('identifies a winner in every mode, using the current history rather than undone results', () => {
     const library = new SavedGameLibrary(new MemoryStorage())
     const local = library.getSnapshot().games[0]

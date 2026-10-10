@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './fixtures'
 import { mailTimestamp } from '../../src/game/byMail'
 import type { OnlineServerMessage, OnlineSnapshot } from '../../src/game/onlineProtocol'
 import type { OnlineUndoState } from '../../src/game/onlineUndo'

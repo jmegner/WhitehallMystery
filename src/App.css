@@ -348,8 +348,9 @@ button:disabled {
 .investigator-knowledge-toggle strong {
   display: grid;
   place-items: center;
-  min-width: 24px;
-  height: 24px;
+  min-width: 18px;
+  height: 18px;
+  font-size: 0.7rem;
   border-radius: 50%;
   background: #5d3487;
 }
@@ -395,8 +396,8 @@ button:disabled {
   position: fixed;
   z-index: 30;
   display: grid;
-  /* Keep the middle at the viewport center even when either side is empty. */
-  grid-template-columns: minmax(84px, 1fr) minmax(0, 2fr) minmax(84px, 1fr);
+  /* Center controls when space allows; shrink empty sides before wrapping. */
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr);
   align-items: end;
   gap: 8px;
   width: max-content;

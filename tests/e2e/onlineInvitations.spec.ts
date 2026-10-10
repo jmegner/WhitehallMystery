@@ -1,7 +1,11 @@
-import { expect, test, type Page, type APIRequestContext } from '@playwright/test'
+import { expect, test, type Page, type APIRequestContext } from './fixtures'
 import type { OnlineSession } from '../../src/online/onlineSession'
 import type { OnlineSnapshot } from '../../src/game/onlineProtocol'
 import { observeInvitationClipboard } from './invitationClipboard'
+
+// These multi-client workflows include several reloads and a cold dev-server
+// startup. Individual UI assertions still use their normal five-second limit.
+test.setTimeout(60_000)
 
 async function sessionFor(page: Page): Promise<OnlineSession> {
   return page.evaluate(() => JSON.parse(localStorage.getItem('whitehall-mystery.saved-game.v1.' + localStorage.getItem('whitehall-mystery.active-game.v1'))!).session)
@@ -14,7 +18,92 @@ function post(request: APIRequestContext, origin: string, session: OnlineSession
   })
 }
 
-// Dedicated local Worker invocation keeps simulated per-IP quotas intact.
+for (const chosenRole of ['jack', 'investigators'] as const) {
+  test(`online invitations: opponent chooses ${chosenRole} and the creator takes the other side`, async ({ page: creator, browser, request }, testInfo) => {
+    const invitedContext = await browser.newContext()
+    const invited = await invitedContext.newPage()
+    await observeInvitationClipboard(creator)
+    try {
+      await creator.goto('/')
+      await creator.getByRole('button', { name: 'New game', exact: true }).click()
+      await creator.getByRole('button', { name: 'Online', exact: true }).click()
+      const start = creator.getByRole('button', { name: 'Let opponent choose their side', exact: true })
+      await expect(start).toHaveAttribute('title', /opponent chooses Jack or Investigators/)
+      await start.click()
+      await expect(creator.getByRole('heading', { name: 'Waiting for opponent to choose a side' })).toBeVisible()
+      const invitation = await creator.getByLabel('Online side-choice invitation').inputValue()
+      await expect.poll(() => creator.evaluate(() => navigator.clipboard.readText())).toBe(invitation)
+      const pendingCreator = await sessionFor(creator)
+      const origin = new URL(creator.url()).origin
+      expect(invitation).not.toContain(pendingCreator.token)
+      expect(await (await post(request, origin, pendingCreator, { type: 'side-choice' })).json()).toEqual({ pending: true })
+      expect((await post(request, origin, pendingCreator, { type: 'side-choice', role: chosenRole })).status()).toBe(403)
+      await creator.reload()
+      await expect(creator.getByLabel('Online side-choice invitation')).toHaveValue(invitation)
+      await creator.getByRole('button', { name: 'Resume game', exact: true }).click()
+      await expect(creator.getByText('Waiting for opponent to choose a side (last known)', { exact: true })).toBeVisible()
+      await creator.getByRole('button', { name: 'Cancel', exact: true }).click()
+
+      await invited.goto(invitation)
+      await expect(invited.getByRole('heading', { name: 'Choose your side' })).toBeVisible()
+      await expect(invited.getByRole('button', { name: 'Play as Jack', exact: true })).toBeEnabled()
+      await invited.reload()
+      await expect(invited.getByRole('heading', { name: 'Choose your side' })).toBeVisible()
+      await invited.setViewportSize({ width: 390, height: 844 })
+      expect(await invited.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await invited.getByRole('main').screenshot({ path: testInfo.outputPath('choose-side.png') })
+      const pendingInvited = await sessionFor(invited)
+      expect((await post(request, origin, { ...pendingInvited, token: 'X'.repeat(43) }, { type: 'side-choice', role: chosenRole })).status()).toBe(401)
+      expect((await post(request, origin, pendingInvited, { type: 'side-choice', role: chosenRole, history: [] })).status()).toBe(400)
+      await invited.getByRole('button', { name: chosenRole === 'jack' ? 'Play as Jack' : 'Play as Investigators', exact: true }).click()
+      const creatorRole = chosenRole === 'jack' ? 'investigators' : 'jack'
+      await expect(invited.getByLabel('Online game')).toContainText(chosenRole === 'jack' ? 'Online · Jack' : 'Online · Investigators')
+      await expect(creator.getByLabel('Online game')).toContainText(creatorRole === 'jack' ? 'Online · Jack' : 'Online · Investigators')
+      for (const page of [creator, invited]) {
+        expect((await sessionFor(page)).sideChoice).toBeUndefined()
+        await page.reload()
+        await expect(page.getByLabel('Online game')).toContainText('Connected')
+        const entries = await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('whitehall-mystery.saved-game.v1.')).map(key => JSON.parse(localStorage.getItem(key)!)).filter(game => game.mode === 'online'))
+        expect(entries).toHaveLength(1)
+      }
+      // A repeated invite recovers the assigned side; neither client can flip it.
+      await invited.goto(invitation)
+      await expect(invited.getByLabel('Online game')).toContainText(chosenRole === 'jack' ? 'Online · Jack' : 'Online · Investigators')
+      const statusBefore = await (await post(request, origin, await sessionFor(invited), { type: 'status' })).json()
+      expect((await post(request, origin, pendingInvited, { type: 'side-choice', role: creatorRole })).status()).toBe(409)
+      expect(await (await post(request, origin, pendingInvited, { type: 'side-choice', role: chosenRole })).json()).toEqual({ role: chosenRole })
+      expect((await (await post(request, origin, await sessionFor(invited), { type: 'status' })).json()).snapshot).toEqual(statusBefore.snapshot)
+      const jack = chosenRole === 'jack' ? invited : creator
+      const investigators = chosenRole === 'jack' ? creator : invited
+      await jack.getByRole('button', { name: 'Rand Side', exact: true }).click()
+      await expect(investigators.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
+    } finally { await invitedContext.close() }
+  })
+}
+
+test('online invitations: leaving before the opponent chooses cancels the unassigned invitation', async ({ page: creator, browser, request }) => {
+  const invitedContext = await browser.newContext()
+  const invited = await invitedContext.newPage()
+  try {
+    await creator.goto('/')
+    await creator.getByRole('button', { name: 'New game', exact: true }).click()
+    await creator.getByRole('button', { name: 'Online', exact: true }).click()
+    await creator.getByRole('button', { name: 'Let opponent choose their side', exact: true }).click()
+    const invitation = await creator.getByLabel('Online side-choice invitation').inputValue()
+    const session = await sessionFor(creator)
+    const origin = new URL(creator.url()).origin
+    await invited.goto(invitation)
+    await expect(invited.getByRole('button', { name: 'Play as Jack', exact: true })).toBeEnabled()
+    const invitedSession = await sessionFor(invited)
+    const leave = { type: 'leave', requestId: crypto.randomUUID() }
+    expect((await post(request, origin, session, leave)).ok()).toBe(true)
+    expect((await post(request, origin, session, leave)).ok()).toBe(true)
+    expect((await post(request, origin, invitedSession, { type: 'side-choice', role: 'jack' })).status()).toBe(401)
+    await invited.getByRole('button', { name: 'Play as Jack', exact: true }).click()
+    await expect(invited.getByRole('alert')).toContainText('invalid or the game has expired')
+  } finally { await invitedContext.close() }
+})
+
 for (const creatorRole of ['jack', 'investigators'] as const) {
   test(`online invitations: invited ${creatorRole === 'jack' ? 'investigators' : 'Jack'} can restore their opponent without losing the game`, async ({ page: creator, browser, request }) => {
     const invitedContext = await browser.newContext()

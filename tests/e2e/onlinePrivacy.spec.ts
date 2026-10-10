@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './fixtures'
 import { gameReducer, legalJackDestinations } from '../../src/game/gameEngine'
 import type { HistoryCommand } from '../../src/game/history'
 import type { OnlineServerMessage, OnlineSnapshot } from '../../src/game/onlineProtocol'

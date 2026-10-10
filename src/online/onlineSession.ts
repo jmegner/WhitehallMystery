@@ -17,6 +17,7 @@ export interface OnlineSession {
   roomId: string
   role: PlayerView
   token: string
+  sideChoice?: 'creator' | 'opponent'
   investigatorsToken?: string
   startedAt?: number
   opponentInvitation?: { token: string; generation: number }
@@ -55,6 +56,7 @@ export const configuredOnlineApi = (): string => {
 export const parseOnlineSession = (value: unknown): OnlineSession | null => {
   if (!isRecord(value) || typeof value.apiBase !== 'string' || !validRoomId(value.roomId) || !validToken(value.token)) return null
   if (value.role !== 'jack' && value.role !== 'investigators') return null
+  if (value.sideChoice !== undefined && value.sideChoice !== 'creator' && value.sideChoice !== 'opponent') return null
   if (value.investigatorsToken !== undefined && !validToken(value.investigatorsToken)) return null
   if (value.opponentInvitation !== undefined && (!isRecord(value.opponentInvitation) || !validToken(value.opponentInvitation.token) || !Number.isSafeInteger(value.opponentInvitation.generation) || Number(value.opponentInvitation.generation) < 0)) return null
   return {
@@ -62,6 +64,7 @@ export const parseOnlineSession = (value: unknown): OnlineSession | null => {
     roomId: value.roomId,
     role: value.role,
     token: value.token,
+    ...(value.sideChoice ? { sideChoice: value.sideChoice } : {}),
     ...(value.investigatorsToken ? { investigatorsToken: value.investigatorsToken } : {}),
     ...(value.opponentInvitation ? { opponentInvitation: value.opponentInvitation as OnlineSession['opponentInvitation'] } : {}),
     ...(typeof value.startedAt === 'number' && Number.isSafeInteger(value.startedAt) && value.startedAt > 0 && value.startedAt <= 8.64e15 ? { startedAt: value.startedAt } : {}),
@@ -73,7 +76,7 @@ export const onlineInviteUrl = (session: OnlineSession, location = window.locati
   if (!token) throw new Error('This session does not have an opponent invitation.')
   const url = new URL(location)
   url.search = ''
-  url.hash = new URLSearchParams({ online: `${session.roomId}.${token}`, ...(session.role === 'investigators' ? { role: 'jack' } : {}) }).toString()
+  url.hash = new URLSearchParams({ online: `${session.roomId}.${token}`, ...(session.sideChoice === 'creator' ? { choice: '1' } : session.role === 'investigators' ? { role: 'jack' } : {}) }).toString()
   return url.href
 }
 
@@ -81,11 +84,15 @@ export const onlineSessionFromInvite = (input: string, apiBase = configuredOnlin
   if (!apiBase) return null
   let invitation = input.trim()
   let role: PlayerView = 'investigators'
+  let sideChoice: OnlineSession['sideChoice']
   if (/^https?:\/\//i.test(invitation)) {
     try {
       const params = new URLSearchParams(new URL(invitation).hash.slice(1))
       invitation = params.get('online') ?? ''
       const invitedRole = params.get('role')
+      const choice = params.get('choice')
+      if (choice !== null && (choice !== '1' || invitedRole !== null)) return null
+      if (choice === '1') sideChoice = 'opponent'
       if (invitedRole !== null && invitedRole !== 'jack' && invitedRole !== 'investigators') return null
       role = invitedRole ?? 'investigators'
     } catch {
@@ -97,7 +104,7 @@ export const onlineSessionFromInvite = (input: string, apiBase = configuredOnlin
   const roomId = invitation.slice(0, separator)
   const token = invitation.slice(separator + 1)
   if (!validRoomId(roomId) || !validToken(token)) return null
-  return { apiBase: normalizeApiBase(apiBase), roomId, role, token }
+  return { apiBase: normalizeApiBase(apiBase), roomId, role, token, ...(sideChoice ? { sideChoice } : {}) }
 }
 
 export const onlineSessionFromLocation = (): OnlineSession | null => {
@@ -145,6 +152,15 @@ export async function readOnlineGame(session: OnlineSession, signal?: AbortSigna
   return verifiedGameStatus(session, await sessionRequest(session, { type: 'status' }, signal))
 }
 
+export async function resolveOnlineSide(session: OnlineSession, role?: PlayerView, signal?: AbortSignal): Promise<OnlineSession | null> {
+  const result = await sessionRequest(session, { type: 'side-choice', ...(role ? { role } : {}) }, signal)
+  if (result.pending === true && role === undefined) return null
+  if (result.role !== 'jack' && result.role !== 'investigators') throw new Error('Received an invalid side choice.')
+  const resolved = { ...session, role: result.role as PlayerView }
+  delete resolved.sideChoice
+  return resolved
+}
+
 export async function renameOnlineGame(session: OnlineSession, name: string, expectedName: string, requestId: string) {
   if (!isGameName(name) || !isGameName(expectedName)) throw new Error('Use a single-line game name of up to 80 characters.')
   const result = await verifiedGameStatus(session, await sessionRequest(session, { type: 'rename', name, expectedName, requestId }))
@@ -177,10 +193,10 @@ export async function inviteOnlineRejoin(session: OnlineSession, requestId: stri
   return { token: result.token, generation: Number(result.generation) }
 }
 
-export const createOnlineGame = async ({ role = 'jack', name = '' }: { role?: PlayerView; name?: string } = {}, apiBase = configuredOnlineApi()): Promise<OnlineSession> => {
+export const createOnlineGame = async ({ role = 'jack', name = '' }: { role?: PlayerView | 'opponent'; name?: string } = {}, apiBase = configuredOnlineApi()): Promise<OnlineSession> => {
   if (!apiBase) throw new Error('Online multiplayer is not configured for this deployment.')
   if (!isGameName(name)) throw new Error('Use a single-line game name of up to 80 characters.')
-  const response = await fetch(`${normalizeApiBase(apiBase)}/v1/games`, { method: 'POST', ...(name ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) } : {}) })
+  const response = await fetch(`${normalizeApiBase(apiBase)}/v1/games`, { method: 'POST', ...(name || role === 'opponent' ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...(name ? { name } : {}), ...(role === 'opponent' ? { opponentChooses: true } : {}) }) } : {}) })
   const value: unknown = await response.json().catch(() => null)
   if (!response.ok || !isRecord(value) || value.protocolVersion !== ONLINE_PROTOCOL_VERSION ||
     !validRoomId(value.roomId) || !validToken(value.jackToken) || !validToken(value.investigatorsToken)) {
@@ -189,9 +205,10 @@ export const createOnlineGame = async ({ role = 'jack', name = '' }: { role?: Pl
   return {
     apiBase: normalizeApiBase(apiBase),
     roomId: value.roomId,
-    role,
-    token: role === 'jack' ? value.jackToken : value.investigatorsToken,
-    opponentInvitation: { token: role === 'jack' ? value.investigatorsToken : value.jackToken, generation: 0 },
+    role: role === 'opponent' ? 'jack' : role,
+    token: role === 'investigators' ? value.investigatorsToken : value.jackToken,
+    opponentInvitation: { token: role === 'investigators' ? value.jackToken : value.investigatorsToken, generation: 0 },
+    ...(role === 'opponent' ? { sideChoice: 'creator' } : {}),
     ...(typeof value.createdAt === 'number' && Number.isSafeInteger(value.createdAt) && value.createdAt > 0 && value.createdAt <= 8.64e15 ? { startedAt: value.createdAt } : {}),
   }
 }

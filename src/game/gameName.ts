@@ -6,9 +6,12 @@ export function isGameName(value: unknown): value is string {
     !/[\p{Cc}\p{Zl}\p{Zp}\u202a-\u202e\u2066-\u2069]/u.test(value)
 }
 
-export function parseGameCreation(value: unknown): { name: string } | null {
+export function parseGameCreation(value: unknown): { name: string; opponentChooses?: true } | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const item = value as Record<string, unknown>
-  if (Object.keys(item).some(key => key !== 'name')) return null
-  return item.name === undefined ? { name: '' } : isGameName(item.name) ? { name: item.name } : null
+  if (Object.keys(item).some(key => key !== 'name' && key !== 'opponentChooses') ||
+    (item.opponentChooses !== undefined && typeof item.opponentChooses !== 'boolean')) return null
+  const name = item.name ?? ''
+  if ((item.name !== undefined && !isGameName(item.name)) || !isGameName(name)) return null
+  return { name, ...(item.opponentChooses ? { opponentChooses: true } : {}) }
 }

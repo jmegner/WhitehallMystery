@@ -41,6 +41,7 @@ interface RoomRecord {
   roomId: string
   jackTokenHash: string
   investigatorsTokenHash: string
+  sideChoice?: { creatorHash: string; opponentHash: string; role?: PlayerView; cancelled?: boolean }
   revision: number
   snapshot: OnlineSnapshot
   // Optional so existing rooms remain usable without a migration or reset.
@@ -115,6 +116,7 @@ export class GameRoom extends DurableObject<WorkerEnv> {
       typeof (value as Record<string, unknown>).investigatorsTokenHash !== 'string'
     ) return json({ error: 'Invalid initialization.' }, 400)
     const { roomId, jackTokenHash, investigatorsTokenHash, name = '' } = value as Record<string, string>
+    const opponentChooses = (value as Record<string, unknown>).opponentChooses === true
     if (!isGameName(name) || !/^[a-f0-9]{64}$/.test(roomId) || !/^[a-f0-9]{64}$/.test(jackTokenHash) || !/^[a-f0-9]{64}$/.test(investigatorsTokenHash)) {
       return json({ error: 'Invalid initialization.' }, 400)
     }
@@ -126,6 +128,7 @@ export class GameRoom extends DurableObject<WorkerEnv> {
       name,
       jackTokenHash,
       investigatorsTokenHash,
+      ...(opponentChooses ? { sideChoice: { creatorHash: jackTokenHash, opponentHash: investigatorsTokenHash } } : {}),
       revision: 0,
       snapshot,
       processedRequestIds: [],
@@ -217,7 +220,7 @@ export class GameRoom extends DurableObject<WorkerEnv> {
       : fixedTimeEqual(hash, record.investigatorsTokenHash)
         ? 'investigators'
         : null
-    if (!role) {
+    if (!role || (record.sideChoice && (!record.sideChoice.role || record.sideChoice.cancelled))) {
       send(socket, { type: 'error', code: 'authentication', message: 'The game credential is invalid or the game has expired.' })
       socket.close(4003, 'Authentication failed.')
       return
@@ -258,6 +261,29 @@ export class GameRoom extends DurableObject<WorkerEnv> {
     if (message.type === 'leave' && Object.values(record.lastLeave ?? {}).some(left => left.requestId === message.requestId && fixedTimeEqual(left.tokenHash, hash))) return json({ ok: true })
     const role: PlayerView | null = fixedTimeEqual(hash, record.jackTokenHash) ? 'jack' : fixedTimeEqual(hash, record.investigatorsTokenHash) ? 'investigators' : null
     if (!role) return denied()
+    if (message.type === 'side-choice') {
+      const choice = record.sideChoice
+      if (!choice || choice.cancelled) return denied()
+      const creator = fixedTimeEqual(hash, choice.creatorHash)
+      const opponent = fixedTimeEqual(hash, choice.opponentHash)
+      if (!creator && !opponent) return denied()
+      if (message.role) {
+        if (!opponent) return json({ error: 'Only the invited opponent can choose a side.' }, 403)
+        if (choice.role && choice.role !== message.role) return json({ error: 'A side has already been chosen for this invitation.' }, 409)
+        if (!choice.role) {
+          choice.role = message.role
+          record.jackTokenHash = message.role === 'jack' ? choice.opponentHash : choice.creatorHash
+          record.investigatorsTokenHash = message.role === 'jack' ? choice.creatorHash : choice.opponentHash
+          record.updatedAt = Date.now()
+          record.expiresAt = record.updatedAt + this.roomLifetimeMs()
+          await this.persist(record)
+        }
+      }
+      return choice.role ? json({ role: creator ? opponentRole(choice.role) : choice.role }) : json({ pending: true })
+    }
+    if (record.sideChoice && !record.sideChoice.role && message.type !== 'status' && message.type !== 'rename' && message.type !== 'leave') {
+      return json({ error: 'Wait for your opponent to choose a side.' }, 409)
+    }
     const verified = await verifyOnlineSnapshot(record.snapshot)
     const seats = record.seats ?? initialOnlineSeats()
     if (!verified || !isGameName(record.name ?? '') || !isOnlineSeats(seats, record.revision) || !isOnlineUndoState(record.undo ?? null, verified.history, record.revision)) return json({ error: 'The stored game failed its consistency check.' }, 500)
@@ -303,6 +329,12 @@ export class GameRoom extends DurableObject<WorkerEnv> {
     else record.investigatorsTokenHash = nextHash
     record.seats = { ...seats, [target]: { leftAt: message.type === 'leave' ? revision : seats[target].leftAt, generation: revision } }
     if (message.type === 'leave') {
+      if (record.sideChoice && !record.sideChoice.role) {
+        record.sideChoice.cancelled = true
+        // Leaving an unassigned game cancels its invitation too.
+        if (target === 'jack') record.investigatorsTokenHash = await sha256Hex(createRoleToken())
+        else record.jackTokenHash = await sha256Hex(createRoleToken())
+      }
       record.lastLeave = { ...record.lastLeave, [role]: { tokenHash: hash, requestId: message.requestId } }
       if (record.undo?.status === 'pending') record.undo = { ...record.undo, status: 'cancelled', resolvedRevision: revision }
     } else {

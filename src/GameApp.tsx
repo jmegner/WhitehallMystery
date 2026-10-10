@@ -11,6 +11,7 @@ import { SavedGameLibrary, normalizeLocalResume, type SavedGame, type MailSessio
 import SavedGamesMenu from './SavedGamesMenu'
 import LeaveGameFailure from './LeaveGameFailure'
 import OnlineGame from './online/OnlineGame'
+import OnlineSideChoice from './online/OnlineSideChoice'
 import { confirmLeaveGame, leaveSavedGame } from './game/leaveGame'
 import { MAX_GAME_NAME_LENGTH } from './game/gameName'
 import { copyInvitationWhenReady, type InvitationCopyStatus } from './online/invitationClipboard'
@@ -48,7 +49,7 @@ export default function GameApp() {
   const [leaveError, setLeaveError] = useState('')
   const [leaveIds] = useState(() => new Map<string, string>())
   const [invitationCopy, setInvitationCopy] = useState<{ gameId: string; status: InvitationCopyStatus } | null>(null)
-  const startOnline = async (role: PlayerView, name: string) => {
+  const startOnline = async (role: PlayerView | 'opponent', name: string) => {
     const creation = createOnlineGame({ role, name })
     const copied = copyInvitationWhenReady(creation.then(session => onlineInviteUrl(session)))
     const session = await creation
@@ -101,7 +102,7 @@ export default function GameApp() {
 
 function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame, onStartOnline, invitationCopyStatus }: {
   game: SavedGame | null; library: SavedGameLibrary; menu: GameMenu; setMenu: (menu: GameMenu) => void; onLeaveNewGame: () => void
-  onStartOnline: (role: PlayerView, name: string) => Promise<void>; invitationCopyStatus?: InvitationCopyStatus
+  onStartOnline: (role: PlayerView | 'opponent', name: string) => Promise<void>; invitationCopyStatus?: InvitationCopyStatus
 }) {
   const onlineSession = game?.mode === 'online' ? game.session : null
   const session = game?.mode === 'by-mail' ? game.session : null
@@ -176,7 +177,7 @@ function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame, onStartOn
       if (!(error instanceof DOMException && error.name === 'AbortError')) reportShare('Sharing is unavailable. Use Copy text or Copy link.')
     }
   }
-  const startOnline = async (role: PlayerView) => {
+  const startOnline = async (role: PlayerView | 'opponent') => {
     setOnlineBusy(true)
     setFeedback('')
     try {
@@ -237,6 +238,7 @@ function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame, onStartOn
       <p>Your partner’s invitation link will be copied automatically when the game is created.</p>
       <button className="primary-button" type="button" disabled={onlineBusy || !configuredOnlineApi()} onClick={() => void startOnline('jack')}>Start new game as Jack</button>
       <button className="primary-button" type="button" disabled={onlineBusy || !configuredOnlineApi()} onClick={() => void startOnline('investigators')}>Start new game as Investigators</button>
+      <button className="primary-button" type="button" title="Create a game where your opponent chooses Jack or Investigators, and you play the other side" disabled={onlineBusy || !configuredOnlineApi()} onClick={() => void startOnline('opponent')}>Let opponent choose their side</button>
       {onlineBusy && <p role="status">Creating game…</p>}
       {!configuredOnlineApi() && <p>Online multiplayer is not configured for this deployment.</p>}
       <label htmlFor="online-invitation">Player invitation link</label>
@@ -246,6 +248,11 @@ function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame, onStartOn
     <button className="text-button" disabled={onlineBusy} onClick={() => { setMenu(game ? null : 'resume'); setFeedback('') }}>Cancel</button>
     <p role="status">{feedback}</p>
   </main>
+  if (onlineSession?.sideChoice && game) return <OnlineSideChoice
+    session={onlineSession} invitationCopyStatus={invitationCopyStatus}
+    onResolved={session => library.resolveOnlineSide(game.id, session)}
+    onNewGame={openMenu} onResumeGame={openResume} onLeaveNewGame={onLeaveNewGame}
+  />
   if (onlineSession && game) return <OnlineGame
     session={onlineSession}
     invitationCopyStatus={invitationCopyStatus}

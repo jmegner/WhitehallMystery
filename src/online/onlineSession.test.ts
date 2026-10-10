@@ -1,7 +1,35 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { createOnlineGame, inviteOnlineRejoin, onlineInviteUrl, onlineSessionFromInvite, parseOnlineSession } from './onlineSession'
+import { createOnlineGame, inviteOnlineRejoin, onlineInviteUrl, onlineSessionFromInvite, parseOnlineSession, resolveOnlineSide } from './onlineSession'
 
 afterEach(() => vi.unstubAllGlobals())
+
+it('keeps a side-choice invitation distinct from fixed-side credentials and resolves only the assigned side', async () => {
+  vi.stubGlobal('window', { setTimeout, clearTimeout })
+  const response = { protocolVersion: 1, roomId: 'a'.repeat(64), jackToken: 'J'.repeat(43), investigatorsToken: 'I'.repeat(43) }
+  const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json(response, { status: 201 }))
+  vi.stubGlobal('fetch', fetch)
+  const creator = await createOnlineGame({ role: 'opponent' }, 'https://worker.invalid')
+  expect(creator.sideChoice).toBe('creator')
+  expect(parseOnlineSession(creator)).toEqual(creator)
+  expect(JSON.parse(fetch.mock.calls[0]![1]!.body as string)).toEqual({ opponentChooses: true })
+  const url = onlineInviteUrl(creator, 'https://game.invalid/')
+  expect(url).not.toContain(creator.token)
+  const invited = onlineSessionFromInvite(url, creator.apiBase)!
+  expect(invited.sideChoice).toBe('opponent')
+  expect(parseOnlineSession(invited)).toEqual(invited)
+  expect(onlineSessionFromInvite(url + '&role=jack', creator.apiBase)).toBeNull()
+  expect(parseOnlineSession({ ...creator, sideChoice: 'jack' })).toBeNull()
+  fetch.mockImplementationOnce(async () => Response.json({ pending: true }))
+  expect(await resolveOnlineSide(creator)).toBeNull()
+  fetch.mockImplementationOnce(async () => Response.json({ role: 'jack' }))
+  expect(await resolveOnlineSide(invited, 'jack')).toEqual({ ...invited, sideChoice: undefined, role: 'jack' })
+  expect(JSON.parse(fetch.mock.lastCall![1]!.body as string)).toEqual({ type: 'side-choice', token: invited.token, role: 'jack' })
+  fetch.mockImplementationOnce(async () => Response.json({ role: 'investigators' }))
+  const resolved = await resolveOnlineSide(creator)
+  expect(resolved?.role).toBe('investigators')
+  expect(resolved?.sideChoice).toBeUndefined()
+  expect(onlineSessionFromInvite(onlineInviteUrl(resolved!, 'https://game.invalid/'), creator.apiBase)?.role).toBe('jack')
+})
 
 it('creates as either side and saves a reloadable invitation for the opposite role', async () => {
   const response = { protocolVersion: 1, roomId: 'a'.repeat(64), jackToken: 'J'.repeat(43), investigatorsToken: 'I'.repeat(43), createdAt: Date.now() }

@@ -29,8 +29,8 @@ async function saved(page: Page): Promise<GameState> {
   const history: GameHistory = await page.evaluate(id => JSON.parse(localStorage.getItem(`whitehall-mystery.saved-game.v1.${id}`)!).history, id)
   return currentHistoryState(history)
 }
-async function fillViewport(page: Page) {
-  await page.setViewportSize({ width: 1000, height: 600 })
+async function fillViewport(page: Page, width = 1000, height = 600) {
+  await page.setViewportSize({ width, height })
   await page.locator('.board-frame').evaluate(element => {
     const rect = element.getBoundingClientRect()
     window.scrollTo(0, window.scrollY + rect.top + (rect.height - window.innerHeight) / 2)
@@ -295,6 +295,24 @@ test('Jack cycles only legal move types, completes both Coach steps, and submits
   await expect(submit).toBeDisabled()
   const cycle = () => floating(page).getByRole('button', { name: /^Cycle move type:/ })
   await expect(cycle()).toHaveAccessibleName('Cycle move type: Street')
+  // Use the whole bottom row before adding height, including when the cycle
+  // changes to a longer label on a narrow screen.
+  for (const width of [360, 390, 1000]) {
+    await fillViewport(page, width, Math.min(600, Math.floor(width * 0.7)))
+    await expect.poll(() => floating(page).evaluate(element => element.getBoundingClientRect().width)).toBe(width - 24)
+    for (const type of ['Street', 'Coach', 'Alley']) {
+      await expect(cycle()).toHaveAccessibleName(`Cycle move type: ${type}`)
+      const cycleBounds = (await cycle().boundingBox())!
+      const submitBounds = (await submit.boundingBox())!
+      const focusBounds = (await focusButton(page).boundingBox())!
+      expect(Math.abs(cycleBounds.y - submitBounds.y)).toBeLessThan(1)
+      expect(focusBounds.x + focusBounds.width).toBeLessThan(cycleBounds.x)
+      expect(cycleBounds.x + cycleBounds.width).toBeLessThan(submitBounds.x)
+      expect(submitBounds.x + submitBounds.width).toBeLessThanOrEqual(width - 12)
+      if (width === 360 && type === 'Coach') await page.screenshot({ path: test.info().outputPath('jack-floating-mobile.png') })
+      await cycle().click()
+    }
+  }
   await cycle().click()
   await expect(cycle()).toHaveAccessibleName('Cycle move type: Coach')
   const first = legalJackDestinations(await saved(page))[0]!

@@ -7,10 +7,12 @@ describe('bounded game names', () => {
     for (const name of ['', 'Evening game', '秘密 🕵️', '界'.repeat(80)]) expect(isGameName(name)).toBe(true)
     for (const name of [null, {}, 3, 'a'.repeat(81), ' padded ', 'two\nlines', 'two\u2028lines', 'bad\u0000', 'bad\u202e']) expect(isGameName(name)).toBe(false)
   })
-  it('accepts only a name on creation, never arbitrary fields or supplied game state', () => {
+  it('accepts a name and optional opponent choice on creation, never arbitrary fields or supplied game state', () => {
     expect(parseGameCreation({})).toEqual({ name: '' })
     expect(parseGameCreation({ name: 'Friday' })).toEqual({ name: 'Friday' })
-    for (const value of [null, [], { name: null }, { name: 'a'.repeat(81) }, { history: [] }, { name: 'Fine', extra: 'data' }]) expect(parseGameCreation(value)).toBeNull()
+    expect(parseGameCreation({ name: 'Friday', opponentChooses: true })).toEqual({ name: 'Friday', opponentChooses: true })
+    expect(parseGameCreation({ opponentChooses: false })).toEqual({ name: '' })
+    for (const value of [null, [], { name: null }, { name: 'a'.repeat(81) }, { history: [] }, { name: 'Fine', extra: 'data' }, { opponentChooses: 'true' }]) expect(parseGameCreation(value)).toBeNull()
   })
   it('requires an exact, authenticated rename with an expected name and idempotency ID', () => {
     const rename = { type: 'rename', token: 'A'.repeat(43), requestId: '12345678-1234-1234-1234-123456789abc', expectedName: 'Old', name: 'New' }

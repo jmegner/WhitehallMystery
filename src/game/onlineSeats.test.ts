@@ -8,6 +8,12 @@ import type { GameAction } from './types'
 const apply = (history: GameHistory, action: GameAction) => normalizeRemoteHistory(gameHistoryReducer(history, { type: 'apply', action }))
 
 describe('online departures', () => {
+  it('accepts only a credential and an optional valid side for side-choice requests', () => {
+    const request = { type: 'side-choice', token: 'a'.repeat(43) }
+    expect(parseOnlineSessionRequest(request)).toEqual(request)
+    for (const role of ['jack', 'investigators']) expect(parseOnlineSessionRequest({ ...request, role })).toEqual({ ...request, role })
+    for (const extra of [{ role: 'either' }, { role: null }, { role: 'jack', history: [] }, { opponent: true }]) expect(parseOnlineSessionRequest({ ...request, ...extra })).toBeNull()
+  })
   it('only clears abandonment after that side completes a turn', () => {
     const seats = { ...initialOnlineSeats(), investigators: { leftAt: 8, generation: 9 } }
     let history = createGameHistory(createInitialGame())

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page } from './fixtures'
 import { createInitialGame, deploymentChoices, legalNormalDestinations } from '../../src/game/gameEngine'
 import { createGameHistory, currentHistoryState, gameHistoryReducer, type GameHistory } from '../../src/game/history'
 import { encodeMail, normalizeMailHistory } from '../../src/game/byMail'
@@ -32,8 +32,6 @@ async function moveInvestigators(page: Page) {
   }
 }
 
-// Isolated local Worker invocation: these real two-device tests don't consume
-// production quotas or share the other suites' simulated per-IP creation quota.
 test('online turn review: moving Red then auto-passing all three needs confirmation, preserved by refresh and redo', async ({ page: jack, browser }) => {
   const context = await browser.newContext()
   const investigators = await context.newPage()

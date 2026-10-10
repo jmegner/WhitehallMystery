@@ -117,6 +117,7 @@ export const isSavedGameDone = (game: SavedGame): boolean => savedGameSummary(ga
 export const savedGameTime = (game: SavedGame): string => game.startedAt === null ? 'Start time unknown (older saved game)' : mailTimestamp(game.startedAt / 1000)
 export const savedGameMode = (game: SavedGame): string => game.mode === 'versus-ai' ? `Versus AI · ${game.role === 'jack' ? 'Jack' : 'Investigator'}` : game.mode === 'same-device' ? 'Same device' : game.mode === 'by-mail' ? 'By Mail' : 'Online'
 export const savedGameStatus = (game: SavedGame): string => {
+  if (game.mode === 'online' && game.session.sideChoice) return game.session.sideChoice === 'creator' ? 'Waiting for opponent to choose a side' : 'Choose your side'
   const summary = savedGameSummary(game)
   if (!summary) return 'Not connected yet'
   const turn = summary.stage === 'gameOver' ? `Game over · ${summary.winner === 'jack' ? 'Jack' : 'Investigators'} won` : `${summary.turn === 'jack' ? 'Jack’s' : 'Investigators’'} turn`
@@ -266,13 +267,21 @@ export class SavedGameLibrary {
       view: view ?? (previous?.mode === 'by-mail' ? previous.view : defaultMailView()) })
   }
   saveOnline(session: OnlineSession) {
-    const id = this.onlineId(session)
+    const existing = this.state.games.find(game => game.mode === 'online' && game.session.apiBase === session.apiBase && game.session.roomId === session.roomId && game.session.token === session.token &&
+      (game.session.role === session.role || session.sideChoice || game.session.sideChoice))
+    const id = existing?.id ?? this.onlineId(session)
     const previous = this.get(id)
     return this.put({ id, mode: 'online', session, startedAt: session.startedAt ?? previous?.startedAt ?? null, savedAt: Date.now(), summary: previous?.mode === 'online' ? previous.summary : null,
       name: previous?.name,
       ...(previous?.mode === 'online' ? { seats: previous.seats, revision: previous.revision } : {}) })
   }
   private onlineId(session: OnlineSession) { return `online-${encodeURIComponent(session.apiBase)}-${session.roomId}-${session.role}` }
+  resolveOnlineSide(id: string, session: OnlineSession) {
+    const game = this.get(id)
+    if (game?.mode === 'online' && game.session.apiBase === session.apiBase && game.session.roomId === session.roomId && game.session.token === session.token) {
+      this.put({ ...game, session, savedAt: Date.now() })
+    }
+  }
   updateOnline(id: string, history: GameHistory, createdAt: number | null, seats?: OnlineSeats | null, revision?: number, name?: string) {
     const game = this.get(id)
     if (game?.mode !== 'online' || (revision !== undefined && game.revision !== undefined && revision < game.revision)) return

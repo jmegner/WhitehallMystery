@@ -31,7 +31,7 @@ export default {
       if (text === null) return withCors(json({ error: 'Game creation request too large or invalid UTF-8.' }, 413), origin)
       let creation
       try { creation = parseGameCreation(text ? JSON.parse(text) : {}) } catch { creation = null }
-      if (!creation) return withCors(json({ error: 'Only an optional game name of up to 80 characters is accepted.' }, 400), origin)
+      if (!creation) return withCors(json({ error: 'Use an optional game name of up to 80 characters and an optional opponent side choice.' }, 400), origin)
 
       const objectId = env.GAME_ROOMS.newUniqueId()
       const roomId = objectId.toString()
@@ -45,6 +45,7 @@ export default {
           name: creation.name,
           jackTokenHash: await hashRoleToken(jackToken),
           investigatorsTokenHash: await hashRoleToken(investigatorsToken),
+          ...(creation.opponentChooses ? { opponentChooses: true } : {}),
         }),
       })
       if (!response.ok) return withCors(json({ error: 'Could not create the game.' }, 500), origin)

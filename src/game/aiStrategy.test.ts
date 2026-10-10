@@ -20,7 +20,7 @@ describe('investigator pursuit', () => {
   const reachableLocations = (crossing: string, turns: number) =>
     new Set([...reachableCrossings(crossing, 2 * turns)].flatMap(adjacentCirclesForCrossing))
 
-  test('moves distant investigators toward future actions even when Blue alone can act in the 36 opening', () => {
+  test.each(['opening1', 'opening2', 'opening5'])('moves distant investigators toward future actions even when Blue alone can act in the 36 opening (%s)', seed => {
     const positions = { yellow: 'FP', blue: 'JD', red: 'JH' }
     const state: GameState = { ...base(37), stage: 'investigatorMove', reachedDiscoveries: [36],
       discoveryLocations: [36, 46, 147, 159], roundTrail: [36, 37],
@@ -35,24 +35,22 @@ describe('investigator pursuit', () => {
     }
     expect([...reachableCrossings(positions.blue, 2)].flatMap(adjacentCirclesForCrossing).some(id => possible.has(id))).toBe(true)
 
-    for (const seed of ['opening1', 'opening2', 'opening5']) {
-      const plan = planInvestigatorMoves(state, aiTurnRandom(seed, state))
-      expect(adjacentCirclesForCrossing(plan.blue!).some(id => possible.has(id))).toBe(true)
-      let moved = state
-      for (const color of INVESTIGATOR_ORDER) {
-        expect(legalInvestigatorDestinations(moved)).toContain(plan[color])
-        moved = gameReducer(moved, { type: 'moveInvestigator', crossingId: plan[color]! })
-      }
-      const future = nextStreetLocations(possible, plan)
-      const futureCoverage = (crossing: string) => [...reachableLocations(crossing, 1)]
-        .filter(id => future.has(id)).reduce((sum, id) => sum + weights!.locationWeights.get(id)!, 0)
-      for (const color of ['yellow', 'red'] as const) {
-        expect(plan[color]).not.toBe(positions[color])
-        expect(futureCoverage(plan[color]!)).toBeGreaterThan(futureCoverage(positions[color]))
-      }
-      const changedSecrets = { ...state, currentJack: 73, discoveryLocations: [36, 5, 130, 139], roundTrail: [36, 73] }
-      expect(planInvestigatorMoves(changedSecrets, aiTurnRandom(seed, changedSecrets))).toEqual(plan)
+    const plan = planInvestigatorMoves(state, aiTurnRandom(seed, state))
+    expect(adjacentCirclesForCrossing(plan.blue!).some(id => possible.has(id))).toBe(true)
+    let moved = state
+    for (const color of INVESTIGATOR_ORDER) {
+      expect(legalInvestigatorDestinations(moved)).toContain(plan[color])
+      moved = gameReducer(moved, { type: 'moveInvestigator', crossingId: plan[color]! })
     }
+    const future = nextStreetLocations(possible, plan)
+    const futureCoverage = (crossing: string) => [...reachableLocations(crossing, 1)]
+      .filter(id => future.has(id)).reduce((sum, id) => sum + weights!.locationWeights.get(id)!, 0)
+    for (const color of ['yellow', 'red'] as const) {
+      expect(plan[color]).not.toBe(positions[color])
+      expect(futureCoverage(plan[color]!)).toBeGreaterThan(futureCoverage(positions[color]))
+    }
+    const changedSecrets = { ...state, currentJack: 73, discoveryLocations: [36, 5, 130, 139], roundTrail: [36, 73] }
+    expect(planInvestigatorMoves(changedSecrets, aiTurnRandom(seed, changedSecrets))).toEqual(plan)
   })
 
   test.each([1, 7, 173, 188])('brings all three investigators closer when Jack starts at %s and nobody can act yet', start => {
