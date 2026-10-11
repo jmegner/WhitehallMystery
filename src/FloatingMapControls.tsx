@@ -3,6 +3,7 @@ import { activeInvestigatorColor, jackMoveReadyToConfirm, legalJackDestinations 
 import { movementLabel } from './game/inference'
 import type { GameAction, GameState, JackMoveType } from './game/types'
 import { useBoardPanelViewport } from './useBoardPanelViewport'
+import { focusBoardPiece } from './focusBoardPiece'
 
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
 
@@ -73,9 +74,11 @@ export default function FloatingMapControls({ panel, state, dispatch, waiting, e
     style={{ left: viewport.left, top: viewport.bottom, width: viewport.width,
       transform: `translate(-50%, -100%) scale(${1 / viewport.scale})` }}>
     {viewport.hasActivePiece && <div className="floating-control-cluster floating-controls-left"><button type="button" className="secondary-button"
-      title="Center the view on the active playing piece"
-      // Scroll the shape: Firefox scrolls an SVG group to the document origin.
-      onClick={() => panel?.querySelector('[data-active-playing-piece] circle')?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' })}>
+      title="Center on the active piece while keeping the floating controls visible"
+      onClick={() => {
+        const piece = panel?.querySelector<SVGElement>('[data-active-playing-piece] circle')
+        if (panel && piece) focusBoardPiece(panel, piece)
+      }}>
       Focus{investigator ? ` ${investigator[0].toUpperCase()}` : ''}
     </button></div>}
     {controls && <div className="floating-control-cluster floating-controls-center">{controls}</div>}

@@ -1,4 +1,5 @@
 import { useLayoutEffect, useState } from 'react'
+import { MINIMUM_BOARD_VIEWPORT_WIDTH } from './focusBoardPiece'
 
 interface BoardPanelViewport {
   left: number
@@ -31,7 +32,7 @@ export function useBoardPanelViewport(panel: HTMLElement | null): BoardPanelView
       const hasActivePiece = !!piece && piece.width > 0 && piece.height > 0
       // Include the toolbar, map and legend: the panel can span the viewport
       // even while the map itself still fits. Allow subpixel edge rounding.
-      const next = visibleWidth >= width * 0.8 && visibleHeight >= height - 1
+      const next = visibleWidth >= width * MINIMUM_BOARD_VIEWPORT_WIDTH && visibleHeight >= height - 1
         ? { left: left + width / 2, bottom: Math.min(rect.bottom, top + height) - 12 / scale,
           width: width * scale - 24, scale, hasActivePiece }
         : null

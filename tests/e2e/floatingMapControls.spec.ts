@@ -500,6 +500,38 @@ async function pieceViewport(page: Page) {
   })
 }
 
+for (const edge of ['top', 'bottom'] as const) {
+  test(`Focus keeps the floating controls available for a piece at the ${edge} edge`, async ({ page }) => {
+    const state = edge === 'top' ? { ...jackState(), currentJack: 1 } : {
+      ...investigatorState(), investigatorPositions: { yellow: 'LH', blue: 'DC', red: 'HZ' },
+    }
+    await restore(page, state)
+    await page.goto('/')
+    await fillViewport(page)
+    const before = await saved(page)
+    await focusButton(page).click()
+    await expect(floating(page)).toHaveCSS('position', 'fixed')
+    await expect(focusButton(page)).toBeVisible()
+    await expectFloatingPositions(page)
+    await expect(activePiece(page)).toBeInViewport({ ratio: 1 })
+    // Center as closely as possible, stopping where the panel still fills the view.
+    await expect.poll(() => page.locator('.board-panel').evaluate((element, edge) => {
+      const rect = element.getBoundingClientRect()
+      const viewport = window.visualViewport!
+      return Math.abs(edge === 'top' ? rect.top - viewport.offsetTop
+        : rect.bottom - viewport.offsetTop - viewport.height)
+    }, edge)).toBeLessThan(4)
+    // A second click must preserve both the position and the available controls.
+    const position = await pieceViewport(page)
+    await focusButton(page).click()
+    await expectFloatingPositions(page)
+    const repeated = await pieceViewport(page)
+    expect(Math.abs(repeated.x - position.x)).toBeLessThan(2)
+    expect(Math.abs(repeated.y - position.y)).toBeLessThan(2)
+    expect(await saved(page)).toEqual(before)
+  })
+}
+
 for (const stage of ['jackMove', 'investigatorMove', 'investigatorAction'] as const) {
   test(`Focus stays available and centers the visible active piece during ${stage} without changing the game`, async ({ page }) => {
     const state = stage === 'jackMove' ? jackState() : {
@@ -571,3 +603,45 @@ test('Focus centers horizontally and vertically after pinch zoom without changin
     await cdp.detach()
   }
 })
+
+for (const [edge, location] of [['left', 8], ['right', 27]] as const) {
+  test(`Focus keeps controls visible near the ${edge} edge after pinch zoom`, async ({ page, context }) => {
+    await restore(page, { ...jackState(), currentJack: location })
+    await page.goto('/')
+    await fillViewport(page)
+    const cdp = await context.newCDPSession(page)
+    try {
+      await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 3 })
+      await expect(focusButton(page)).toBeVisible()
+      const before = await saved(page)
+      await focusButton(page).click({ timeout: 5000 })
+      await expect(floating(page)).toHaveCSS('position', 'fixed')
+      await expect(focusButton(page)).toBeVisible()
+      await expectFloatingPositions(page)
+      await expect.poll(async () => {
+        const piece = await pieceViewport(page)
+        return piece.x > piece.left && piece.x < piece.left + piece.width &&
+          piece.y > piece.top && piece.y < piece.top + piece.height
+      }).toBe(true)
+      expect((await pieceViewport(page)).scale).toBe(3)
+      expect(await saved(page)).toEqual(before)
+      // CDP mouse coordinates refer to the visual viewport after pinch zoom; locator
+      // clicks incorrectly use layout coordinates once the view is panned.
+      const point = await focusButton(page).evaluate(element => {
+        const rect = element.getBoundingClientRect()
+        const viewport = window.visualViewport!
+        element.blur()
+        return { x: rect.left + rect.width / 2 - viewport.offsetLeft,
+          y: rect.top + rect.height / 2 - viewport.offsetTop }
+      })
+      await page.mouse.click(point.x, point.y)
+      await expect(focusButton(page)).toBeFocused()
+      await expectFloatingPositions(page)
+      await expect(focusButton(page)).toBeVisible()
+      expect(await saved(page)).toEqual(before)
+    } finally {
+      await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 })
+      await cdp.detach()
+    }
+  })
+}
