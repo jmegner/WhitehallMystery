@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { reviewScreenshot } from './reviewScreenshot'
 import { createInitialGame, legalInspectorActionCircles } from '../../src/game/gameEngine'
 import { gameHistoryReducer, type GameHistory } from '../../src/game/history'
 import type { GameState } from '../../src/game/types'
@@ -54,9 +55,9 @@ test('game-over past displays selected rounds and all rounds, preserving prefere
   await expect(past).toBeChecked()
   await expect(round).toHaveValue('2')
   await expect(page.locator('.past-path-line[data-round="2"]')).toHaveCount(2)
-  await page.screenshot({ path: test.info().outputPath('game-over-round-2.png') })
+  await reviewScreenshot(page, { path: test.info().outputPath('game-over-round-2.png') })
   await round.selectOption('all')
-  await page.screenshot({ path: test.info().outputPath('game-over-all-rounds.png') })
+  await reviewScreenshot(page, { path: test.info().outputPath('game-over-all-rounds.png') })
   await past.uncheck()
   await page.reload()
   await expect(past).not.toBeChecked()
@@ -93,5 +94,5 @@ test('an early finish or older single-snapshot save only offers rounds with reco
   await round.selectOption('1')
   await expect(page.locator('.past-path-step text')).toHaveText(['1', '2'])
   await expect(round).toBeInViewport()
-  await page.screenshot({ path: test.info().outputPath('game-over-mobile.png') })
+  await reviewScreenshot(page, { path: test.info().outputPath('game-over-mobile.png') })
 })

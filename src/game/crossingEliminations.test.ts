@@ -42,10 +42,15 @@ describe('worst-case crossing eliminations', () => {
     { ...evidence, observations: [{ kind: 'clue' as const, circleId: 13, found: true, afterMove: 1, investigator: 'yellow' as const }] },
     { ...evidence, observations: [{ kind: 'clue' as const, circleId: 13, found: false, afterMove: 2, investigator: 'yellow' as const },
       { kind: 'arrest' as const, circleId: 10, hit: false as const, afterMove: 2, investigator: 'blue' as const }] },
+    { ...evidence, moves: [street(1), { ...street(2), investigatorPositions: { yellow: 'CZ', blue: 'DM', red: 'DG' } }, street(3)],
+      observations: [{ kind: 'clue' as const, circleId: 13, found: false, afterMove: 1, investigator: 'yellow' as const }] },
+    { ...evidence, moves: [{ ...street(1), type: 'alley' as const }, street(2)] },
+    { ...evidence, start: 154, moves: [{ ...street(1), type: 'boat' as const }, street(2)] },
   ])('matches exhaustive trails and optimal search orders for %#', round => {
     const trails = trailsFor(round)
     const total = new Set(trails.map(trail => trail.at(-1)!)).size
     expect(total).toBe(possibleJackLocations(round).size)
+    expect(trails.length).toBeGreaterThan(0)
     const counts = worstCaseCrossingEliminations(round)
     for (const crossing of crossings) {
       const worstRemaining = Math.min(...permutations(adjacentCirclesForCrossing(crossing.id))

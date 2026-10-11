@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { useBoardHover } from './useBoardHover'
+import { useWorstCrossingEliminations } from './useWorstCrossingEliminations'
 import type { CSSProperties } from 'react'
 import './App.css'
 import { normalizeMailHistory, mailHistoryReducer, mailBoardState } from './game/byMail'
@@ -30,7 +31,6 @@ import {
   movementLabel,
   possibleJackSearchOutcomes,
   possibleJackSearchOutcomesAfterMove,
-  worstCaseCrossingEliminations,
   type SearchOutcome,
 } from './game/inference'
 import { automaticInvestigatorActions } from './game/investigatorAuto'
@@ -1578,6 +1578,10 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   })
   const controlHeld = useControlHeld()
   const effectiveNextTurn = nextTurn !== controlHeld
+  const worstCrossingEliminations = useWorstCrossingEliminations(
+    showWorst && isInspectorInteraction(state.stage) && !history.pendingReveal ? state.publicRound : null,
+    effectiveNextTurn ? state.investigatorPositions : undefined,
+  )
   const [showCrossingIds, setShowCrossingIds] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY) : false
@@ -1824,8 +1828,6 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const showPossibilityMarkers =
     (showPossible && isInspectorInteraction(state.stage)) ||
     (showInvestigatorKnowledge && state.stage === 'jackMove')
-  const worstCrossingEliminations = showWorst && isInspectorInteraction(state.stage)
-    ? worstCaseCrossingEliminations(state.publicRound, effectiveNextTurn ? state.investigatorPositions : undefined) : new Map<string, number>()
   if (remote?.waiting) { legalCircleIds.clear(); legalCrossingIds.clear(); coachReachableCircleIds.clear() }
   const handleCircle = (circleId: number) => {
     if (remote?.waiting) return

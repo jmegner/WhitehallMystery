@@ -29,6 +29,8 @@ async function restore(page: Page, state: GameState) {
     }))
   }, { history: createGameHistory(state), gameId })
   await page.goto('/')
+  // A font swap can shift the hit target during a native pointer hold.
+  await page.evaluate(() => document.fonts.ready)
 }
 const cursor = (page: Page) => page.evaluate(gameId =>
   JSON.parse(localStorage.getItem(`whitehall-mystery.saved-game.v1.${gameId}`)!).history.cursor as number, gameId)
@@ -52,7 +54,9 @@ async function touchInput(page: Page) {
     cancel: () => cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] }),
     hold: async (target: Locator, preview: Locator) => {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [await center(target)] })
-      await page.waitForTimeout(600) // Hold through the threshold even if the preceding target used the same preview.
+      // Advance the real application timer even when this target shares the
+      // preceding preview; visibility alone would not prove that the hold fired.
+      await page.clock.fastForward(600)
       await expect(preview.first()).toBeVisible()
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
       await expect(preview.first()).toBeVisible()
@@ -95,6 +99,9 @@ test('mouse long-press prevents native context menus and selecting discoveries',
 test.describe('touch long-press', () => {
   test.use({ hasTouch: true })
   test.skip(({ browserName }) => browserName !== 'chromium', 'Native touch gestures use Chromium CDP.')
+  // Install before navigation so the app never mixes native and controlled
+  // timers. The mouse tests above retain real-time long-press coverage.
+  test.beforeEach(async ({ page }) => { await page.clock.install() })
 
   test('Jack, locations, routes, and investigator pieces share persistent previews without actions', async ({ page }) => {
     await restore(page, jackState())
@@ -175,19 +182,19 @@ test.describe('touch long-press', () => {
     await touch.move([{ x: point.x, y: point.y - 90 }])
     await touch.end()
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(beforeScroll)
-    await page.waitForTimeout(600)
+    await page.clock.fastForward(600)
     await expect(page.locator('.route-turn-count')).toHaveCount(0)
     await expect.poll(() => cursor(page)).toBe(0)
     point = await center(choice)
     await touch.start([{ ...point, id: 0 }])
     await touch.start([{ ...point, id: 0 }, { x: point.x + 50, y: point.y + 50, id: 1 }])
-    await page.waitForTimeout(600)
+    await page.clock.fastForward(600)
     await touch.end()
     await expect(page.locator('.route-turn-count')).toHaveCount(0)
     await expect.poll(() => cursor(page)).toBe(0)
     await touch.start([await center(choice)])
     await touch.cancel()
-    await page.waitForTimeout(600)
+    await page.clock.fastForward(600)
     await expect(page.locator('.route-turn-count')).toHaveCount(0)
     await choice.tap()
     await expect.poll(() => cursor(page)).toBe(1)

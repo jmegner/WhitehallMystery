@@ -18,6 +18,7 @@
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "vitest run src worker",
     "test:e2e": "playwright test",
+    "test:e2e:diagnostic": "playwright test --trace retain-on-failure",
     "lint": "eslint .",
     "preview": "vite preview"
   },

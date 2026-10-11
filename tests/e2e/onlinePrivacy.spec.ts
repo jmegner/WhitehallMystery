@@ -1,4 +1,5 @@
 import { expect, test, type Page } from './fixtures'
+import { reviewScreenshot } from './reviewScreenshot'
 import { gameReducer, legalJackDestinations } from '../../src/game/gameEngine'
 import type { HistoryCommand } from '../../src/game/history'
 import type { OnlineServerMessage, OnlineSnapshot } from '../../src/game/onlineProtocol'
@@ -168,6 +169,6 @@ test('online privacy: a new investigator turn starts with plain maybes until the
     await expect(investigators.locator('.possible-outcome-marker').first()).toBeVisible()
     await investigators.mouse.move(0, 0)
     await expect(investigators.locator('.possible-outcome-marker')).toHaveCount(0)
-    await investigators.screenshot({ path: 'test-results/online-public-maybes.png', fullPage: true })
+    await reviewScreenshot(investigators, { path: 'test-results/online-public-maybes.png', fullPage: true })
   } finally { await context.close() }
 })

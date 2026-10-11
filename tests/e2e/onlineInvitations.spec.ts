@@ -1,4 +1,5 @@
 import { expect, test, type Page, type APIRequestContext } from './fixtures'
+import { reviewScreenshot } from './reviewScreenshot'
 import type { OnlineSession } from '../../src/online/onlineSession'
 import type { OnlineSnapshot } from '../../src/game/onlineProtocol'
 import { observeInvitationClipboard } from './invitationClipboard'
@@ -51,7 +52,7 @@ for (const chosenRole of ['jack', 'investigators'] as const) {
       await expect(invited.getByRole('heading', { name: 'Choose your side' })).toBeVisible()
       await invited.setViewportSize({ width: 390, height: 844 })
       expect(await invited.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-      await invited.getByRole('main').screenshot({ path: testInfo.outputPath('choose-side.png') })
+      await reviewScreenshot(invited.getByRole('main'), { path: testInfo.outputPath('choose-side.png') })
       const pendingInvited = await sessionFor(invited)
       expect((await post(request, origin, { ...pendingInvited, token: 'X'.repeat(43) }, { type: 'side-choice', role: chosenRole })).status()).toBe(401)
       expect((await post(request, origin, pendingInvited, { type: 'side-choice', role: chosenRole, history: [] })).status()).toBe(400)
@@ -200,7 +201,7 @@ for (const creatorRole of ['jack', 'investigators'] as const) {
       await expect(invitationBox).toHaveValue(invitation)
       await invited.setViewportSize({ width: 390, height: 844 })
       expect(await invited.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-      await invited.getByLabel('Online game').screenshot({ path: `test-results/online-rejoin-${creatorRole}.png` })
+      await reviewScreenshot(invited.getByLabel('Online game'), { path: `test-results/online-rejoin-${creatorRole}.png` })
       await rejoined.goto(invitation)
       await expect(rejoined.getByLabel('Online game')).toContainText(creatorRole === 'jack' ? 'Online · Jack' : 'Online · Investigators')
       const rejoinedSession = await sessionFor(rejoined)

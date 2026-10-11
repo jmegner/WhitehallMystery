@@ -2,6 +2,45 @@ Web implementation of Whitehall Mystery with emphasis on figuring out possibilit
 
 See [MULTIPLAYER.md](MULTIPLAYER.md) for local and Cloudflare online-multiplayer setup.
 
+Worst crossing scores are calculated in a browser Web Worker so the map stays
+usable while the numbers are computed. Changing the public evidence or the
+next-turn perspective hides old scores until the new results arrive; returning
+to an already calculated perspective restores its cached scores immediately.
+The calculations still use exact public-evidence deduction.
+
+## Testing
+
+Run `npm run lint`, `npm run build`, and `npm run test` for the full checks.
+`npm run test:e2e` builds and serves the production client against a real local
+Worker, using fresh ports and isolated rate-limit quotas. Its client build goes
+under `node_modules/.cache/whitehall-e2e`, leaving deployment output untouched.
+Both servers stop when the run ends.
+Parallelism is capped at six workers and half the available CPU capacity
+(four workers in development mode); override it with `--workers` when profiling.
+
+Normal E2E runs keep failure screenshots and error context. Traces and optional
+review images are enabled with `npm run test:e2e:diagnostic`; successful traces
+are discarded. QR screenshots used as test inputs are always taken. Narrow a
+diagnostic run with a file or `--grep`, for example:
+
+```sh
+npm run test:e2e:diagnostic -- tests/e2e/floatingMapControls.spec.ts --grep "starting a search"
+```
+
+Set `PLAYWRIGHT_DEV_SERVER=1` to exercise Vite's development server and React's
+development checks instead. In PowerShell:
+
+```powershell
+$env:PLAYWRIGHT_DEV_SERVER = '1'
+npm run test:e2e
+Remove-Item Env:PLAYWRIGHT_DEV_SERVER
+```
+
+To benchmark, pass `--reporter=json` and set `PLAYWRIGHT_JSON_OUTPUT_FILE` to an
+output path. The report includes total elapsed time, individual test durations,
+and failures. Compare repeated runs with the same worker count; startup, font
+downloads, and rate-limit window boundaries can affect individual timings.
+
 ## Versus AI
 
 Choose **New game → Versus AI**, then play Jack or control all three investigators.

@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures'
+import { reviewScreenshot } from './reviewScreenshot'
 import { mailTimestamp } from '../../src/game/byMail'
 import type { OnlineServerMessage, OnlineSnapshot } from '../../src/game/onlineProtocol'
 import type { OnlineUndoState } from '../../src/game/onlineUndo'
@@ -244,7 +245,7 @@ test('Online mode synchronizes authenticated Jack and investigator devices', asy
     })
     expect(overlayBox).toEqual({ x: 0, y: 0, width: 390, height: 844, pointerEvents: 'none' })
     expect(await investigators.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
-    await investigators.screenshot({ path: 'test-results/online-turn-alert-mobile.png' })
+    await reviewScreenshot(investigators, { path: 'test-results/online-turn-alert-mobile.png' })
     await alerts.getByLabel('Flash screen').uncheck()
 
     // Switch to another saved game while the partner advances this online room.
@@ -368,7 +369,7 @@ test('online undo is non-modal, survives refresh, alerts both sides, and preserv
     const box = await requestCard.boundingBox()
     expect(box!.height).toBeLessThan(844 / 2)
     expect(box!.width).toBeLessThan(390)
-    await investigators.screenshot({ path: 'test-results/online-undo-request-mobile.png' })
+    await reviewScreenshot(investigators, { path: 'test-results/online-undo-request-mobile.png' })
 
     await investigators.reload()
     await expect(requestCard).toBeVisible()

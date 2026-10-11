@@ -1,4 +1,5 @@
 import { expect, test, type Page } from './fixtures'
+import { reviewScreenshot } from './reviewScreenshot'
 import { createInitialGame, deploymentChoices, legalNormalDestinations } from '../../src/game/gameEngine'
 import { createGameHistory, currentHistoryState, gameHistoryReducer, type GameHistory } from '../../src/game/history'
 import { encodeMail, normalizeMailHistory } from '../../src/game/byMail'
@@ -109,7 +110,7 @@ test('online turn review: moving Red then auto-passing all three needs confirmat
     }
     await expect(investigators.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled()
     await expect(investigators.getByRole('button', { name: 'Undo Side', exact: true })).toBeDisabled()
-    await investigators.screenshot({ path: 'test-results/online-waiting-for-jack.png', fullPage: true })
+    await reviewScreenshot(investigators, { path: 'test-results/online-waiting-for-jack.png', fullPage: true })
   } finally { await context.close() }
 })
 

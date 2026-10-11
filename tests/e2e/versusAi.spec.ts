@@ -1,7 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
+import { reviewScreenshot } from './reviewScreenshot'
 import { createInitialGame, legalNormalDestinations } from '../../src/game/gameEngine'
 import { createGameHistory, currentHistoryState, gameHistoryReducer, type GameHistory, type PlayerView } from '../../src/game/history'
 import { normalizeRemoteHistory } from '../../src/game/remoteHistory'
+import { holdAiWorker } from './holdAiWorker'
 
 async function savedHistory(page: Page): Promise<GameHistory> {
   return page.evaluate(() => JSON.parse(localStorage.getItem(`whitehall-mystery.saved-game.v1.${localStorage.getItem('whitehall-mystery.active-game.v1')}`)!).history)
@@ -160,7 +162,7 @@ for (const finish of ['InvAuto', 'Rand Side'] as const) {
     const history = jackMoveHistory()
     await restoreGame(page, history, 'investigators')
     // A held worker lets the test observe the exact confirmation boundary.
-    await page.route('**/src/game/ai.worker.ts*', route => route.fulfill({ contentType: 'application/javascript', body: 'self.onmessage = () => {}' }))
+    await holdAiWorker(page)
     let workers = 0
     page.on('worker', () => { workers += 1 })
     await page.goto('/')
@@ -240,7 +242,7 @@ test('plays as Jack through AI deployment and a coordinated investigator turn, t
   await page.getByRole('button', { name: 'Resume game', exact: true }).click()
   await page.getByRole('button', { name: /Versus AI · Jack/ }).click()
   await expect(page.getByLabel('Versus AI game')).toBeVisible()
-  await page.screenshot({ path: test.info().outputPath('versus-ai-jack.png'), fullPage: true })
+  await reviewScreenshot(page, { path: test.info().outputPath('versus-ai-jack.png'), fullPage: true })
   expect(errors).toEqual([])
 })
 
@@ -284,7 +286,7 @@ test('investigator Peek reveals AI Jack only when enabled, persists, and preserv
   await page.reload()
   await expect(page.getByLabel('Versus AI game')).toContainText('You are the investigator')
   await expect(page.locator('.public-log')).toContainText(/M2:|arrested Jack/)
-  await page.screenshot({ path: test.info().outputPath('versus-ai-investigator.png'), fullPage: true })
+  await reviewScreenshot(page, { path: test.info().outputPath('versus-ai-investigator.png'), fullPage: true })
   expect(errors).toEqual([])
 })
 
@@ -420,7 +422,7 @@ test('undo during AI computation cancels the worker and persists the human decis
   const history = jackMoveHistory()
   await restoreGame(page, history, 'jack')
   // Hold computation pending so cancellation is independent of machine speed.
-  await page.route('**/src/game/ai.worker.ts*', route => route.fulfill({ contentType: 'application/javascript', body: 'self.onmessage = () => {}' }))
+  await holdAiWorker(page)
   const workerStarted = page.waitForEvent('worker')
   await page.goto('/')
   const worker = await workerStarted

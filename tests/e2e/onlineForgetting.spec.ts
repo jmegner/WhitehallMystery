@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures'
+import { reviewScreenshot } from './reviewScreenshot'
 import { observeInvitationClipboard } from './invitationClipboard'
 import { onlineEntry, sessionFor, start, post } from './onlineDepartureHelpers'
 
@@ -101,7 +102,7 @@ test('online departures: Leave All continues after a failure and offers local fo
   expect((await post(request, origin, failed, { type: 'status' })).status()).toBe(200)
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  await page.screenshot({ path: 'test-results/leave-all-partial-failure.png', fullPage: true })
+  await reviewScreenshot(page, { path: 'test-results/leave-all-partial-failure.png', fullPage: true })
   await error.getByRole('button', { name: 'Forget game', exact: true }).click()
   await expect(page.locator('.saved-game-resume')).toHaveCount(0)
   expect(await page.evaluate(key => localStorage.getItem(key), failedKey)).toBeNull()

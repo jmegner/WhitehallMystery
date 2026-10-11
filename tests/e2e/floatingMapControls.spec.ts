@@ -1,8 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
+import { reviewScreenshot } from './reviewScreenshot'
 import { createInitialGame, legalInspectorActionCircles, legalJackDestinations } from '../../src/game/gameEngine'
 import { jackEscapeForecast } from '../../src/game/aiJackLookahead'
 import { currentHistoryState, type GameHistory } from '../../src/game/history'
 import type { GameState } from '../../src/game/types'
+import { holdAiWorker } from './holdAiWorker'
 
 const id = 'floating-map-controls'
 const jackState = (): GameState => ({ ...createInitialGame(), stage: 'jackMove', currentJack: 85,
@@ -39,6 +41,9 @@ async function fillViewport(page: Page, width = 1000, height = 600) {
 const floating = (page: Page) => page.getByRole('group', { name: 'Floating map controls', exact: true })
 
 async function expectFloatingPositions(page: Page) {
+  // Font swapping changes button widths. Measure only the settled layout,
+  // rather than relying on development startup to have already loaded fonts.
+  await page.evaluate(() => document.fonts.ready)
   await expect.poll(() => floating(page).evaluate(element => {
     const viewport = window.visualViewport!
     const groups = [...element.querySelectorAll<HTMLElement>('.floating-control-cluster')]
@@ -80,7 +85,7 @@ for (const width of [320, 390, 1000]) {
       await expectFloatingPositions(page)
       expect((await pass.boundingBox())!.height).toBe((await floating(page).getByRole('button', { name: /^Focus(?: [YBR])?$/, exact: true }).boundingBox())!.height)
       for (const button of await floating(page).getByRole('button').all()) await expect(button).toHaveCSS('background-color', color!)
-      if (width === 390) await page.screenshot({ path: test.info().outputPath(`floating-${letter}.png`) })
+      if (width === 390) await reviewScreenshot(page, { path: test.info().outputPath(`floating-${letter}.png`) })
       await pass.click()
     }
     await expect(floating(page)).toHaveCount(0)
@@ -110,7 +115,7 @@ for (const side of ['Jack', 'Investigators'] as const) {
       await expect(floating(page)).toHaveCSS('position', 'fixed')
       await expect(floating(page)).toBeInViewport()
       await expect(page.locator('.map-top-controls')).toHaveCount(0)
-      await page.screenshot({ path: test.info().outputPath(`${side}-panel-${edge}-floating.png`) })
+      await reviewScreenshot(page, { path: test.info().outputPath(`${side}-panel-${edge}-floating.png`) })
     }
     // Once the control panel begins to enter view, return to map-top controls.
     await page.locator('.board-panel').evaluate(element => {
@@ -123,19 +128,20 @@ for (const side of ['Jack', 'Investigators'] as const) {
 }
 
 async function expectClearMapTop(page: Page) {
+  await page.evaluate(() => document.fonts.ready)
   await expect(floating(page)).toHaveCSS('position', 'absolute')
   await expect.poll(() => page.locator('.map-top-controls').evaluate(controls => {
     const bar = controls.getBoundingClientRect()
-    return [...document.querySelectorAll('.map-hit-target')].filter(node => {
+    const map = document.querySelector('.board-frame')!.getBoundingClientRect()
+    const overlaps = [...document.querySelectorAll('.map-hit-target')].filter(node => {
       const rect = node.getBoundingClientRect()
       return rect.left < bar.right && rect.right > bar.left && rect.top < bar.bottom && rect.bottom > bar.top
     }).map(node => node.getAttribute('aria-label'))
-  })).toEqual([])
-  const map = (await page.locator('.board-frame').boundingBox())!
-  const bar = (await floating(page).boundingBox())!
-  expect(bar.y).toBeGreaterThanOrEqual(map.y)
-  expect(bar.y - map.y).toBeLessThan(5)
-  expect(bar.height).toBeLessThan(map.width * 0.035)
+    // Read both rectangles in the same layout frame: a font swap or resize
+    // between separate browser calls can otherwise mix two valid layouts.
+    return { overlaps, atMapTop: bar.top >= map.top && bar.top - map.top < 5,
+      compact: bar.height < map.width * 0.035 }
+  })).toEqual({ overlaps: [], atMapTop: true, compact: true })
 }
 
 for (const side of ['Jack', 'Investigators', 'Discovery setup'] as const) {
@@ -156,7 +162,7 @@ for (const side of ['Jack', 'Investigators', 'Discovery setup'] as const) {
       await floating(page).getByRole('button', { name: 'Toggle search/arrest: Search' }).click()
       await expectClearMapTop(page)
     }
-    await page.screenshot({ path: test.info().outputPath(`${side}-compact-mobile-controls.png`) })
+    await reviewScreenshot(page, { path: test.info().outputPath(`${side}-compact-mobile-controls.png`) })
   })
 }
 
@@ -186,7 +192,7 @@ test.describe('narrow desktop with the whole map visible', () => {
       }
       await checkMapTop()
       await expect(floating(page).getByRole('button', { name: side === 'Jack' ? 'Submit move' : 'Pass', exact: true })).toBeVisible()
-      await page.screenshot({ path: test.info().outputPath(`${side}-narrow-desktop.png`) })
+      await reviewScreenshot(page, { path: test.info().outputPath(`${side}-narrow-desktop.png`) })
       // Scroll until the top of the map reaches the viewport; it still fits.
       await page.locator('.board-frame').evaluate(element => {
         window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top)
@@ -222,11 +228,11 @@ test('map-top controls are centered in one column and mutually exclusive with vi
     expect(controls.x + controls.width).toBeLessThanOrEqual(map.x + map.width)
   }
   await checkTop()
-  await page.screenshot({ path: test.info().outputPath('jack-map-top-controls.png') })
+  await reviewScreenshot(page, { path: test.info().outputPath('jack-map-top-controls.png') })
   await page.setViewportSize({ width: 390, height: 1000 })
   await page.locator('.board-frame').scrollIntoViewIfNeeded()
   await checkTop()
-  await page.screenshot({ path: test.info().outputPath('jack-map-top-mobile.png') })
+  await reviewScreenshot(page, { path: test.info().outputPath('jack-map-top-mobile.png') })
   await fillViewport(page)
   await expect(floating(page)).toHaveCount(1)
   await expect(floating(page)).toHaveCSS('position', 'fixed')
@@ -309,7 +315,7 @@ test('Jack cycles only legal move types, completes both Coach steps, and submits
       expect(focusBounds.x + focusBounds.width).toBeLessThan(cycleBounds.x)
       expect(cycleBounds.x + cycleBounds.width).toBeLessThan(submitBounds.x)
       expect(submitBounds.x + submitBounds.width).toBeLessThanOrEqual(width - 12)
-      if (width === 360 && type === 'Coach') await page.screenshot({ path: test.info().outputPath('jack-floating-mobile.png') })
+      if (width === 360 && type === 'Coach') await reviewScreenshot(page, { path: test.info().outputPath('jack-floating-mobile.png') })
       await cycle().click()
     }
   }
@@ -331,7 +337,7 @@ test('Jack cycles only legal move types, completes both Coach steps, and submits
   await page.getByLabel(`Location ${first}, selectable`, { exact: true }).click()
   await page.getByLabel(`Location ${second}, selectable`, { exact: true }).click()
   await fillViewport(page)
-  await page.screenshot({ path: test.info().outputPath('jack-floating-controls.png') })
+  await reviewScreenshot(page, { path: test.info().outputPath('jack-floating-controls.png') })
   await submit.click()
   expect(await saved(page)).toMatchObject({ stage: 'investigatorMove', currentJack: second,
     moveSlot: 3, specialRemaining: { coach: 1 } })
@@ -395,7 +401,7 @@ test('investigators toggle only Search/Arrest and can pass directly from either 
   await fillViewport(page)
   await expect(toggle()).toHaveAccessibleName('Toggle search/arrest: Arrest')
   await expect(floating(page).getByRole('button')).toHaveCount(3)
-  await page.screenshot({ path: test.info().outputPath('investigator-floating-controls.png') })
+  await reviewScreenshot(page, { path: test.info().outputPath('investigator-floating-controls.png') })
   await pass().click()
   expect((await saved(page)).activeInvestigator).toBe(1)
   await expect(toggle()).toHaveAccessibleName('Toggle search/arrest: Search')
@@ -450,7 +456,7 @@ test('floating controls stay inside the visual viewport during pinch zoom and pa
   await checkBounds()
   await cdp.send('Input.synthesizeScrollGesture', { x: 250, y: 150, xDistance: -120, yDistance: -100, gestureSourceType: 'touch' })
   await checkBounds()
-  await page.screenshot({ path: test.info().outputPath('pinched-floating-controls.png') })
+  await reviewScreenshot(page, { path: test.info().outputPath('pinched-floating-controls.png') })
   await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 })
   await cdp.detach()
 })
@@ -459,7 +465,7 @@ test('floating Submit respects WaitEnd and hides during the AI turn', async ({ p
   const state = jackState()
   state.jackMoveSelection.path = [legalJackDestinations(state)[0]!]
   await restore(page, state, { mode: 'versus-ai', role: 'jack', waitEnd: true })
-  await page.route('**/src/game/ai.worker.ts*', route => route.fulfill({ contentType: 'application/javascript', body: 'self.onmessage = () => {}' }))
+  await holdAiWorker(page)
   await page.goto('/')
   await fillViewport(page)
   await floating(page).getByRole('button', { name: 'Submit move' }).click()
@@ -563,7 +569,7 @@ test('Focus centers horizontally and vertically after pinch zoom without changin
       return Math.max(Math.abs(piece.x - piece.left - piece.width / 2), Math.abs(piece.y - piece.top - piece.height / 2))
     }).toBeLessThan(2)
     expect((await pieceViewport(page)).scale).toBe(3)
-    await page.screenshot({ path: test.info().outputPath('focus-pinched.png') })
+    await reviewScreenshot(page, { path: test.info().outputPath('focus-pinched.png') })
   } finally {
     await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 })
     await cdp.detach()

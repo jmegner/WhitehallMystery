@@ -7,19 +7,22 @@ const port = process.env.PLAYWRIGHT_PORT ?? String(randomInt(42000, 60000))
 const workerPort = process.env.PLAYWRIGHT_WORKER_PORT ?? String(randomInt(30000, 41999))
 process.env.PLAYWRIGHT_PORT = port
 process.env.PLAYWRIGHT_WORKER_PORT = workerPort
+const devServer = process.env.PLAYWRIGHT_DEV_SERVER === '1'
 
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
-  // Each online test renders several boards. Avoid CPU contention turning
-  // otherwise responsive UI checks into timeout failures on busy hosts.
-  workers: Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2))),
+  // Keep capacity for the browsers and the real Worker. Production serving
+  // tolerates more parallel tests; development module transforms need room.
+  workers: Math.max(1, Math.min(devServer ? 4 : 6, Math.floor(availableParallelism() / 2))),
   forbidOnly: true,
   retries: 0,
   reporter: 'list',
   use: {
     baseURL: `http://127.0.0.1:${port}`,
-    trace: 'retain-on-failure',
+    // Recording every SVG/DOM snapshot is expensive. Request traces and review
+    // screenshots explicitly with test:e2e:diagnostic when investigating failures.
+    trace: 'off',
     screenshot: 'only-on-failure',
   },
   projects: [
@@ -34,9 +37,12 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: `npm run dev -- --host 127.0.0.1 --port ${port} --strictPort`,
+      command: devServer
+        ? `npm run dev -- --host 127.0.0.1 --port ${port} --strictPort`
+        : 'node scripts/serve-e2e.mjs',
       url: `http://127.0.0.1:${port}`,
       reuseExistingServer: false,
+      timeout: 120_000,
       env: { VITE_MULTIPLAYER_API: `http://127.0.0.1:${workerPort}` },
     },
   ],

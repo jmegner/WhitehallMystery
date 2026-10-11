@@ -19,6 +19,13 @@ interface InferenceContext {
   bitForCircle: Map<number, bigint>
   negativeUntil: Map<number, number>
   observationsByMove: Map<number, PublicRoundEvidence['observations']>
+  transitionsByMove: Map<number, Map<number, InferenceTransition[]>>
+}
+
+interface InferenceTransition {
+  position: number
+  positiveMask: bigint
+  visitedMask: bigint
 }
 
 const isCoachCircle = (circleId: number) => circlesById.get(circleId)?.color !== 'blue'
@@ -71,10 +78,41 @@ export const buildInferenceContext = (evidence: PublicRoundEvidence): InferenceC
     observationsByMove.set(observation.afterMove, observations)
   }
 
-  return { evidence, bitForCircle, negativeUntil, observationsByMove }
+  return { evidence, bitForCircle, negativeUntil, observationsByMove, transitionsByMove: new Map() }
 }
 
-const visitedBit = (circleId: number) => 1n << BigInt(circleId)
+const visitedBits = new Map([...circlesById.keys()].map(id => [id, 1n << BigInt(id)]))
+const visitedBit = (circleId: number) => visitedBits.get(circleId) ?? (1n << BigInt(circleId))
+
+// Every hypothetical search reuses the same movement graph and original
+// observations. Compile each origin once, including Coach's intermediate visit.
+const inferenceTransitions = (context: InferenceContext, moveIndex: number, from: number): InferenceTransition[] => {
+  let origins = context.transitionsByMove.get(moveIndex)
+  if (!origins) {
+    origins = new Map()
+    context.transitionsByMove.set(moveIndex, origins)
+  }
+  const cached = origins.get(from)
+  if (cached) return cached
+  const transitions: InferenceTransition[] = []
+  const move = context.evidence.moves[moveIndex - 1]
+  if (move) {
+    for (const path of publicMovementPaths(from, move)) {
+      if (path.some(id => (context.negativeUntil.get(id) ?? -1) >= moveIndex)) continue
+      const position = path[path.length - 1]
+      if (position === undefined) continue
+      let positiveMask = 0n
+      let visitedMask = 0n
+      for (const id of path) {
+        positiveMask |= context.bitForCircle.get(id) ?? 0n
+        visitedMask |= visitedBit(id)
+      }
+      transitions.push({ position, positiveMask, visitedMask })
+    }
+  }
+  origins.set(from, transitions)
+  return transitions
+}
 
 // Searches happen this turn. Only their surviving current locations are
 // projected through the assumed Street move; the future visit is not a clue
@@ -99,14 +137,18 @@ const locationProjector = (nextStreetPositions?: Partial<Record<InvestigatorColo
   }
 }
 
-const remainingHypotheses = (context: InferenceContext): Hypothesis[] => {
+const remainingHypotheses = (context: InferenceContext, missedLocations = 0n): Hypothesis[] => {
   const { evidence, bitForCircle, negativeUntil, observationsByMove } = context
 
-  if ((negativeUntil.get(evidence.start) ?? -1) >= 0) return []
-  let hypotheses = new Map<string, Hypothesis>()
+  if ((negativeUntil.get(evidence.start) ?? -1) >= 0 || (visitedBit(evidence.start) & missedLocations) !== 0n) return []
+  // With no positive clues, position alone identifies an aggregation group.
+  const keyFor = bitForCircle.size === 0
+    ? (position: number): string | number => position
+    : (position: number, mask: bigint): string | number => `${position}:${mask}`
+  let hypotheses = new Map<string | number, Hypothesis>()
   const startMask = bitForCircle.get(evidence.start) ?? 0n
   const startVisited = visitedBit(evidence.start)
-  hypotheses.set(`${evidence.start}:${startMask}`, {
+  hypotheses.set(keyFor(evidence.start, startMask), {
     position: evidence.start,
     positiveMask: startMask,
     visitedUnion: startVisited,
@@ -114,45 +156,37 @@ const remainingHypotheses = (context: InferenceContext): Hypothesis[] => {
   })
 
   for (let moveIndex = 1; moveIndex <= evidence.moves.length; moveIndex += 1) {
-    const move = evidence.moves[moveIndex - 1]
-    if (!move) continue
-    const next = new Map<string, Hypothesis>()
+    const next = new Map<string | number, Hypothesis>()
     for (const hypothesis of hypotheses.values()) {
-      for (const path of publicMovementPaths(hypothesis.position, move)) {
-        if (path.some((circleId) => (negativeUntil.get(circleId) ?? -1) >= moveIndex)) continue
-        let mask = hypothesis.positiveMask
-        for (const circleId of path) mask |= bitForCircle.get(circleId) ?? 0n
-        const position = path[path.length - 1]
-        if (position === undefined) continue
-        const pathVisited = path.reduce((visited, circleId) => visited | visitedBit(circleId), 0n)
-        const visitedUnion = hypothesis.visitedUnion | pathVisited
-        const visitedIntersection = hypothesis.visitedIntersection | pathVisited
-        const key = `${position}:${mask}`
+      for (const transition of inferenceTransitions(context, moveIndex, hypothesis.position)) {
+        if ((transition.visitedMask & missedLocations) !== 0n) continue
+        const mask = hypothesis.positiveMask | transition.positiveMask
+        const position = transition.position
+        const visitedUnion = hypothesis.visitedUnion | transition.visitedMask
+        const visitedIntersection = hypothesis.visitedIntersection | transition.visitedMask
+        const key = keyFor(position, mask)
         const existing = next.get(key)
-        next.set(
-          key,
-          existing
-            ? {
-                ...existing,
-                visitedUnion: existing.visitedUnion | visitedUnion,
-                visitedIntersection: existing.visitedIntersection & visitedIntersection,
-              }
-            : { position, positiveMask: mask, visitedUnion, visitedIntersection },
-        )
+        if (existing) {
+          existing.visitedUnion |= visitedUnion
+          existing.visitedIntersection &= visitedIntersection
+        } else {
+          next.set(key, { position, positiveMask: mask, visitedUnion, visitedIntersection })
+        }
       }
     }
 
     const observations = observationsByMove.get(moveIndex) ?? []
-    hypotheses = new Map(
-      [...next.entries()].filter(([, hypothesis]) =>
-        observations.every((observation) => {
+    hypotheses = next
+    if (observations.length > 0) {
+      for (const [key, hypothesis] of next) {
+        if (!observations.every((observation) => {
           if (observation.kind === 'arrest') return hypothesis.position !== observation.circleId
           if (!observation.found) return true
           const bit = bitForCircle.get(observation.circleId) ?? 0n
           return (hypothesis.positiveMask & bit) !== 0n
-        }),
-      ),
-    )
+        })) next.delete(key)
+      }
+    }
   }
 
   return [...hypotheses.values()]
@@ -253,9 +287,8 @@ export const worstCaseCrossingEliminations = (
     const key = misses.join(',')
     const known = hypothesesByMisses.get(key)
     if (known) return known
-    const negativeUntil = new Map(context.negativeUntil)
-    for (const id of misses) negativeUntil.set(id, evidence.moves.length)
-    const hypotheses = remainingHypotheses({ ...context, negativeUntil })
+    const missedLocations = misses.reduce((mask, id) => mask | visitedBit(id), 0n)
+    const hypotheses = remainingHypotheses(context, missedLocations)
     hypothesesByMisses.set(key, hypotheses)
     return hypotheses
   }

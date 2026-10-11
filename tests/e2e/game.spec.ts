@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { reviewScreenshot } from './reviewScreenshot'
 import { createInitialGame } from '../../src/game/gameEngine'
 
 test('uses the new 162–HB street connection and corrected alley boundaries on the board', async ({ page }) => {
@@ -1194,7 +1195,7 @@ test('scrolls a long hunt log beside the map without stretching its natural bott
   await page.setViewportSize({ width: 1600, height: 1400 })
   await page.locator('.control-panel').evaluate(panel => panel.scrollTop = 0)
   await page.evaluate(() => window.scrollTo(0, 0))
-  await page.screenshot({ path: test.info().outputPath('public-hunt-log-desktop.png'), fullPage: true })
+  await reviewScreenshot(page, { path: test.info().outputPath('public-hunt-log-desktop.png'), fullPage: true })
 
   await page.setViewportSize({ width: 1000, height: 1200 })
   const stacked = await page.locator('.control-panel').evaluate(panel => ({

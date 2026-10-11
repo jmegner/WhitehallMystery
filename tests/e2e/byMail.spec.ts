@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { reviewScreenshot } from './reviewScreenshot'
 
 test.use({ timezoneId: 'America/Chicago' })
 
@@ -38,7 +39,7 @@ test('By Mail exchanges turns between isolated devices and rejoins from a link',
     await expect.poll(() => copyFeedback.evaluate(element => element.getAnimations().length)).toBe(1)
     await jack.setViewportSize({ width: 390, height: 844 })
     expect(await jack.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
-    await jack.screenshot({ path: 'test-results/by-mail-mobile.png', fullPage: true })
+    await reviewScreenshot(jack, { path: 'test-results/by-mail-mobile.png', fullPage: true })
     await jack.setViewportSize({ width: 1280, height: 900 })
     await investigators.goto(`${origin}#mail=${invitation}`)
     await investigators.getByLabel('Game text or link from your partner').fill(invitation.slice(3))
@@ -55,7 +56,7 @@ test('By Mail exchanges turns between isolated devices and rejoins from a link',
     await expect(investigators.getByRole('button', { name: 'Redo Side', exact: true })).toBeDisabled()
     await expect(investigators.getByLabel('InvAuto', { exact: true })).toBeVisible()
     await expect(investigators.locator('.private-discovery, .jack-marker')).toHaveCount(0)
-    await investigators.screenshot({ path: 'test-results/by-mail-investigators.png', fullPage: true })
+    await reviewScreenshot(investigators, { path: 'test-results/by-mail-investigators.png', fullPage: true })
     for (let i = 0; i < 3; i++) await investigators.getByLabel('Available deployment crossings').getByRole('button').first().click()
     await expect(investigators.getByRole('heading', { name: 'Waiting for Jack' })).toBeVisible()
     await investigators.reload()

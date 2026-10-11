@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { reviewScreenshot } from './reviewScreenshot'
 import { createInitialGame } from '../../src/game/gameEngine'
 import { possibleJackLocationsAfterMove, possibleJackSearchOutcomes, publicMovementPaths, worstCaseCrossingEliminations } from '../../src/game/inference'
 import { circles } from '../../src/game/mapData'
@@ -19,6 +20,96 @@ async function openHunt(page: Page) {
   await page.goto('/')
   return state
 }
+
+interface HeldAnalysisWorker {
+  terminated: boolean
+  onmessage: ((event: { data: Map<string, number> }) => void) | null
+  onerror: (() => void) | null
+  postMessage: () => void
+  terminate: () => void
+}
+type AnalysisTestWindow = Window & { heldAnalysisWorkers: HeldAnalysisWorker[] }
+
+test('the map stays interactive during worst analysis and ignores cancelled results', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('whitehall-mystery.show-worst-crossings', 'true')
+    const held: HeldAnalysisWorker[] = []
+    ;(window as AnalysisTestWindow).heldAnalysisWorkers = held
+    window.Worker = new Proxy(window.Worker, {
+      construct(target, args) {
+        if (!String(args[0]).includes('crossingAnalysis.worker')) return Reflect.construct(target, args)
+        const worker: HeldAnalysisWorker = {
+          terminated: false, onmessage: null, onerror: null, postMessage() {},
+          terminate() { this.terminated = true },
+        }
+        held.push(worker)
+        return worker
+      },
+    })
+  })
+  const state = await openHunt(page)
+  const indicators = page.locator('.crossing-worst-count')
+  const next = page.getByLabel('next', { exact: true })
+  const current = worstCaseCrossingEliminations(state.publicRound)
+  const future = worstCaseCrossingEliminations(state.publicRound, state.investigatorPositions)
+  const counts = (values: Map<string, number>) => [...values.values()].filter(count => count > 0).map(String)
+  await expect(page.locator('.game-board')).toBeVisible()
+  await expect(page.getByLabel('worst', { exact: true })).toBeChecked()
+  await expect.poll(() => page.evaluate(() => (window as AnalysisTestWindow).heldAnalysisWorkers
+    .filter(worker => !worker.terminated).length)).toBe(1)
+  const initialRequests = await page.evaluate(() => (window as AnalysisTestWindow).heldAnalysisWorkers.length)
+  await expect(indicators).toHaveCount(0)
+  // Hover and preference changes work even when the worker cannot reply.
+  await page.locator('[data-board-hover="investigator:red:HZ"]').hover()
+  await expect(page.locator('.investigator-hover-turn-count').first()).toBeVisible()
+  await next.check()
+  await next.hover()
+  await expect(page.locator('.game-board')).toHaveAttribute('data-possibility-perspective', 'next')
+  await expect.poll(() => page.evaluate(() => (window as AnalysisTestWindow).heldAnalysisWorkers
+    .length)).toBe(initialRequests + 1)
+  // Even a late delivery from a terminated worker must not show old numbers.
+  await page.evaluate(() => {
+    for (const worker of (window as AnalysisTestWindow).heldAnalysisWorkers.filter(worker => worker.terminated)) {
+      worker.onmessage?.({ data: new Map([['CR', 999]]) })
+    }
+  })
+  await expect(indicators).toHaveCount(0)
+  await page.evaluate(values => {
+    const worker = (window as AnalysisTestWindow).heldAnalysisWorkers.find(worker => !worker.terminated)!
+    worker.onmessage?.({ data: new Map(values) })
+  }, [...future])
+  await expect.poll(() => indicators.allTextContents()).toEqual(counts(future))
+  await next.uncheck()
+  await expect(indicators).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => (window as AnalysisTestWindow).heldAnalysisWorkers
+    .filter(worker => !worker.terminated).length)).toBe(1)
+  await page.evaluate(values => {
+    const worker = (window as AnalysisTestWindow).heldAnalysisWorkers.find(worker => !worker.terminated)!
+    worker.onmessage?.({ data: new Map(values) })
+  }, [...current])
+  await expect.poll(() => indicators.allTextContents()).toEqual(counts(current))
+  const requests = await page.evaluate(() => (window as AnalysisTestWindow).heldAnalysisWorkers.length)
+  await next.check()
+  await expect.poll(() => indicators.allTextContents()).toEqual(counts(future))
+  await next.uncheck()
+  await expect.poll(() => indicators.allTextContents()).toEqual(counts(current))
+  expect(await page.evaluate(() => (window as AnalysisTestWindow).heldAnalysisWorkers.length)).toBe(requests)
+})
+
+test('worst still gives exact answers when a browser cannot start its analysis worker', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('whitehall-mystery.show-worst-crossings', 'true')
+    window.Worker = new Proxy(window.Worker, {
+      construct(target, args) {
+        if (String(args[0]).includes('crossingAnalysis.worker')) throw new Error('Worker unavailable')
+        return Reflect.construct(target, args)
+      },
+    })
+  })
+  const state = await openHunt(page)
+  const expected = [...worstCaseCrossingEliminations(state.publicRound).values()].filter(count => count > 0).map(String)
+  await expect.poll(() => page.locator('.crossing-worst-count').allTextContents()).toEqual(expected)
+})
 
 async function expectPositions(page: Page, alternate: boolean, withClues = true) {
   await page.locator('.jack-marker').hover()
@@ -57,10 +148,10 @@ test('clue and distance positions stay fixed through Alt, resizing, and hiding c
   for (const width of [1500, 700]) {
     await page.setViewportSize({ width, height: 1400 })
     await expectPositions(page, false)
-    if (width === 700) await page.locator('.game-board').screenshot({ path: test.info().outputPath('fixed-indicators.png') })
+    if (width === 700) await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath('fixed-indicators.png') })
     await page.getByLabel('alt', { exact: true }).check()
     await expectPositions(page, true)
-    if (width === 700) await page.locator('.game-board').screenshot({ path: test.info().outputPath('alternate-indicators.png') })
+    if (width === 700) await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath('alternate-indicators.png') })
     await page.getByLabel('alt', { exact: true }).uncheck()
     await expectPositions(page, false)
     await page.getByLabel('maybes').uncheck()
@@ -131,7 +222,7 @@ test('worst counts use the public evidence, persist, and yield to crossing hover
   await worst.check()
   await worst.hover()
   const expected = new Map([...worstCaseCrossingEliminations(state.publicRound)].filter(([, count]) => count > 0))
-  expect(await indicators.allTextContents()).toEqual([...expected.values()].map(String))
+  await expect.poll(() => indicators.allTextContents()).toEqual([...expected.values()].map(String))
   expect(expected.size).toBeGreaterThan(0)
   expect(expected.size).toBeLessThan(174)
   const ranked = [...expected.values()].sort((a, b) => b - a)
@@ -211,11 +302,11 @@ test('worst counts use the public evidence, persist, and yield to crossing hover
   await worst.hover()
   await expect(indicators).toHaveCount(expected.size)
   await page.getByLabel('xings', { exact: true }).check()
-  await page.locator('.game-board').screenshot({ path: test.info().outputPath('worst-crossings.png') })
+  await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath('worst-crossings.png') })
   await page.getByLabel('alt', { exact: true }).check()
   await page.setViewportSize({ width: 700, height: 1400 })
   await expectBadgeLayout()
-  await page.locator('.game-board').screenshot({ path: test.info().outputPath('worst-crossings-alternate.png') })
+  await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath('worst-crossings-alternate.png') })
   await page.reload()
   await expect(worst).toBeChecked()
   await expect(indicators).toHaveCount(expected.size)
@@ -242,7 +333,7 @@ test('Ctrl temporarily inverts next and recovers from lost focus without persist
       .toEqual(circles.filter(circle => ids.has(circle.id)).map(circle => `${circle.x},${circle.y}`).sort())
     const outcome = (future ? futureOutcomes : currentOutcomes).get(34)!
     await expect(clue).toHaveText(`${outcome.ifNo.size}/${outcome.ifYes.size}`)
-    expect(await indicators.allTextContents()).toEqual(worstEnabled ? future ? futureCounts : currentCounts : [])
+    await expect.poll(() => indicators.allTextContents()).toEqual(worstEnabled ? future ? futureCounts : currentCounts : [])
   }
   await worst.check()
   for (const saved of [false, true]) {
@@ -320,7 +411,7 @@ test('next projects outlines, search outcomes, and worst counts through a Street
   }).map(([id]) => id)))
   const expectedCounts = new Map([...worstCaseCrossingEliminations(state.publicRound, state.investigatorPositions)]
     .filter(([, count]) => count > 0))
-  expect(await indicators.allTextContents()).toEqual([...expectedCounts.values()].map(String))
+  await expect.poll(() => indicators.allTextContents()).toEqual([...expectedCounts.values()].map(String))
   expect(expectedCounts).not.toEqual(new Map([...worstCaseCrossingEliminations(state.publicRound)].filter(([, count]) => count > 0)))
   const ranked = [...expectedCounts.values()].sort((a, b) => b - a)
   const cutoff = ranked[Math.min(2, ranked.length - 1)]!
@@ -347,10 +438,10 @@ test('next projects outlines, search outcomes, and worst counts through a Street
   await maybes.uncheck()
   await next.hover()
   await expect(page.locator('.possible-marker')).toHaveCount(0)
-  expect(await indicators.allTextContents()).toEqual([...expectedCounts.values()].map(String))
+  await expect.poll(() => indicators.allTextContents()).toEqual([...expectedCounts.values()].map(String))
   await page.keyboard.down('ControlLeft')
   await expect(page.locator('.game-board')).toHaveAttribute('data-possibility-perspective', 'current')
-  expect(await indicators.allTextContents()).toEqual([...worstCaseCrossingEliminations(state.publicRound).values()]
+  await expect.poll(() => indicators.allTextContents()).toEqual([...worstCaseCrossingEliminations(state.publicRound).values()]
     .filter(count => count > 0).map(String))
   await expect(next).toBeChecked()
   await expect(worst).toBeChecked()
@@ -363,7 +454,7 @@ test('next projects outlines, search outcomes, and worst counts through a Street
   await expect(indicators).toHaveCount(0)
   await next.hover()
   await expect(indicators).toHaveCount(expectedCounts.size)
-  await page.locator('.game-board').screenshot({ path: test.info().outputPath('next-turn-indicators.png') })
+  await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath('next-turn-indicators.png') })
   await page.reload()
   await expect(next).toBeChecked()
   await expect(worst).toBeChecked()

@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures'
+import { reviewScreenshot } from './reviewScreenshot'
 import { observeInvitationClipboard } from './invitationClipboard'
 import { onlineEntry, sessionFor, start, post } from './onlineDepartureHelpers'
 
@@ -17,7 +18,7 @@ test('online departures: create as Investigators, share and edit names, then Lea
     await investigators.getByRole('button', { name: 'Online', exact: true }).click()
     await expect(investigators.getByLabel('Game name (optional)')).toHaveValue('Friday mystery')
     await investigators.setViewportSize({ width: 390, height: 844 })
-    await investigators.screenshot({ path: 'test-results/online-creation-mobile.png', fullPage: true })
+    await reviewScreenshot(investigators, { path: 'test-results/online-creation-mobile.png', fullPage: true })
     await investigators.getByRole('button', { name: 'Start new game as Investigators', exact: true }).click()
     await expect(investigators.getByRole('heading', { name: 'Friday mystery', exact: true })).toBeVisible()
     const session = await sessionFor(investigators)
@@ -89,7 +90,7 @@ test('online departures: create as Investigators, share and edit names, then Lea
     await onlineEntry(investigators).getByRole('button', { name: 'Edit name', exact: true }).click()
     await investigators.getByLabel('Game name (optional)').fill('界'.repeat(80))
     expect(await investigators.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-    await investigators.screenshot({ path: 'test-results/resume-name-mobile.png', fullPage: true })
+    await reviewScreenshot(investigators, { path: 'test-results/resume-name-mobile.png', fullPage: true })
     await investigators.getByRole('button', { name: 'Save name', exact: true }).click()
     await expect(jack.locator('.online-game-name')).toHaveText('界'.repeat(80))
     await onlineEntry(investigators).getByRole('button', { name: 'Edit name', exact: true }).click()
@@ -185,7 +186,7 @@ test('online departures: notify, preserve history, refresh the chooser, revoke o
     await expect(onlineEntry(jack)).toContainText('Opponent left the game')
     await jack.setViewportSize({ width: 390, height: 844 })
     expect(await jack.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-    await jack.screenshot({ path: 'test-results/resume-departure-mobile.png', fullPage: true })
+    await reviewScreenshot(jack, { path: 'test-results/resume-departure-mobile.png', fullPage: true })
     await onlineEntry(jack).locator('.saved-game-resume').click()
     const inviting = jack.waitForRequest(req => req.url().endsWith('/session') && req.postDataJSON()?.type === 'invite')
     await jack.getByRole('button', { name: 'Create replacement invitation', exact: true }).click()

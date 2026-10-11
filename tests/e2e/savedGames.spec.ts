@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { reviewScreenshot } from './reviewScreenshot'
 import { createInitialGame } from '../../src/game/gameEngine'
 import { createGameHistory } from '../../src/game/history'
 import type { SavedGame } from '../../src/game/savedGames'
@@ -78,7 +79,7 @@ test('compact Edit name sits beside the name inside the card without resuming th
     expect(editBox.x + editBox.width).toBeLessThan(cardBox.x + cardBox.width)
     expect(editBox.height).toBeLessThan((await page.getByRole('button', { name: 'Leave', exact: true }).boundingBox())!.height)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-    await page.screenshot({ path: `test-results/inline-edit-name-${width}.png`, fullPage: true })
+    await reviewScreenshot(page, { path: `test-results/inline-edit-name-${width}.png`, fullPage: true })
   }
   await expect(page.locator('button button, button input')).toHaveCount(0)
   await edit.focus()
@@ -168,7 +169,7 @@ test('same-device games preserve full undo history and resume from the handoff s
   await expect(page.locator('.saved-game-resume')).toHaveCount(2)
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
-  await page.screenshot({ path: 'test-results/resume-game-mobile.png', fullPage: true })
+  await reviewScreenshot(page, { path: 'test-results/resume-game-mobile.png', fullPage: true })
   await first.click()
   await page.reload()
   await expect(page.locator('.discovery-checklist li')).toHaveCount(1)
