@@ -395,14 +395,15 @@ test('Jack can preview investigator knowledge for the selected movement type', a
           candidate.getAttribute('cy') === possible.getAttribute('cy'),
       )
       if (!future) continue
-      const possibleInnerEdge = Number(possible.getAttribute('r')) - Number.parseFloat(getComputedStyle(possible).strokeWidth) / 2
-      const futureOuterEdge = Number(future.getAttribute('r')) + Number.parseFloat(getComputedStyle(future).strokeWidth) / 2
-      return possibleInnerEdge - futureOuterEdge
+      const possibleOuterEdge = Number(possible.getAttribute('r')) + Number.parseFloat(getComputedStyle(possible).strokeWidth) / 2
+      const futureInnerEdge = Number(future.getAttribute('r')) - Number.parseFloat(getComputedStyle(future).strokeWidth) / 2
+      return futureInnerEdge - possibleOuterEdge
     }
     return null
   })
   expect(overlappingIndicatorGap).not.toBeNull()
   expect(overlappingIndicatorGap as number).toBeGreaterThanOrEqual(1)
+  await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath('possibilities-inside-future.png') })
   const validChoiceGap = await page.locator('.investigator-maybe-circle').evaluateAll((futureMarkers) => {
     const choiceMarkers = [
       ...document.querySelectorAll<SVGCircleElement>('.legal-circle, .coach-reachable-circle'),
@@ -1440,8 +1441,8 @@ test('previews positive and negative search outcomes for Jack maybes', async ({ 
     }
   })
   expect(certaintyPresentation).toEqual({
-    pinkRadius: '23',
-    purpleRadius: '23',
+    pinkRadius: '19.5',
+    purpleRadius: '19.5',
     purpleStroke: 'rgb(122, 60, 175)',
     purpleDashes: '3px, 3px',
   })

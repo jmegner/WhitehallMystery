@@ -110,7 +110,8 @@ const LOCATION_OUTLINES = {
   clue: { radius: 18, strokeWidth: 3 },
   clueOutsideLegal: { radius: 23, strokeWidth: 3 },
   discovery: { radius: 19, strokeWidth: 4 },
-  possible: { radius: 23, strokeWidth: 3 },
+  possible: { radius: 19.5, strokeWidth: 3 },
+  outcomeSingle: { radius: 23, strokeWidth: 3 },
   outcomeInner: { radius: 20.5, strokeWidth: 3 },
   outcomeOuter: { radius: 26, strokeWidth: 3 },
   investigatorMaybe: { radius: 21, strokeWidth: 2 },
@@ -458,15 +459,18 @@ function GameBoard({
     if (state.reachedDiscoveries.includes(id)) outlines.push(LOCATION_OUTLINES.discovery)
     return outlines
   }
+  // Possibility rings hug the map circles; future reach rings surround them.
+  const possibleLocationOutlines = (id: number) =>
+    showPossible && !hoveredOutcome && possibleIds.has(id) ? [LOCATION_OUTLINES.possible] : []
   const investigatorMaybeRadius = (id: number) =>
-    nextLocationOutlineRadius(innerLocationOutlines(id), LOCATION_OUTLINES.investigatorMaybe)
+    nextLocationOutlineRadius([...innerLocationOutlines(id), ...possibleLocationOutlines(id)], LOCATION_OUTLINES.investigatorMaybe)
   const investigatorMaybeLocationOutlines = (id: number) =>
     investigatorMaybeCircles.has(id)
       ? [{ ...LOCATION_OUTLINES.investigatorMaybe, radius: investigatorMaybeRadius(id) }]
       : []
   const hoveredInvestigatorMaybeRadius = (id: number) =>
     nextLocationOutlineRadius(
-      [...innerLocationOutlines(id), ...investigatorMaybeLocationOutlines(id)],
+      [...innerLocationOutlines(id), ...possibleLocationOutlines(id), ...investigatorMaybeLocationOutlines(id)],
       LOCATION_OUTLINES.hoveredInvestigatorMaybe,
     )
   const baseLocationOutlines = (id: number) => {
@@ -476,12 +480,10 @@ function GameBoard({
     }
     return outlines
   }
-  const possibleMarkerRadius = (id: number) =>
-    nextLocationOutlineRadius(baseLocationOutlines(id), LOCATION_OUTLINES.possible)
   const outcomeMarkerRadii = (id: number, remainsIfNo: boolean, remainsIfYes: boolean) => {
     const outlines = baseLocationOutlines(id)
     if (!remainsIfNo || !remainsIfYes) {
-      return { single: nextLocationOutlineRadius(outlines, LOCATION_OUTLINES.possible) }
+      return { single: nextLocationOutlineRadius(outlines, LOCATION_OUTLINES.outcomeSingle) }
     }
     const inner = nextLocationOutlineRadius(outlines, LOCATION_OUTLINES.outcomeInner)
     const outer = nextLocationOutlineRadius(
@@ -493,7 +495,7 @@ function GameBoard({
   const possibilityLocationOutlines = (id: number) => {
     const outlines: Array<{ radius: number; strokeWidth: number }> = []
     if (showPossible && !hoveredOutcome && possibleIds.has(id)) {
-      outlines.push({ ...LOCATION_OUTLINES.possible, radius: possibleMarkerRadius(id) })
+      outlines.push(LOCATION_OUTLINES.possible)
     }
     if (showPossible && hoveredOutcome) {
       const remainsIfNo = hoveredOutcome.ifNo.has(id)
@@ -501,7 +503,7 @@ function GameBoard({
       if (remainsIfNo || remainsIfYes) {
         const radii = outcomeMarkerRadii(id, remainsIfNo, remainsIfYes)
         outlines.push({
-          ...(remainsIfNo && remainsIfYes ? LOCATION_OUTLINES.outcomeOuter : LOCATION_OUTLINES.possible),
+          ...(remainsIfNo && remainsIfYes ? LOCATION_OUTLINES.outcomeOuter : LOCATION_OUTLINES.outcomeSingle),
           radius: remainsIfNo && remainsIfYes ? radii.outer ?? radii.single : radii.single,
         })
       }
@@ -739,7 +741,7 @@ function GameBoard({
         [...possibleIds].map((id) => {
           const circle = circlesById.get(id)
           const outcome = possibleOutcomes.get(id)
-          const radius = possibleMarkerRadius(id)
+          const radius = LOCATION_OUTLINES.possible.radius
           return circle ? (
             <g key={`possible-${id}`}>
               {outcome?.positiveMeansJackIsThereNow && (
