@@ -123,22 +123,20 @@ async function expectPositions(page: Page, alternate: boolean, withClues = true)
   })))
   const clues = positions.filter(p => p.kind === 'clue')
   expect(clues.length > 0).toBe(withClues)
-  for (const clue of clues) {
-    expect(clue.angle).toBe(alternate ? 'right' : 'top')
-    expect(clue.x).toBe(clue.anchorX + (alternate ? 16 : 0))
-    expect(clue.y).toBe(clue.anchorY - (alternate ? 0 : 16))
-  }
+  expect(clues.map(({ angle, x, y }) => ({ angle, x, y }))).toEqual(clues.map(clue => ({
+    angle: alternate ? 'right' : 'top', x: clue.anchorX + (alternate ? 16 : 0), y: clue.anchorY - (alternate ? 0 : 16),
+  })))
   const distances = positions.filter(p => p.kind === 'locationDistance')
   let paired = 0, unpaired = 0
-  for (const distance of distances) {
+  const expectedDistances = distances.map(distance => {
     const hasClue = clues.some(clue => clue.anchorX === distance.anchorX && clue.anchorY === distance.anchorY)
     if (hasClue) paired += 1
     else unpaired += 1
     const diagonal = hasClue && !alternate
-    expect(distance.angle).toBe(diagonal ? 'top-right' : 'top')
-    expect(distance.x).toBe(distance.anchorX + (diagonal ? 13 : 0))
-    expect(distance.y).toBe(distance.anchorY - (diagonal ? 13 : 19))
-  }
+    return { angle: diagonal ? 'top-right' : 'top',
+      x: distance.anchorX + (diagonal ? 13 : 0), y: distance.anchorY - (diagonal ? 13 : 19) }
+  })
+  expect(distances.map(({ angle, x, y }) => ({ angle, x, y }))).toEqual(expectedDistances)
   expect(paired > 0).toBe(withClues)
   expect(unpaired).toBeGreaterThan(0)
 }
@@ -258,31 +256,25 @@ test('worst counts use the public evidence, persist, and yield to crossing hover
     expect(badges.filter(badge => badge.background === 'rgb(255, 140, 0)').map(badge => badge.count))
       .toEqual([...expected.values()].filter(count => count >= orangeCutoff))
     expect(badges.some(badge => Object.values(state.investigatorPositions).includes(badge.crossingId))).toBe(true)
-    for (const badge of badges) {
-      expect(badge.angle).toBe('center')
-      expect(badge.x).toBe(badge.centerX)
-      expect(badge.y).toBe(badge.centerY)
-      expect(badge.rectX + badge.width / 2).toBe(badge.centerX)
-      expect(badge.rectY + badge.height / 2).toBe(badge.centerY)
-      if (Object.values(state.investigatorPositions).includes(badge.crossingId)) {
-        expect(badge.offsetY).toBeLessThan(0)
-        const overlap = badge.rectY + badge.height + badge.offsetY - (badge.centerY - 9)
-        expect(overlap).toBeGreaterThan(0)
-        expect(overlap).toBeLessThanOrEqual(3)
-        expect(badge.rectY + badge.height + badge.offsetY).toBeLessThan(badge.centerY)
-      } else {
-        expect(badge.offsetY).toBe(0)
+    const failures = badges.flatMap(badge => {
+      const occupied = Object.values(state.investigatorPositions).includes(badge.crossingId)
+      const overlap = badge.rectY + badge.height + badge.offsetY - (badge.centerY - 9)
+      const checks = {
+        centeredText: badge.angle === 'center' && badge.x === badge.centerX && badge.y === badge.centerY,
+        centeredRectangle: badge.rectX + badge.width / 2 === badge.centerX && badge.rectY + badge.height / 2 === badge.centerY,
+        pieceOffset: occupied ? badge.offsetY < 0 && overlap > 0 && overlap <= 3 &&
+          badge.rectY + badge.height + badge.offsetY < badge.centerY : badge.offsetY === 0,
+        compactRectangle: badge.width < Math.max(14, String(badge.count).length * 7 + 4) && badge.height < 14,
+        surroundsText: badge.rectX < badge.textBounds.x && badge.rectY <= badge.textBounds.y &&
+          badge.rectX + badge.width > badge.textBounds.x + badge.textBounds.width &&
+          badge.rectY + badge.height >= badge.textBounds.y + badge.textBounds.height,
+        blackText: badge.textFill === 'rgb(0, 0, 0)' && badge.textStroke === 'none',
+        rankedBackground: badge.background === (badge.count >= orangeCutoff ? 'rgb(255, 140, 0)' : 'rgb(255, 255, 255)'),
       }
-      expect(badge.width).toBeLessThan(Math.max(14, String(badge.count).length * 7 + 4))
-      expect(badge.height).toBeLessThan(14)
-      expect(badge.rectX).toBeLessThan(badge.textBounds.x)
-      expect(badge.rectY).toBeLessThanOrEqual(badge.textBounds.y)
-      expect(badge.rectX + badge.width).toBeGreaterThan(badge.textBounds.x + badge.textBounds.width)
-      expect(badge.rectY + badge.height).toBeGreaterThanOrEqual(badge.textBounds.y + badge.textBounds.height)
-      expect(badge.textFill).toBe('rgb(0, 0, 0)')
-      expect(badge.textStroke).toBe('none')
-      expect(badge.background).toBe(badge.count >= orangeCutoff ? 'rgb(255, 140, 0)' : 'rgb(255, 255, 255)')
-    }
+      const failed = Object.entries(checks).filter(([, valid]) => !valid).map(([name]) => name)
+      return failed.length ? [{ failed, badge }] : []
+    })
+    expect(failures).toEqual([])
   }
   await expectBadgeLayout()
   const labels = await worst.evaluate(input => [...input.closest('label')!.parentElement!.querySelectorAll('label')]

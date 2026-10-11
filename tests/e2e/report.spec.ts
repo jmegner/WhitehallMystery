@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('interactive report loads its full analysis and persists movement controls', async ({ page }) => {
+test('report loads its analysis, persists controls, distinguishes cost units, and fits mobile', async ({ page }) => {
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
 
@@ -37,30 +37,25 @@ test('interactive report loads its full analysis and persists movement controls'
     'aria-pressed',
     'true',
   )
+  await test.step('discovery costs distinguish action turns from track slots', async () => {
+    await movementControls.getByRole('button', { name: 'Jack turns', exact: true }).click()
+    const discoveries = page.locator('#discoveries-content')
+    await discoveries.getByRole('button', { name: '≤2 Coach', exact: true }).click()
+    await expect(discoveries.locator('.finding-panel').first()).toContainText('6 Jack action-turns')
+    await expect(discoveries.locator('.stat-card').nth(2)).toContainText('C2')
+
+    await page.locator('#scenario-controls').getByRole('button', { name: 'Track slots', exact: true }).click()
+    await expect(discoveries.locator('.finding-panel').first()).toContainText('8 move-track slots')
+
+    await discoveries.getByRole('button', { name: 'Longest', exact: true }).click()
+    await expect(discoveries.locator('.finding-panel').first()).toContainText('24 move-track slots')
+  })
+  await test.step('report fits a narrow viewport', async () => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await expect(page.locator('#overview')).toBeVisible()
+    await expect(page.locator('#methods')).toBeAttached()
+    const bodyWidth = await page.locator('body').evaluate((body) => body.scrollWidth)
+    expect(bodyWidth).toBeLessThanOrEqual(390)
+  })
   expect(pageErrors).toEqual([])
-})
-
-test('discovery-set controls distinguish action turns from move-track slots', async ({ page }) => {
-  await page.goto('/reports/initial_report/')
-
-  const discoveries = page.locator('#discoveries-content')
-  await discoveries.getByRole('button', { name: '≤2 Coach', exact: true }).click()
-  await expect(discoveries.locator('.finding-panel').first()).toContainText('6 Jack action-turns')
-  await expect(discoveries.locator('.stat-card').nth(2)).toContainText('C2')
-
-  await page.locator('#scenario-controls').getByRole('button', { name: 'Track slots', exact: true }).click()
-  await expect(discoveries.locator('.finding-panel').first()).toContainText('8 move-track slots')
-
-  await discoveries.getByRole('button', { name: 'Longest', exact: true }).click()
-  await expect(discoveries.locator('.finding-panel').first()).toContainText('24 move-track slots')
-})
-
-test('report remains readable at a narrow viewport', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/reports/initial_report/')
-
-  await expect(page.locator('#overview')).toBeVisible()
-  await expect(page.locator('#methods')).toBeAttached()
-  const bodyWidth = await page.locator('body').evaluate((body) => body.scrollWidth)
-  expect(bodyWidth).toBeLessThanOrEqual(390)
 })

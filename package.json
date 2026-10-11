@@ -17,6 +17,7 @@
     "typecheck:worker": "tsc -p worker/tsconfig.json",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "vitest run src worker",
+    "test:replay-stress": "node scripts/test-replay-stress.mjs",
     "test:e2e": "playwright test",
     "test:e2e:diagnostic": "playwright test --trace retain-on-failure",
     "lint": "eslint .",

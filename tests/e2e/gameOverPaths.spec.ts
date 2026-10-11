@@ -34,6 +34,8 @@ test('game-over past displays selected rounds and all rounds, preserving prefere
   const history = finishedHistory()
   await restore(page, history)
   await page.goto('/')
+  await expect(page.locator('[data-active-playing-piece]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^Focus(?: [YBR])?$/, exact: true })).toHaveCount(0)
   const past = page.getByRole('checkbox', { name: 'past', exact: true })
   const round = page.getByRole('combobox', { name: 'round', exact: true })
   await expect(past).not.toBeChecked()

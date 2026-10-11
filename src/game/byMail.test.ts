@@ -5,6 +5,7 @@ import { createGameHistory, currentHistoryState, gameHistoryReducer, playerViewF
 import type { GameAction } from './types'
 
 const id = 1789142400
+const replaySeeds = import.meta.env.WHITEHALL_REPLAY_STRESS === '1' ? Array.from({ length: 35 }, (_, index) => index + 1) : [1]
 const apply = (h: GameHistory, action: GameAction) => normalizeMailHistory(gameHistoryReducer(h, { type: 'apply', action }))
 function setup() {
   let h = createGameHistory(createInitialGame())
@@ -69,7 +70,9 @@ describe('By Mail v1', () => {
       history = randomSide(history, () => .95)
     }
   })
-  test.each(Array.from({ length: 35 }, (_, index) => index + 1))('replays complete deterministic game %i through game over', seed => {
+  // Seed 1 covers every move/action category. Additional random histories are
+  // a stress sweep, rather than 34 more copies of the default replay check.
+  test.each(replaySeeds)('replays complete deterministic game %i through game over', seed => {
     const actions = new Set<string>()
     let rng = seed
     const random = () => { rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0; return rng / 2 ** 32 }

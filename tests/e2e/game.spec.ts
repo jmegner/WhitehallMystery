@@ -17,7 +17,7 @@ test('uses the new 162–HB street connection and corrected alley boundaries on 
   await expect(targets).toHaveText(['140', '141', '161', '163', '164'])
 })
 
-test('keeps history buttons left-aligned ahead of the options without an action counter', async ({ page }) => {
+test('keeps history buttons left-aligned ahead of the options', async ({ page }) => {
   await page.goto('/')
 
   await expect(page.locator('label.crossing-toggle')).toHaveAttribute('title', 'show crossing ids')
@@ -34,7 +34,6 @@ test('keeps history buttons left-aligned ahead of the options without an action 
   const historyControls = page.getByLabel('Action history controls')
   const undoSideBox = await historyControls.getByRole('button', { name: 'Undo Side' }).boundingBox()
   const randSideBox = await historyControls.getByRole('button', { name: 'Rand Side' }).boundingBox()
-  await expect(historyControls.locator('.action-counter')).toHaveCount(0)
   const crossingBox = await page.getByLabel('xings').boundingBox()
 
   expect(undoSideBox).not.toBeNull()

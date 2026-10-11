@@ -11,6 +11,9 @@ The calculations still use exact public-evidence deduction.
 ## Testing
 
 Run `npm run lint`, `npm run build`, and `npm run test` for the full checks.
+The default By Mail replay uses a deterministic full game that covers Street,
+Coach, Alley, Boat, searches, arrests and passes, alongside a separate three-round
+Jack victory. Run `npm run test:replay-stress` for the broader 35-seed replay sweep.
 `npm run test:e2e` builds and serves the production client against a real local
 Worker, using fresh ports and isolated rate-limit quotas. Its client build goes
 under `node_modules/.cache/whitehall-e2e`, leaving deployment output untouched.

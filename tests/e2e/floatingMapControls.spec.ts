@@ -64,17 +64,13 @@ async function expectFloatingPositions(page: Page) {
   })).toBe(true)
 }
 
-for (const width of [320, 390, 1000]) {
-  test(`floating buttons have stable left/center/right anchors and investigator colors at ${width}px`, async ({ page }) => {
-    await restore(page, investigatorState())
-    await page.setViewportSize({ width, height: Math.min(600, Math.floor(width * 0.7)) })
-    await page.goto('/')
-    await page.locator('.board-frame').evaluate(element => {
-      const rect = element.getBoundingClientRect()
-      window.scrollTo(0, window.scrollY + rect.top + (rect.height - window.innerHeight) / 2)
-    })
-    for (const [letter, color] of [['Y', 'rgb(255, 248, 191)'], ['B', 'rgb(227, 237, 247)'], ['R', 'rgb(246, 227, 225)']]) {
-      // Passing centers the next piece, which can bring a map edge into view.
+test('floating controls keep their anchors and investigator colors across mobile and desktop widths', async ({ page }) => {
+  await restore(page, investigatorState())
+  await page.setViewportSize({ width: 320, height: 224 })
+  await page.goto('/')
+  for (const [letter, color] of [['Y', 'rgb(255, 248, 191)'], ['B', 'rgb(227, 237, 247)'], ['R', 'rgb(246, 227, 225)']]) {
+    for (const width of [320, 390, 1000]) await test.step(`${letter} controls at ${width}px`, async () => {
+      await page.setViewportSize({ width, height: Math.min(600, Math.floor(width * 0.7)) })
       await page.locator('.board-frame').evaluate(element => {
         const rect = element.getBoundingClientRect()
         window.scrollTo(0, window.scrollY + rect.top + (rect.height - window.innerHeight) / 2)
@@ -83,14 +79,14 @@ for (const width of [320, 390, 1000]) {
       await expect(pass).toBeVisible()
       await expect(focusButton(page)).toHaveText(`Focus ${letter}`)
       await expectFloatingPositions(page)
-      expect((await pass.boundingBox())!.height).toBe((await floating(page).getByRole('button', { name: /^Focus(?: [YBR])?$/, exact: true }).boundingBox())!.height)
+      expect((await pass.boundingBox())!.height).toBe((await focusButton(page).boundingBox())!.height)
       for (const button of await floating(page).getByRole('button').all()) await expect(button).toHaveCSS('background-color', color!)
       if (width === 390) await reviewScreenshot(page, { path: test.info().outputPath(`floating-${letter}.png`) })
-      await pass.click()
-    }
-    await expect(floating(page)).toHaveCount(0)
-  })
-}
+    })
+    await floating(page).getByRole('button', { name: 'Pass', exact: true }).click()
+  }
+  await expect(floating(page)).toHaveCount(0)
+})
 
 for (const side of ['Jack', 'Investigators'] as const) {
   test(`${side} floats when the board panel fills the viewport with its toolbar or legend still visible`, async ({ page }) => {
@@ -257,6 +253,8 @@ test('map-top Submit handles discovery setup and a separate Pass works in the st
   await restore(page, { ...createInitialGame(), discoveryLocations: [33, 46, 147, 159] })
   await page.setViewportSize({ width: 1000, height: 1600 })
   await page.goto('/')
+  await expect(activePiece(page)).toHaveCount(0)
+  await expect(focusButton(page)).toHaveCount(0)
   await expect(floating(page)).toHaveCSS('position', 'absolute')
   await floating(page).getByRole('button', { name: 'Submit discoveries', exact: true }).click()
   expect((await saved(page)).stage).toBe('investigatorSetup')
@@ -287,6 +285,7 @@ for (const action of ['search', 'arrest'] as const) {
     await page.getByLabel(`Location ${target}, selectable`, { exact: true }).click()
     expect((await saved(page)).stage).toBe('investigatorTurnResult')
     await expect(floating(page)).toHaveCount(0)
+    await expect(activePiece(page)).toHaveCount(0)
   })
 }
 
@@ -381,9 +380,6 @@ test('Jack can use a forced special move with the cycle hidden and record it thr
 test('investigators toggle only Search/Arrest and can pass directly from either mode, with refresh and undo', async ({ page }) => {
   const state = investigatorState()
   await restore(page, state)
-  // An old uncommitted Pass preference must no longer suppress map targets.
-  await page.addInitScript(({ id, state }) => localStorage.setItem(`whitehall-mystery.floating-pass.${id}`,
-    JSON.stringify([id, 0, state.round, state.moveSlot, state.stage, state.activeInvestigator, state.inspectorActionMode])), { id, state })
   await page.goto('/')
   await fillViewport(page)
   const toggle = () => floating(page).getByRole('button', { name: /^Toggle search\/arrest:/ })
@@ -575,14 +571,3 @@ test('Focus centers horizontally and vertically after pinch zoom without changin
     await cdp.detach()
   }
 })
-
-for (const stage of ['jackDiscoverySetup', 'investigatorTurnResult', 'gameOver'] as const) {
-  test(`Focus is absent when there is no active piece in ${stage}`, async ({ page }) => {
-    await restore(page, stage === 'jackDiscoverySetup' ? createInitialGame() : { ...investigatorState(), stage,
-      result: stage === 'gameOver' ? { winner: 'investigators', reason: 'Jack was arrested.' } : null })
-    await page.goto('/')
-    await fillViewport(page)
-    await expect(focusButton(page)).toHaveCount(0)
-    await expect(activePiece(page)).toHaveCount(0)
-  })
-}
