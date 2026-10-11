@@ -19,6 +19,86 @@ function post(request: APIRequestContext, origin: string, session: OnlineSession
   })
 }
 
+for (const role of ['jack', 'investigators'] as const) {
+  test(`online same-side links: ${role} resumes on a fresh device with the existing game`, async ({ page: jack, browser, request }) => {
+    const opponentContext = await browser.newContext()
+    const resumedContext = await browser.newContext()
+    const investigators = await opponentContext.newPage()
+    const resumed = await resumedContext.newPage()
+    for (const page of [jack, investigators, resumed]) await observeInvitationClipboard(page)
+    try {
+      await jack.goto('/')
+      await jack.getByRole('button', { name: 'New game', exact: true }).click()
+      await jack.getByRole('button', { name: 'Online', exact: true }).click()
+      await jack.getByRole('button', { name: 'Start new game as Jack', exact: true }).click()
+      await investigators.goto(await jack.getByLabel('Online investigator invitation').inputValue())
+      await jack.getByRole('button', { name: 'Rand Side', exact: true }).click()
+      await expect(investigators.getByRole('heading', { name: 'Deploy the Yellow Investigator' })).toBeVisible()
+
+      const original = role === 'jack' ? jack : investigators
+      const summary = original.getByText(`Resume as ${role === 'jack' ? 'Jack' : 'Investigators'} on another device`, { exact: true })
+      const linkBox = original.getByLabel('Online same-side resume link')
+      await expect(summary).toBeVisible()
+      await expect(linkBox).toBeHidden()
+      await summary.click()
+      const link = await linkBox.inputValue()
+      await original.getByRole('button', { name: 'Copy same-side link', exact: true }).click()
+      expect(await original.evaluate(() => navigator.clipboard.readText())).toBe(link)
+      await expect(original.getByRole('status').filter({ hasText: 'Same-side link copied.' })).toBeVisible()
+      if (role === 'investigators') {
+        await original.evaluate(() => {
+          navigator.clipboard.writeText = async () => { throw new DOMException('Clipboard blocked', 'NotAllowedError') }
+        })
+        await original.getByRole('button', { name: 'Copy same-side link', exact: true }).click()
+        await expect(original.getByRole('status').filter({ hasText: 'Select and copy the same-side link.' })).toBeVisible()
+        await expect(linkBox).toHaveValue(link)
+      }
+      await original.setViewportSize({ width: 390, height: 844 })
+      expect(await original.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await original.reload()
+      await expect(linkBox).toBeVisible()
+      await expect(linkBox).toHaveValue(link)
+      await summary.click()
+      await expect.poll(() => original.evaluate(() => localStorage.getItem('whitehall-mystery.online.resume-open'))).toBe('false')
+      await original.reload()
+      await expect(summary).toBeVisible()
+      await expect(linkBox).toBeHidden()
+
+      const session = await sessionFor(original)
+      const origin = new URL(original.url()).origin
+      const before = await (await post(request, origin, session, { type: 'status' })).json()
+      await resumed.goto(link)
+      await expect(resumed.getByLabel('Online game')).toContainText(`Online · ${role === 'jack' ? 'Jack' : 'Investigators'}`)
+      await expect(resumed.getByLabel('Online game')).toContainText('Connected')
+      await expect(original.getByLabel('Online game')).toContainText('This role connected on another tab or device.')
+      const resumedSession = await sessionFor(resumed)
+      expect(resumedSession).toMatchObject({ role: session.role, token: session.token, roomId: session.roomId })
+      expect(resumedSession.opponentInvitation).toBeUndefined()
+      const after = await (await post(request, origin, resumedSession, { type: 'status' })).json()
+      expect(after.snapshot).toEqual(before.snapshot)
+      expect(after.seats).toEqual(before.seats)
+
+      if (role === 'jack') {
+        await investigators.getByRole('button', { name: 'Rand Side', exact: true }).click()
+        await expect(resumed.getByRole('heading', { name: 'Jack: Choose the Starting Location' })).toBeVisible()
+        await resumed.getByRole('button', { name: 'Rand Side', exact: true }).click()
+        await expect(investigators.getByRole('heading', { name: 'Yellow Investigator: Move', exact: true })).toBeVisible()
+      } else {
+        await resumed.getByLabel('Available deployment crossings').getByRole('button').first().click()
+        await expect(resumed.getByRole('heading', { name: 'Deploy the Blue Investigator' })).toBeVisible()
+      }
+      await expect.poll(async () => (await (await post(request, origin, resumedSession, { type: 'status' })).json()).snapshot.revision).toBeGreaterThan(before.snapshot.revision)
+      // The transferred side remains saved on the new device after a refresh.
+      await resumed.reload()
+      await expect(resumed.getByLabel('Online game')).toContainText('Connected')
+      expect(await sessionFor(resumed)).toMatchObject({ token: session.token, roomId: session.roomId, role })
+    } finally {
+      await opponentContext.close()
+      await resumedContext.close()
+    }
+  })
+}
+
 for (const chosenRole of ['jack', 'investigators'] as const) {
   test(`online invitations: opponent chooses ${chosenRole} and the creator takes the other side`, async ({ page: creator, browser, request }, testInfo) => {
     const invitedContext = await browser.newContext()
@@ -30,17 +110,28 @@ for (const chosenRole of ['jack', 'investigators'] as const) {
       await creator.getByRole('button', { name: 'Online', exact: true }).click()
       const start = creator.getByRole('button', { name: 'Let opponent choose their side', exact: true })
       await expect(start).toHaveAttribute('title', /opponent chooses Jack or Investigators/)
+      const name = `Sunday game — ${chosenRole}`
+      await creator.getByRole('textbox', { name: 'Game name (optional)' }).fill(name)
       await start.click()
       await expect(creator.getByRole('heading', { name: 'Waiting for opponent to choose a side' })).toBeVisible()
       const invitation = await creator.getByLabel('Online side-choice invitation').inputValue()
       await expect.poll(() => creator.evaluate(() => navigator.clipboard.readText())).toBe(invitation)
       const pendingCreator = await sessionFor(creator)
       const origin = new URL(creator.url()).origin
+      const game = await (await post(request, origin, pendingCreator, { type: 'status' })).json()
+      const createdAt = new Date(game.createdAt).toISOString()
+      const creationTime = (page: Page) => page.getByLabel('Game creation time', { exact: true })
+      await expect(creator.getByRole('heading', { name, exact: true })).toBeVisible()
+      await expect(creationTime(creator)).toHaveAttribute('datetime', createdAt)
+      await expect(creationTime(creator)).toHaveText(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} .+/)
       expect(invitation).not.toContain(pendingCreator.token)
       expect(await (await post(request, origin, pendingCreator, { type: 'side-choice' })).json()).toEqual({ pending: true })
       expect((await post(request, origin, pendingCreator, { type: 'side-choice', role: chosenRole })).status()).toBe(403)
       await creator.reload()
       await expect(creator.getByLabel('Online side-choice invitation')).toHaveValue(invitation)
+      await expect(creator.getByRole('heading', { name, exact: true })).toBeVisible()
+      await expect(creationTime(creator)).toHaveAttribute('datetime', createdAt)
+      await reviewScreenshot(creator.getByRole('main'), { path: testInfo.outputPath('waiting-for-side.png') })
       await creator.getByRole('button', { name: 'Resume game', exact: true }).click()
       await expect(creator.getByText('Waiting for opponent to choose a side (last known)', { exact: true })).toBeVisible()
       await creator.getByRole('button', { name: 'Cancel', exact: true }).click()
@@ -48,8 +139,13 @@ for (const chosenRole of ['jack', 'investigators'] as const) {
       await invited.goto(invitation)
       await expect(invited.getByRole('heading', { name: 'Choose your side' })).toBeVisible()
       await expect(invited.getByRole('button', { name: 'Play as Jack', exact: true })).toBeEnabled()
+      await expect(invited.getByRole('heading', { name, exact: true })).toBeVisible()
+      await expect(creationTime(invited)).toHaveAttribute('datetime', createdAt)
+      await expect(creationTime(invited)).toHaveText(await creationTime(creator).innerText())
       await invited.reload()
       await expect(invited.getByRole('heading', { name: 'Choose your side' })).toBeVisible()
+      await expect(invited.getByRole('heading', { name, exact: true })).toBeVisible()
+      await expect(creationTime(invited)).toHaveAttribute('datetime', createdAt)
       await invited.setViewportSize({ width: 390, height: 844 })
       expect(await invited.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       await reviewScreenshot(invited.getByRole('main'), { path: testInfo.outputPath('choose-side.png') })

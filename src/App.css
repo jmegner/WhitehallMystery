@@ -241,6 +241,24 @@ button:disabled {
   background: #9d8262;
 }
 
+.replay-controls {
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid #b8a889;
+  border-radius: 8px;
+  background: #f5eddf;
+  color: var(--ink);
+}
+
+.replay-controls .button-row { flex-wrap: wrap; margin-top: 8px; }
+
+.replay-move-line { stroke-width: 1.5; stroke-linecap: round; pointer-events: none; }
+.investigator-ghost { filter: grayscale(.5) brightness(.7); pointer-events: none; }
+.investigator-ghost circle { fill: var(--investigator-background); stroke: white; stroke-width: 2; }
+.investigator-ghost text { fill: var(--investigator-foreground); font-size: 12px; font-weight: bold; }
+.replay-start-outline { fill: none; stroke-width: 3; pointer-events: none; }
+.replay-board .investigator-piece { animation: none; filter: none; }
+
 .board-toolbar {
   min-height: 42px;
   display: flex;
@@ -286,7 +304,8 @@ button:disabled {
   gap: 3px;
 }
 
-.history-controls button {
+.history-controls button,
+.start-replay-button {
   min-width: 50px;
   padding-inline: 7px;
   white-space: nowrap;

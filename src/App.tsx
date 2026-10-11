@@ -37,6 +37,8 @@ import { automaticInvestigatorActions } from './game/investigatorAuto'
 import { aiHistoryReducer, needsAiEndConfirmation } from './game/aiSession'
 import PublicHuntLog from './PublicHuntLog'
 import FloatingMapControls from './FloatingMapControls'
+import ReplayControls from './ReplayControls'
+import { gameReplayTurns, loadReplayPosition, saveReplayPosition, type ReplayTurn } from './game/replay'
 import { indicatorTextAttributes } from './indicatorLayout'
 import { useShiftHeld } from './useShiftHeld'
 import { useControlHeld } from './useControlHeld'
@@ -230,6 +232,7 @@ const titleForStage = (state: GameState) => {
 
 interface BoardProps {
   state: GameState
+  replayTurn?: ReplayTurn
   suppressTurnIndicators: boolean
   legalCircleIds: Set<number>
   coachReachableCircleIds: Set<number>
@@ -286,6 +289,7 @@ function BoardEdgeArrows({
 
 function GameBoard({
   state,
+  replayTurn,
   suppressTurnIndicators,
   legalCircleIds,
   coachReachableCircleIds,
@@ -345,9 +349,9 @@ function GameBoard({
     : hoveredJack && canPreviewJackDistances
       ? jackHoverTurnLabels
       : routePreview.turnLabels
-  const showJack = isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
+  const showJack = !!replayTurn || isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
   const selectedJackDestinations = new Set(showJack ? state.jackMoveSelection.path : [])
-  const activeInvestigatorStartId = !suppressTurnIndicators && isInspectorInteraction(state.stage)
+  const activeInvestigatorStartId = !replayTurn && !suppressTurnIndicators && isInspectorInteraction(state.stage)
     ? state.investigatorPositions[activeInvestigatorColor(state)]
     : undefined
   const investigatorOneTurnCrossings = activeInvestigatorStartId
@@ -364,7 +368,7 @@ function GameBoard({
       .filter((id) => id !== activeInvestigatorStartId),
   )
   const privateSelections =
-    isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
+    replayTurn || isPrivateJackView(state.stage) || state.stage === 'gameOver' || peekAtJack
       ? new Set(state.discoveryLocations)
       : new Set<number>()
   const route =
@@ -374,13 +378,13 @@ function GameBoard({
           .filter((circle) => circle !== undefined)
       : []
   const plannedRouteSegments = trimmedRouteSegments(route)
-  const activeInvestigator = !suppressTurnIndicators && isInspectorInteraction(state.stage)
+  const activeInvestigator = !replayTurn && !suppressTurnIndicators && isInspectorInteraction(state.stage)
     ? crossingsById.get(state.investigatorPositions[activeInvestigatorColor(state)] ?? '')
     : undefined
-  const privateJackLocation = (isPrivateJackView(state.stage) || peekAtJack) && state.currentJack !== null
+  const privateJackLocation = (replayTurn || isPrivateJackView(state.stage) || peekAtJack) && state.currentJack !== null
     ? circlesById.get(state.currentJack)
     : undefined
-  const pastPaths = ((showPastPath && isPrivateJackView(state.stage)) || peekAtJack
+  const pastPaths = (replayTurn || (showPastPath && isPrivateJackView(state.stage)) || peekAtJack
     ? [{ round: state.round, locations: state.roundTrail }]
     : showPastPath && state.stage === 'gameOver' ? pastRoundPaths : []).map(({ round, locations }) => ({
       round, circles: locations.map(id => circlesById.get(id)).filter(circle => circle !== undefined),
@@ -436,6 +440,7 @@ function GameBoard({
     investigatorRoutePreview.turnLabels.size > 0 || hoveredInvestigatorTurnLabels.size > 0
   const positiveWorstCounts = [...worstCrossingEliminations].filter(([, count]) => count > 0)
   const occupiedCrossingIds = new Set(Object.values(state.investigatorPositions))
+  const replayStartCrossingIds = new Set(replayTurn?.side === 'investigators' ? Object.values(replayTurn.startPositions) : [])
   const rankedWorstCounts = positiveWorstCounts.map(([, count]) => count).sort((a, b) => b - a)
   const highlightedWorstMinimum = rankedWorstCounts[Math.min(2, rankedWorstCounts.length - 1)] ?? Infinity
   const hoveredInvestigatorColor = hoveredInvestigatorStart ? 'yellow' : hoveredInvestigator
@@ -527,7 +532,7 @@ function GameBoard({
   return (
     <svg
       ref={board}
-      className={`game-board${showInvestigatorKnowledge ? ' investigator-knowledge-preview' : ''}`}
+      className={`game-board${replayTurn ? ' replay-board' : ''}${showInvestigatorKnowledge ? ' investigator-knowledge-preview' : ''}`}
       viewBox={`${BOARD_VIEWPORT.x} ${BOARD_VIEWPORT.y} ${BOARD_VIEWPORT.width} ${BOARD_VIEWPORT.height}`}
       role="img"
       aria-label="Whitehall game board"
@@ -901,10 +906,44 @@ function GameBoard({
         )
       })}
 
+      {replayTurn?.side === 'investigators' && INVESTIGATOR_ORDER.map(color => {
+        const startId = replayTurn.startPositions[color]
+        const endId = state.investigatorPositions[color]
+        const start = startId ? crossingsById.get(startId) : undefined
+        const end = endId ? crossingsById.get(endId) : undefined
+        if (!start || !end || startId === endId) return null
+        const occupied = INVESTIGATOR_ORDER.some(ending => state.investigatorPositions[ending] === startId)
+        // Leave the starting piece or occupied-start outline clear, including the line's rounded cap.
+        const clearance = INVESTIGATOR_PIECE_RADIUS + (occupied ? 5 : 0) + 3
+        const dx = end.x - start.x
+        const dy = end.y - start.y
+        const distance = Math.hypot(dx, dy)
+        if (distance <= clearance) return null
+        return <line key={`replay-move-${color}`} className="replay-move-line"
+          x1={start.x + dx * clearance / distance} y1={start.y + dy * clearance / distance}
+          x2={end.x} y2={end.y} stroke={INVESTIGATOR_COLORS[color]}
+          aria-label={`${displayColor(color)} Investigator moved from crossing ${startId} to ${endId}`} />
+      })}
+
+      {replayTurn?.side === 'investigators' && INVESTIGATOR_ORDER.map(color => {
+        const start = replayTurn.startPositions[color]
+        const crossing = start ? crossingsById.get(start) : undefined
+        if (!crossing) return null
+        const occupied = INVESTIGATOR_ORDER.some(ending => state.investigatorPositions[ending] === start)
+        return occupied ? <circle key={`replay-start-${color}`} className="replay-start-outline"
+          cx={crossing.x} cy={crossing.y} r={INVESTIGATOR_PIECE_RADIUS + 5} stroke={INVESTIGATOR_COLORS[color]}
+          data-starting-color={color} aria-label={`${displayColor(color)} Investigator started at crossing ${start}`} /> :
+          <g key={`replay-start-${color}`} className="investigator-ghost" style={investigatorPieceStyle(color)}
+            data-starting-color={color} aria-label={`${displayColor(color)} Investigator started at crossing ${start}`}>
+            <circle cx={crossing.x} cy={crossing.y} r={INVESTIGATOR_PIECE_RADIUS} />
+            <text x={crossing.x} y={crossing.y + 4} textAnchor="middle">{color[0]?.toUpperCase()}</text>
+          </g>
+      })}
+
       {INVESTIGATOR_ORDER.map((color) => {
         const crossingId = state.investigatorPositions[color]
         const crossing = crossingId ? crossingsById.get(crossingId) : undefined
-        const active = !suppressTurnIndicators && isInspectorInteraction(state.stage) && activeInvestigatorColor(state) === color
+        const active = !replayTurn && !suppressTurnIndicators && isInspectorInteraction(state.stage) && activeInvestigatorColor(state) === color
         const selectable = crossing ? legalCrossingIds.has(crossing.id) : false
         return crossing ? (
           <g
@@ -1031,12 +1070,16 @@ function GameBoard({
           if (!crossing) return null
           const width = Math.max(12, String(count).length * 7 + 2)
           const height = 12
+          const occupied = occupiedCrossingIds.has(id)
+          // Clear replay starts completely; live ending pieces keep their slight overlap.
+          const offset = replayStartCrossingIds.has(id)
+            ? INVESTIGATOR_PIECE_RADIUS + (occupied ? 5 : 0) + height / 2 + 4
+            : occupied ? INVESTIGATOR_PIECE_RADIUS + height / 2 - 2 : 0
           return (
             <g
               key={`crossing-worst-${id}`}
               className={`crossing-worst-indicator${count >= highlightedWorstMinimum ? ' highlighted' : ''}`}
-              // Leave two board pixels of overlap with the top of the piece.
-              transform={occupiedCrossingIds.has(id) ? `translate(0 -${INVESTIGATOR_PIECE_RADIUS + height / 2 - 2})` : undefined}
+              transform={offset ? `translate(0 -${offset})` : undefined}
               aria-label={`Crossing ${id}: at least ${count} possible locations eliminated${nextTurn ? ' after Jack’s next Street move' : ''} by searching in the best order`}
             >
               <rect className="crossing-worst-background" x={crossing.x - width / 2} y={crossing.y - height / 2} width={width} height={height} />
@@ -1052,7 +1095,7 @@ function GameBoard({
           crossings.map((crossing) => {
             const hasWorst = (worstCrossingEliminations.get(crossing.id) ?? 0) > 0
             const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingId',
-              alternateIndicatorAngle || (hasWorst && occupiedCrossingIds.has(crossing.id)), hasWorst)
+              alternateIndicatorAngle || (hasWorst && (occupiedCrossingIds.has(crossing.id) || replayStartCrossingIds.has(crossing.id))), hasWorst)
             return (
               <text
                 key={`crossing-label-${crossing.id}`}
@@ -1545,15 +1588,24 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const [localHistory, setHistory] = useState(initializeHistory)
   const remote = mail ?? online ?? (ai ? { ...ai, turnStart: 0 } : undefined)
   const history = remote?.history ?? local?.history ?? localHistory
+  const [replayPosition, setReplayPosition] = useState(() => loadReplayPosition(browserStorage(), gameId))
+  const finished = currentHistoryState(history).stage === 'gameOver'
+  const replayTurns = finished ? gameReplayTurns(history) : []
+  const replayIndex = replayPosition === null ? null : Math.min(replayPosition, replayTurns.length - 1)
+  const replayTurn = replayIndex === null ? undefined : replayTurns[replayIndex]
+  const changeReplay = (index: number | null) => {
+    setReplayPosition(index)
+    saveReplayPosition(browserStorage(), gameId, index)
+  }
   const [peekPreference, setShowJackPeek] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, JACK_PEEK_STORAGE_KEY) : false
   })
   const canPeek = !remote || ai?.role === 'investigators'
-  const showJackPeek = canPeek && peekPreference
-  const gameState = ai
+  const showJackPeek = !!replayTurn || (canPeek && peekPreference)
+  const gameState = replayTurn?.state ?? (ai
     ? showJackPeek ? remoteBoardState(history, ai.role) : onlineBoardState(history, ai.role)
-    : online ? onlineBoardState(history, online.role) : mail ? mailBoardState(history, mail.role) : currentHistoryState(history)
+    : online ? onlineBoardState(history, online.role) : mail ? mailBoardState(history, mail.role) : currentHistoryState(history))
   const validJackTypes = gameState.stage === 'jackMove' ? MOVE_TYPES.filter(type =>
     legalJackDestinations({ ...gameState, jackMoveSelection: { type, path: [] } }).length > 0) : []
   // With no type selector for a forced move, show its destinations immediately.
@@ -1562,7 +1614,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const onlyJackType = validJackTypes.length === 1 ? validJackTypes[0] : undefined
   const state: GameState = onlyJackType && onlyJackType !== gameState.jackMoveSelection.type
     ? { ...gameState, jackMoveSelection: { type: onlyJackType, path: [] } } : gameState
-  const waitingForJack = !!online && online.role === 'investigators' && playerViewForState(currentHistoryState(history)) === 'jack'
+  const waitingForJack = !replayTurn && !!online && online.role === 'investigators' && playerViewForState(currentHistoryState(history)) === 'jack'
   const recap = state.stage === 'gameOver' ? gameRecap(history) : []
   const [showPossible, setShowPossible] = useState(() => {
     const storage = browserStorage()
@@ -1625,7 +1677,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     commands: Parameters<typeof gameHistoryReducer>[1][],
     runInvestigatorAuto: InvestigatorAutoMode = 'off',
   ) => {
-    if (online?.waiting) return
+    if (replayTurn || online?.waiting) return
     const first = commands[0]
     if (state.stage === 'jackMove' && first?.type === 'apply' &&
       (first.action.type === 'selectJackDestination' || first.action.type === 'confirmJackMove') &&
@@ -1691,7 +1743,10 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     applyHistoryCommands([command])
   }
   const dispatch = (action: GameAction) => {
-    if (action.type === 'newGame' && onNewGame) { onNewGame(); return }
+    if (action.type === 'newGame') {
+      changeReplay(null)
+      if (onNewGame) { onNewGame(); return }
+    }
     applyHistoryCommands([{ type: 'apply', action }], investigatorAuto)
   }
   const handleUndo = () => {
@@ -1757,7 +1812,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     if (commands.length > 0) applyHistoryCommands(commands)
   }
   const handleRevealUndo = () => applyHistoryCommand({ type: 'revealUndo' })
-  if (history.pendingReveal || isHandoff(state.stage)) {
+  if (!replayTurn && (history.pendingReveal || isHandoff(state.stage))) {
     return (
       <>
       {!remote && <nav className="game-navigation" aria-label="Saved games">
@@ -1812,7 +1867,11 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     possibleOutcomes = possibleJackSearchOutcomes(state.publicRound, effectiveNextTurn ? state.investigatorPositions : undefined)
   } else if (showInvestigatorKnowledge && state.stage === 'jackMove') {
     const { yellow, blue, red } = state.investigatorPositions
-    if (yellow && blue && red) {
+    if (replayTurn) {
+      // This move is already recorded. Show the knowledge at its result,
+      // rather than adding another hypothetical move as live planning does.
+      possibleOutcomes = possibleJackSearchOutcomes(state.publicRound)
+    } else if (yellow && blue && red) {
       possibleOutcomes = possibleJackSearchOutcomesAfterMove(
         state.publicRound,
         state.jackMoveSelection.type,
@@ -1828,9 +1887,10 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const showPossibilityMarkers =
     (showPossible && isInspectorInteraction(state.stage)) ||
     (showInvestigatorKnowledge && state.stage === 'jackMove')
-  if (remote?.waiting) { legalCircleIds.clear(); legalCrossingIds.clear(); coachReachableCircleIds.clear() }
+  if (remote?.waiting && !replayTurn) { legalCircleIds.clear(); legalCrossingIds.clear(); coachReachableCircleIds.clear() }
+  if (replayTurn) { legalCircleIds.clear(); legalCrossingIds.clear() }
   const handleCircle = (circleId: number) => {
-    if (remote?.waiting) return
+    if (replayTurn || remote?.waiting) return
     if (state.stage === 'jackDiscoverySetup') dispatch({ type: 'toggleDiscovery', circleId })
     else if (state.stage === 'jackChooseStart') dispatch({ type: 'chooseJackStart', circleId })
     else if (state.stage === 'jackMove') dispatch({ type: 'selectJackDestination', circleId })
@@ -1841,7 +1901,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     }
   }
   const handleCircleMiddleClick = (circleId: number) => {
-    if (remote?.waiting) return
+    if (replayTurn || remote?.waiting) return
     if (state.stage === 'jackDiscoverySetup') {
       if (circlesById.get(circleId)?.color !== 'white') return
       const commands: HistoryCommand[] = []
@@ -1875,7 +1935,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     }
   }
   const handleCrossing = (crossingId: string) => {
-    if (remote?.waiting) return
+    if (replayTurn || remote?.waiting) return
     if (state.stage === 'investigatorSetup') dispatch({ type: 'placeInvestigator', crossingId })
     else if (state.stage === 'investigatorMove') dispatch({ type: 'moveInvestigator', crossingId })
   }
@@ -1916,13 +1976,14 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
         </div>
       </header>
 
-      <MoveTrack state={state} showJackPeek={showJackPeek} mode={mail ? 'ByMail' : online ? 'Online' : ai ? 'vs AI' : 'SameDevice'} />
+      <MoveTrack state={state} showJackPeek={!!replayTurn || showJackPeek} mode={replayTurn ? 'Replay' : mail ? 'ByMail' : online ? 'Online' : ai ? 'vs AI' : 'SameDevice'} />
 
       <main className="game-layout">
         <section ref={setBoardPanel} className="board-panel">
+          {replayTurn && replayIndex !== null && <ReplayControls turns={replayTurns} index={replayIndex} onChange={changeReplay} />}
           <div className="board-toolbar">
             <div className="board-options">
-              <HistoryControls
+              {!replayTurn && <HistoryControls
                 mailControls={remote ? {
                   canUndo: !online?.waiting && history.cursor > remote.turnStart,
                   canRequestUndo: online?.requestUndo?.canRequest,
@@ -1936,7 +1997,8 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 onRedoAll={handleRedoAll}
                 onRand={handleRand}
                 onRandSide={handleRandSide}
-              />
+              />}
+              {finished && !replayTurn && <button type="button" className="start-replay-button" title="Replay this finished game one side’s turn at a time" onClick={() => changeReplay(0)}>Start replay</button>}
               <label className="crossing-toggle" title="show crossing ids">
                 <input
                   type="checkbox"
@@ -1967,10 +2029,11 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 alt
               </label>
               {(isPrivateJackView(state.stage) || state.stage === 'gameOver') && (
-                <label className="past-path-toggle" title={state.stage === 'gameOver' ? "show Jack's taken path for the selected round" : "show Jack's taken path for this round"}>
+                <label className="past-path-toggle" title={replayTurn ? "Jack's past is always shown during replay" : state.stage === 'gameOver' ? "show Jack's taken path for the selected round" : "show Jack's taken path for this round"}>
                   <input
                     type="checkbox"
-                    checked={showPastPath}
+                    checked={!!replayTurn || showPastPath}
+                    disabled={!!replayTurn}
                     onChange={(event) => {
                       const checked = event.target.checked
                       setShowPastPath(checked)
@@ -2031,7 +2094,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               {state.stage === 'jackMove' && (
                 <label
                   className="investigator-knowledge-toggle"
-                  title="show what investigators know for your possible locations (more precisely, locations that are worth searching/arresting)"
+                  title={replayTurn ? "show what investigators know at the end of this turn" : "show what investigators know for your possible locations (more precisely, locations that are worth searching/arresting)"}
                 >
                   <input
                     type="checkbox"
@@ -2102,7 +2165,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                   {showPossible && <strong>{possibleIds.size}</strong>}
                 </label>
               )}
-              {canPeek && isInspectorInteraction(state.stage) && (
+              {!replayTurn && canPeek && isInspectorInteraction(state.stage) && (
                 <label className="jack-peek-toggle" title="peek at Jack's current location and path this round">
                   <input
                     type="checkbox"
@@ -2136,6 +2199,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                   showPossibilityMarkers,
                 ]) : undefined}
                 state={state}
+                replayTurn={replayTurn}
                 suppressTurnIndicators={waitingForJack}
                 legalCircleIds={legalCircleIds}
                 coachReachableCircleIds={coachReachableCircleIds}
@@ -2156,25 +2220,26 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 onCircleMiddleClick={handleCircleMiddleClick}
                 onCrossing={handleCrossing}
                 onMapClick={() => {
-                  if (!online && !remote?.waiting && isInvestigatorReview(state)) {
+                  if (!replayTurn && !online && !remote?.waiting && isInvestigatorReview(state)) {
                     dispatch({ type: 'continueHandoff' })
                   }
                 }}
               />
             </div>
-            <FloatingMapControls panel={boardPanel} state={state} dispatch={dispatch} waiting={!!remote?.waiting && !ai?.awaitingEnd}
+            <FloatingMapControls panel={boardPanel} state={state} dispatch={dispatch} waiting={!!replayTurn || (!!remote?.waiting && !ai?.awaitingEnd)}
               endTurnLabel={ai?.awaitingEnd ? 'End turn' : online && isInvestigatorReview(state)
                 ? state.stage === 'investigatorSetupResult' ? 'Confirm deployment' : 'End investigator turn' : undefined} />
-            {showInvestigatorTurnAnnouncement && (
+            {!replayTurn && showInvestigatorTurnAnnouncement && (
               <div className="investigator-turn-announcement" role="status" aria-live="assertive">
                 Investigators’ Turn
               </div>
             )}
-            {!online && !remote?.waiting && isInvestigatorReview(state) && (
+            {!replayTurn && !online && !remote?.waiting && isInvestigatorReview(state) && (
               <div className="map-continue-prompt">Results shown · Click anywhere on the map to continue</div>
             )}
           </div>
           <div className="board-legend" aria-label="Board marker legend">
+            {replayTurn?.side === 'investigators' && <span>Starting markers show previous locations; colored outlines mark occupied starts.</span>}
             <span>
               <i className="legend-dot discovery" /> Discovery
             </span>
@@ -2210,11 +2275,11 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               Round {state.round} · Move {state.moveSlot}
             </span>
             <div className="control-panel-toggles">
-              {ai && <label className="wait-end-toggle" title="Confirm the end of your turn before the AI acts">
+              {!replayTurn && ai && <label className="wait-end-toggle" title="Confirm the end of your turn before the AI acts">
                 <input type="checkbox" checked={ai.waitEnd} onChange={event => ai.onWaitEndChange(event.target.checked)} />
                 WaitEnd
               </label>}
-              {isInspectorInteraction(state.stage) && (
+              {!replayTurn && isInspectorInteraction(state.stage) && (
                 <label className="investigator-auto-toggle">
                   InvAuto
                   <select
@@ -2236,21 +2301,21 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               )}
             </div>
           </div>
-          <h2>{ai?.awaitingEnd ? 'Review your turn' : remote?.waiting ? ai ? ai.paused ? 'AI turn paused' : 'AI turn' : online?.waitingMessage ?? 'Waiting for your partner' : titleForStage(state)}</h2>
+          <h2>{replayTurn ? `${replayTurn.side === 'jack' ? 'Jack' : 'Investigators'} turn result` : ai?.awaitingEnd ? 'Review your turn' : remote?.waiting ? ai ? ai.paused ? 'AI turn paused' : 'AI turn' : online?.waitingMessage ?? 'Waiting for your partner' : titleForStage(state)}</h2>
           <div className="notice" role="status">
-            {ai?.awaitingEnd ? 'Review your actions or use Undo to make changes, then end your turn for the AI to play.' : ai?.waiting ? ai.paused ? 'Use Undo or Redo to review the game, or resume the AI from here.' : 'Your opponent is thinking. Your progress is saved.' : state.notice}
+            {replayTurn ? state.result?.reason ?? 'Viewing the recorded result of this side’s turn.' : ai?.awaitingEnd ? 'Review your actions or use Undo to make changes, then end your turn for the AI to play.' : ai?.waiting ? ai.paused ? 'Use Undo or Redo to review the game, or resume the AI from here.' : 'Your opponent is thinking. Your progress is saved.' : state.notice}
           </div>
           <DiscoveryChecklist state={state} />
-          {ai?.awaitingEnd && <button className="primary-button" type="button" onClick={() => dispatch({ type: 'continueHandoff' })}>
+          {!replayTurn && ai?.awaitingEnd && <button className="primary-button" type="button" onClick={() => dispatch({ type: 'continueHandoff' })}>
             End turn
           </button>}
-          {online && !online.waiting && isInvestigatorReview(state) && <>
+          {!replayTurn && online && !online.waiting && isInvestigatorReview(state) && <>
             <p>Review the investigators’ {state.stage === 'investigatorSetupResult' ? 'starting positions' : 'moves and actions'}. You can still undo before handing the turn to Jack.</p>
             <button className="primary-button" type="button" onClick={() => dispatch({ type: 'continueHandoff' })}>
               {state.stage === 'investigatorSetupResult' ? 'Confirm deployment' : 'End investigator turn'}
             </button>
           </>}
-          {!remote?.waiting && <GameControls
+          {!replayTurn && !remote?.waiting && <GameControls
             state={state}
             dispatch={dispatch}
             onUndoRoute={handleUndoRoute}

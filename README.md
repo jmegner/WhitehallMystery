@@ -8,6 +8,14 @@ next-turn perspective hides old scores until the new results arrive; returning
 to an already calculated perspective restores its cached scores immediately.
 The calculations still use exact public-evidence deduction.
 
+Finished games offer **Start replay**. Step through the results of each side’s
+turn or jump between rounds, with Jack and his trail always visible. The usual
+information checkboxes are available for the side being viewed. Muted, opaque
+investigator pieces mark their starting positions; when a starting crossing is occupied at
+the end of the turn, an outline in the starting piece’s color surrounds the ending
+piece instead. Replay keeps the completed game unchanged and remembers your
+viewing position when you refresh.
+
 ## Testing
 
 Run `npm run lint`, `npm run build`, and `npm run test` for the full checks.

@@ -2,6 +2,7 @@ import { useState, useSyncExternalStore } from 'react'
 import App from './App'
 import AiGame from './AiGame'
 import PublicHuntLog from './PublicHuntLog'
+import { saveReplayPosition } from './game/replay'
 import { MailQrShare, MailQrReader } from './MailQr'
 import { acceptMail, decodeMail, encodeMail, mailTimestamp, mailUrl, otherPlayer, isMailBoundary, mailTurns, mailTurnTimestamp, reviewMailCorrection, mailHistoryReducer, normalizeMailHistory } from './game/byMail'
 import { SECRET_INFO_UNDO_WARNING, undoIncludesSecretInfo } from './game/undoWarning'
@@ -249,7 +250,8 @@ function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame, onStartOn
     <p role="status">{feedback}</p>
   </main>
   if (onlineSession?.sideChoice && game) return <OnlineSideChoice
-    session={onlineSession} invitationCopyStatus={invitationCopyStatus}
+    session={onlineSession} name={game.name} createdAt={game.startedAt} invitationCopyStatus={invitationCopyStatus}
+    onProgress={status => library.updateOnline(game.id, status.history, status.createdAt, status.seats, status.snapshot.revision, status.name)}
     onResolved={session => library.resolveOnlineSide(game.id, session)}
     onNewGame={openMenu} onResumeGame={openResume} onLeaveNewGame={onLeaveNewGame}
   />
@@ -344,6 +346,10 @@ function GameWorkspace({ game, library, menu, setMenu, onLeaveNewGame, onStartOn
     </section>
     {sharingVisible ? <section className="mail-panel">
       <h2>{waiting ? `Waiting for ${otherPlayer(session.role) === 'jack' ? 'Jack' : 'the investigators'}` : state?.stage === 'gameOver' ? 'Game over' : 'Your turn is in progress'}</h2>
+      {state?.stage === 'gameOver' && <button type="button" title="Replay this finished game one side’s turn at a time" onClick={() => {
+        saveReplayPosition(localStorage, game?.id ?? 'local', 0)
+        setSharing(false)
+      }}>Start replay</button>}
       <PublicHuntLog key={game?.id} gameId={game?.id ?? 'local'} state={state!} recap={state?.stage === 'gameOver' ? gameRecap(session.history) : []} />
     </section> : <App gameId={game?.id} mail={{ history: session.history, role: session.role, turnStart: session.turnStart, waiting, onChange: update }} onNewGame={openMenu} />}
   </>

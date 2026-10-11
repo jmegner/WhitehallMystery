@@ -1,11 +1,15 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import type { PlayerView } from '../game/history'
-import { onlineInviteUrl, resolveOnlineSide, type OnlineSession } from './onlineSession'
+import { mailTimestamp } from '../game/byMail'
+import { onlineInviteUrl, readOnlineGame, resolveOnlineSide, type OnlineSession } from './onlineSession'
 import type { InvitationCopyStatus } from './invitationClipboard'
 
-export default function OnlineSideChoice({ session, invitationCopyStatus, onResolved, onNewGame, onResumeGame, onLeaveNewGame }: {
+export default function OnlineSideChoice({ session, name, createdAt, invitationCopyStatus, onProgress, onResolved, onNewGame, onResumeGame, onLeaveNewGame }: {
   session: OnlineSession
+  name?: string
+  createdAt: number | null
   invitationCopyStatus?: InvitationCopyStatus
+  onProgress: (status: Awaited<ReturnType<typeof readOnlineGame>>) => void
   onResolved: (session: OnlineSession) => void
   onNewGame: () => void
   onResumeGame: () => void
@@ -17,6 +21,7 @@ export default function OnlineSideChoice({ session, invitationCopyStatus, onReso
   const [error, setError] = useState('')
   const [copyFeedback, setCopyFeedback] = useState('')
   const resolved = useEffectEvent(onResolved)
+  const progress = useEffectEvent(onProgress)
 
   // Synchronize the saved invitation with the server's one-time side assignment.
   useEffect(() => {
@@ -28,6 +33,9 @@ export default function OnlineSideChoice({ session, invitationCopyStatus, onReso
         const next = await resolveOnlineSide(session, undefined, controller.signal)
         if (controller.signal.aborted) return
         if (next) { resolved(next); return }
+        const status = await readOnlineGame(session, controller.signal)
+        if (controller.signal.aborted) return
+        progress(status)
         setError('')
       } catch (error) {
         if (controller.signal.aborted) return
@@ -64,6 +72,8 @@ export default function OnlineSideChoice({ session, invitationCopyStatus, onReso
 
   return <main className="mail-menu online-menu" aria-label="Online side choice">
     <h1>{creator ? 'Waiting for opponent to choose a side' : 'Choose your side'}</h1>
+    <h2 className="online-game-name">{name || 'Unnamed game'}</h2>
+    {createdAt !== null && <p>Created <time aria-label="Game creation time" dateTime={new Date(createdAt).toISOString()}>{mailTimestamp(createdAt / 1000)}</time></p>}
     {creator ? <>
       <p>Your opponent can choose Jack or Investigators. You will play the other side.</p>
       <label htmlFor="online-side-invitation">Online side-choice invitation</label>

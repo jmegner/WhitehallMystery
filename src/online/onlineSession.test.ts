@@ -1,7 +1,22 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { createOnlineGame, inviteOnlineRejoin, onlineInviteUrl, onlineSessionFromInvite, parseOnlineSession, resolveOnlineSide } from './onlineSession'
+import { createOnlineGame, inviteOnlineRejoin, onlineInviteUrl, onlineResumeUrl, onlineSessionFromInvite, parseOnlineSession, resolveOnlineSide } from './onlineSession'
 
 afterEach(() => vi.unstubAllGlobals())
+
+it('resumes either side using only its own credential and preserves the app path', () => {
+  for (const role of ['jack', 'investigators'] as const) {
+    const session = { apiBase: 'https://worker.invalid', roomId: 'a'.repeat(64), role, token: 'S'.repeat(43),
+      investigatorsToken: 'I'.repeat(43), opponentInvitation: { token: 'O'.repeat(43), generation: 8 } }
+    const link = onlineResumeUrl(session, 'https://game.invalid/WhitehallMystery/?old=query#mail=old')
+    expect(onlineSessionFromInvite(link, session.apiBase)).toEqual({ apiBase: session.apiBase, roomId: session.roomId, role, token: session.token })
+    const url = new URL(link)
+    expect(url.pathname).toBe('/WhitehallMystery/')
+    expect(url.search).toBe('')
+    expect([...new URLSearchParams(url.hash.slice(1)).keys()]).toEqual(['online', 'role'])
+    expect(link).not.toContain(session.investigatorsToken)
+    expect(link).not.toContain(session.opponentInvitation.token)
+  }
+})
 
 it('keeps a side-choice invitation distinct from fixed-side credentials and resolves only the assigned side', async () => {
   vi.stubGlobal('window', { setTimeout, clearTimeout })

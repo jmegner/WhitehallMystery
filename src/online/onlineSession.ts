@@ -80,6 +80,14 @@ export const onlineInviteUrl = (session: OnlineSession, location = window.locati
   return url.href
 }
 
+export const onlineResumeUrl = (session: OnlineSession, location = window.location.href): string => {
+  const url = new URL(location)
+  url.search = ''
+  // Include only this side's access, never the opponent's invitation credential.
+  url.hash = new URLSearchParams({ online: `${session.roomId}.${session.token}`, role: session.role }).toString()
+  return url.href
+}
+
 export const onlineSessionFromInvite = (input: string, apiBase = configuredOnlineApi()): OnlineSession | null => {
   if (!apiBase) return null
   let invitation = input.trim()

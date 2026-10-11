@@ -3,7 +3,7 @@ import App from '../App'
 import { mailTimestamp } from '../game/byMail'
 import { currentHistoryState, playerViewForState, type GameHistory, type HistoryCommand } from '../game/history'
 import { onlineTurnStart } from '../game/onlineProtocol'
-import { OnlineSessionHttpError, OnlineSessionStore, inviteOnlineRejoin, inviteOnlineReplacement, onlineInviteUrl, type OnlineSession } from './onlineSession'
+import { OnlineSessionHttpError, OnlineSessionStore, inviteOnlineRejoin, inviteOnlineReplacement, onlineInviteUrl, onlineResumeUrl, type OnlineSession } from './onlineSession'
 import { opponentRole, type OnlineSeats } from '../game/onlineSeats'
 import TurnAlerts from './TurnAlerts'
 import OnlineUndoPanel from './OnlineUndoPanel'
@@ -13,6 +13,7 @@ import { SECRET_INFO_UNDO_WARNING, undoIncludesSecretInfo } from '../game/undoWa
 import { loadBooleanPreference, saveBooleanPreference } from '../game/persistence'
 
 const INVITATION_OPEN_KEY = 'whitehall-mystery.online.invitation-open'
+const RESUME_OPEN_KEY = 'whitehall-mystery.online.resume-open'
 
 interface OnlineGameProps {
   session: OnlineSession
@@ -28,10 +29,14 @@ export default function OnlineGame({ session, invitationCopyStatus, onChooseNewG
   const [store] = useState(() => new OnlineSessionStore(session))
   const online = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const [copyFeedback, setCopyFeedback] = useState('')
+  const [resumeCopyFeedback, setResumeCopyFeedback] = useState('')
   const [inviting, setInviting] = useState(false)
   const [inviteRequest, setInviteRequest] = useState<{ requestId: string; generation?: number } | null>(null)
   const [invitationOpen, setInvitationOpen] = useState(() => {
     try { return loadBooleanPreference(localStorage, INVITATION_OPEN_KEY, true) } catch { return true }
+  })
+  const [resumeOpen, setResumeOpen] = useState(() => {
+    try { return loadBooleanPreference(localStorage, RESUME_OPEN_KEY, false) } catch { return false }
   })
   const automaticCopyFeedback = invitationCopyStatus === 'copying' ? 'Game created. Copying your partner’s invitation link…'
     : invitationCopyStatus === 'copied' ? `Game created. ${session.role === 'jack' ? 'Investigator' : 'Jack'} invitation copied automatically. Send it to your partner.`
@@ -63,6 +68,15 @@ export default function OnlineGame({ session, invitationCopyStatus, onChooseNewG
       setCopyFeedback(session.role === 'jack' ? 'Investigator invitation copied.' : 'Jack invitation copied.')
     } catch {
       setCopyFeedback('Copy is unavailable. Select and copy the invitation link.')
+    }
+  }
+
+  const copyResumeLink = async () => {
+    try {
+      await navigator.clipboard.writeText(onlineResumeUrl(session))
+      setResumeCopyFeedback('Same-side link copied. Open it on your other device.')
+    } catch {
+      setResumeCopyFeedback('Copy is unavailable. Select and copy the same-side link.')
     }
   }
 
@@ -151,6 +165,17 @@ export default function OnlineGame({ session, invitationCopyStatus, onChooseNewG
           {inviting ? 'Creating invitation…' : inviteRequest ? 'Retry creating invitation' : opponentLeft ? invitation ? 'Replace invitation link' : 'Create replacement invitation' : 'Create rejoin invitation'}
         </button>}
         {!invitation && !seat && <p>Creating an invitation here needs the updated multiplayer Worker.</p>}
+      </details>
+      <details open={resumeOpen} onToggle={event => {
+        const open = event.currentTarget.open
+        setResumeOpen(open)
+        try { saveBooleanPreference(localStorage, RESUME_OPEN_KEY, open) } catch { /* Storage may be unavailable. */ }
+      }}>
+        <summary title="Get a link to continue playing your side on another device">Resume as {session.role === 'jack' ? 'Jack' : 'Investigators'} on another device</summary>
+        <p>This private link gives access to your side of this game. Open it on your other device to continue playing. The previous device will disconnect.</p>
+        <textarea aria-label="Online same-side resume link" readOnly value={onlineResumeUrl(session)} rows={2} onFocus={event => event.target.select()} />
+        <button type="button" title="Copy a link to resume this game on another device as the same side" onClick={() => void copyResumeLink()}>Copy same-side link</button>
+        {resumeCopyFeedback && <p role="status">{resumeCopyFeedback}</p>}
       </details>
       <p role="status">{online.error || copyFeedback || automaticCopyFeedback}</p>
     </section>
