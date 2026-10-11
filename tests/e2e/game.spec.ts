@@ -632,6 +632,7 @@ test('Jack peek uses Street turn distances when hovering over Jack', async ({ pa
   await distantCrossing.hover()
   await expect(page.locator('.investigator-route-turn-count', { hasText: /^1a$/ }).first()).toBeVisible()
   await expect(page.locator('.investigator-route-turn-count', { hasText: /^1b$/ }).first()).toBeVisible()
+  await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath('distinct-investigator-routes.png') })
   await page.mouse.move(0, 0)
   await expect(investigatorRouteLines).toHaveCount(0)
   await expect(page.locator('.crossing-id-label')).toHaveCount(174)
@@ -757,6 +758,26 @@ test('moving to a hovered crossing clears its shortest-path indicators', async (
   await page.mouse.move(0, 0)
   await page.locator('.investigator-piece.yellow').hover()
   expect(await page.locator('.investigator-hover-turn-count').count()).toBeGreaterThan(0)
+})
+
+test('Blue route previews cannot end this turn on another investigator', async ({ page }) => {
+  const state = {
+    ...createInitialGame(), stage: 'investigatorMove', activeInvestigator: 1,
+    investigatorPositions: { yellow: 'HP', blue: 'HZ', red: 'JC' },
+  }
+  await page.addInitScript(state => {
+    localStorage.setItem('whitehall-mystery.game.v1', JSON.stringify({ version: 1, state }))
+  }, state)
+  await page.setViewportSize({ width: 1440, height: 1400 })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Blue Investigator: Move' })).toBeVisible()
+  await page.getByLabel('Crossing HR', { exact: true }).hover()
+  await expect(page.locator('.investigator-route-preview-line').first()).toBeVisible()
+  await expect(page.locator('.investigator-route-turn-count', { hasText: /1b/ }).first()).toBeVisible()
+  await expect(page.locator('.investigator-route-turn-count[aria-label^="Crossing HP:"]', { hasText: /1b/ })).toHaveCount(0)
+  await expect(page.locator('.investigator-route-preview-line[data-route-from="HX"][data-route-to="HP"]')).toHaveCount(0)
+  await reviewScreenshot(page, { path: test.info().outputPath('occupied-route-stops.png'), fullPage: true })
+  await expect(page.locator('.investigator-route-preview-line').first()).toBeVisible()
 })
 
 test('Rand enters the public investigator view without a reveal handoff', async ({ page }) => {

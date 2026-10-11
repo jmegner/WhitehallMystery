@@ -391,7 +391,17 @@ export const removeStrictCrossingSupersetRoutes = (routes: string[][]): string[]
   )
 }
 
-const investigatorTurnRoutePaths = (start: string, target: string): string[][] => {
+export const distinctInvestigatorFirstMoveRoutes = (routes: string[][]): string[][] => {
+  const destinations = new Set<string>()
+  return [...routes].sort((first, second) => first.length - second.length).filter(route => {
+    const destination = route[2]
+    if (!destination || destinations.has(destination)) return false
+    destinations.add(destination)
+    return true
+  })
+}
+
+const investigatorTurnRoutePaths = (start: string, target: string, firstMoveDestinations: Set<string>): string[][] => {
   const distancesToTarget = new Map<string, number>([[target, 0]])
   const queue = [target]
   for (let index = 0; index < queue.length; index += 1) {
@@ -416,6 +426,7 @@ const investigatorTurnRoutePaths = (start: string, target: string): string[][] =
   const collectRoutes = (remainingSteps: number) => {
     const current = route.at(-1)
     if (!current) return
+    if (route.length === 3 && !firstMoveDestinations.has(current)) return
     if (remainingSteps === 0) {
       if (current === target) routes.push([...route])
       return
@@ -432,7 +443,7 @@ const investigatorTurnRoutePaths = (start: string, target: string): string[][] =
     }
   }
   for (const routeLength of routeLengths) collectRoutes(routeLength)
-  return removeStrictCrossingSupersetRoutes(routes)
+  return distinctInvestigatorFirstMoveRoutes(removeStrictCrossingSupersetRoutes(routes))
 }
 
 export const shortestInvestigatorRoutePreview = (state: GameState, target: string): InvestigatorRoutePreview => {
@@ -444,7 +455,7 @@ export const shortestInvestigatorRoutePreview = (state: GameState, target: strin
   const segments: InvestigatorRoutePreview['segments'] = []
   const segmentKeys = new Set<string>()
   const labelSets = new Map<string, Set<string>>()
-  for (const route of investigatorTurnRoutePaths(start, target)) {
+  for (const route of investigatorTurnRoutePaths(start, target, new Set(legalInvestigatorDestinations(state)))) {
     for (let step = 0; step < route.length - 1; step += 1) {
       const from = route[step]!
       const to = route[step + 1]!
@@ -454,7 +465,7 @@ export const shortestInvestigatorRoutePreview = (state: GameState, target: strin
         segments.push({
           from,
           to,
-          throughLocationPaths: investigatorTransitions.get(from)?.get(to) ?? [],
+          throughLocationPaths: investigatorTransitions.get(from)?.get(to)?.slice(0, 1) ?? [],
         })
       }
       const arrivalStep = step + 1

@@ -11,6 +11,7 @@ import {
   investigatorStartingCrossingPreviewDestinations,
   investigatorShortestTurnLabels,
   removeStrictCrossingSupersetRoutes,
+  distinctInvestigatorFirstMoveRoutes,
   coachReachableJackDestinations,
   jackRouteTurnLabels,
   unrestrictedJackStreetTurnLabels,
@@ -200,7 +201,7 @@ describe('investigator movement previews', () => {
     expect(next.stage).toBe('investigatorMove')
   })
 
-  test('shows every shortest route to a crossing beyond one turn with labels beginning at 1a', () => {
+  test('shows representative shortest routes to a crossing beyond one turn with labels beginning at 1a', () => {
     const start = 'HJ'
     const state: GameState = {
       ...createInitialGame(),
@@ -219,7 +220,7 @@ describe('investigator movement previews', () => {
     expect([...preview.turnLabels.values()].some((label) => label.split(',').includes('1b'))).toBe(true)
     expect(preview.turnLabels.has(start)).toBe(false)
     for (const segment of preview.segments) {
-      expect(segment.throughLocationPaths).toEqual(investigatorTransitions.get(segment.from)?.get(segment.to))
+      expect(segment.throughLocationPaths).toEqual(investigatorTransitions.get(segment.from)?.get(segment.to)?.slice(0, 1))
     }
     const sameTurnAlternative = crossings
       .filter((crossing) => !oneTurn.has(crossing.id))
@@ -253,6 +254,36 @@ describe('investigator movement previews', () => {
       shorter,
       genuinelyDifferent,
     ])
+  })
+
+  test('keeps one shortest route per first-turn ending crossing, ignoring earlier and later alternatives', () => {
+    const short = ['A', 'B', 'C', 'D', 'E']
+    const differentFirstStep = ['A', 'F', 'C', 'D', 'E']
+    const differentLaterStep = ['A', 'B', 'C', 'G', 'E']
+    const longer = ['A', 'B', 'C', 'H', 'D', 'E']
+    const differentEnding = ['A', 'B', 'J', 'D', 'E']
+    expect(distinctInvestigatorFirstMoveRoutes([
+      longer, short, differentFirstStep, differentLaterStep, differentEnding,
+    ])).toEqual([short, differentEnding])
+  })
+
+  test('future routes exclude occupied first-turn stops but allow passing through an occupied crossing', () => {
+    const state: GameState = {
+      ...createInitialGame(), stage: 'investigatorMove', activeInvestigator: 1,
+      investigatorPositions: { yellow: 'HP', blue: 'HZ', red: 'JC' },
+    }
+    const preview = shortestInvestigatorRoutePreview(state, 'HR')
+    const legal = new Set(legalInvestigatorDestinations(state))
+    const stops = [...preview.turnLabels].filter(([, label]) => label.split(',').includes('1b')).map(([id]) => id)
+    expect(stops.length).toBeGreaterThan(0)
+    expect(stops.every(id => legal.has(id))).toBe(true)
+    expect(stops).not.toContain('HP')
+    const unoccupied = shortestInvestigatorRoutePreview({ ...state, investigatorPositions: { ...state.investigatorPositions, yellow: 'FC' } }, 'HR')
+    expect(unoccupied.turnLabels.get('HP')?.split(',')).toContain('1b')
+
+    const passing = shortestInvestigatorRoutePreview({ ...state, investigatorPositions: { ...state.investigatorPositions, yellow: 'HX' } }, 'HR')
+    expect(passing.turnLabels.get('HX')?.split(',')).toContain('1a')
+    expect(passing.turnLabels.get('HX')?.split(',')).not.toContain('1b')
   })
 })
 
