@@ -780,6 +780,22 @@ test('Blue route previews cannot end this turn on another investigator', async (
   await expect(page.locator('.investigator-route-preview-line').first()).toBeVisible()
 })
 
+test('Red routes from JS to HD show only the earliest arrival at every crossing', async ({ page }) => {
+  const state = { ...createInitialGame(), stage: 'investigatorMove', activeInvestigator: 2,
+    investigatorPositions: { yellow: 'JQ', blue: 'CP', red: 'JS' } }
+  await page.addInitScript(state => {
+    localStorage.setItem('whitehall-mystery.game.v1', JSON.stringify({ version: 1, state }))
+  }, state)
+  await page.setViewportSize({ width: 1440, height: 1400 })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Red Investigator: Move', exact: true })).toBeVisible()
+  await page.getByLabel('Crossing HD', { exact: true }).hover()
+  await expect(page.locator('.investigator-route-preview-line').first()).toBeVisible()
+  await expect(page.locator('.investigator-route-turn-count[aria-label^="Crossing JF:"]')).toHaveText('1b')
+  await expect(page.locator('.investigator-route-turn-count', { hasText: /,/ })).toHaveCount(0)
+  await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath('red-shortest-routes-to-HD.png') })
+})
+
 test('Rand enters the public investigator view without a reveal handoff', async ({ page }) => {
   await page.goto('/')
   const rand = page.getByRole('button', { name: 'Rand', exact: true })

@@ -381,16 +381,6 @@ export const investigatorShortestTurnLabels = (
   )
 }
 
-export const removeStrictCrossingSupersetRoutes = (routes: string[][]): string[][] => {
-  const crossingSets = routes.map((route) => new Set(route))
-  return routes.filter((route, routeIndex) =>
-    !routes.some((shorterRoute, shorterIndex) =>
-      shorterRoute.length < route.length &&
-      [...crossingSets[shorterIndex]!].every((crossingId) => crossingSets[routeIndex]!.has(crossingId)),
-    ),
-  )
-}
-
 export const distinctInvestigatorFirstMoveRoutes = (routes: string[][]): string[][] => {
   const destinations = new Set<string>()
   return [...routes].sort((first, second) => first.length - second.length).filter(route => {
@@ -401,7 +391,7 @@ export const distinctInvestigatorFirstMoveRoutes = (routes: string[][]): string[
   })
 }
 
-const investigatorTurnRoutePaths = (start: string, target: string, firstMoveDestinations: Set<string>): string[][] => {
+const shortestInvestigatorRoutePaths = (start: string, target: string, firstMoveDestinations: Set<string>): string[][] => {
   const distancesToTarget = new Map<string, number>([[target, 0]])
   const queue = [target]
   for (let index = 0; index < queue.length; index += 1) {
@@ -417,12 +407,8 @@ const investigatorTurnRoutePaths = (start: string, target: string, firstMoveDest
 
   const shortestDistance = distancesToTarget.get(start)
   if (shortestDistance === undefined) return []
-  const routeLengths = [shortestDistance]
-  if (shortestDistance % 2 === 1) routeLengths.push(shortestDistance + 1)
-
   const routes: string[][] = []
   const route = [start]
-  const visited = new Set([start])
   const collectRoutes = (remainingSteps: number) => {
     const current = route.at(-1)
     if (!current) return
@@ -432,18 +418,18 @@ const investigatorTurnRoutePaths = (start: string, target: string, firstMoveDest
       return
     }
     for (const neighbor of investigatorTransitions.get(current)?.keys() ?? []) {
-      if (visited.has(neighbor) || (distancesToTarget.get(neighbor) ?? Infinity) > remainingSteps - 1) {
+      // Every step must bring the target one crossing closer. Allowing an
+      // extra step in the same turn also delays arrival at intermediate crossings.
+      if (distancesToTarget.get(neighbor) !== remainingSteps - 1) {
         continue
       }
       route.push(neighbor)
-      visited.add(neighbor)
       collectRoutes(remainingSteps - 1)
-      visited.delete(neighbor)
       route.pop()
     }
   }
-  for (const routeLength of routeLengths) collectRoutes(routeLength)
-  return distinctInvestigatorFirstMoveRoutes(removeStrictCrossingSupersetRoutes(routes))
+  collectRoutes(shortestDistance)
+  return distinctInvestigatorFirstMoveRoutes(routes)
 }
 
 export const shortestInvestigatorRoutePreview = (state: GameState, target: string): InvestigatorRoutePreview => {
@@ -454,8 +440,8 @@ export const shortestInvestigatorRoutePreview = (state: GameState, target: strin
 
   const segments: InvestigatorRoutePreview['segments'] = []
   const segmentKeys = new Set<string>()
-  const labelSets = new Map<string, Set<string>>()
-  for (const route of investigatorTurnRoutePaths(start, target, new Set(legalInvestigatorDestinations(state)))) {
+  const turnLabels = new Map<string, string>()
+  for (const route of shortestInvestigatorRoutePaths(start, target, new Set(legalInvestigatorDestinations(state)))) {
     for (let step = 0; step < route.length - 1; step += 1) {
       const from = route[step]!
       const to = route[step + 1]!
@@ -469,19 +455,10 @@ export const shortestInvestigatorRoutePreview = (state: GameState, target: strin
         })
       }
       const arrivalStep = step + 1
-      const labels = labelSets.get(to) ?? new Set<string>()
-      labels.add(`${Math.ceil(arrivalStep / 2)}${arrivalStep % 2 === 1 ? 'a' : 'b'}`)
-      labelSets.set(to, labels)
+      turnLabels.set(to, `${Math.ceil(arrivalStep / 2)}${arrivalStep % 2 === 1 ? 'a' : 'b'}`)
     }
   }
 
-  const labelOrder = (label: string) => Number.parseInt(label, 10) * 2 + (label.endsWith('b') ? 1 : 0)
-  const turnLabels = new Map(
-    [...labelSets].map(([crossingId, labels]) => [
-      crossingId,
-      [...labels].sort((first, second) => labelOrder(first) - labelOrder(second)).join(','),
-    ]),
-  )
   return { segments, turnLabels }
 }
 
