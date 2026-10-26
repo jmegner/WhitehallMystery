@@ -6,6 +6,7 @@ interface Hypothesis {
   positiveMask: bigint
   visitedUnion: bigint
   visitedIntersection: bigint
+  clueVisitTurns?: bigint
 }
 
 export interface SearchOutcome {
@@ -20,12 +21,15 @@ interface InferenceContext {
   negativeUntil: Map<number, number>
   observationsByMove: Map<number, PublicRoundEvidence['observations']>
   transitionsByMove: Map<number, Map<number, InferenceTransition[]>>
+  visitTurnBits?: Map<number, bigint>
+  visitTurnStride: number
 }
 
 interface InferenceTransition {
   position: number
   positiveMask: bigint
   visitedMask: bigint
+  clueVisitTurns?: bigint
 }
 
 const isCoachCircle = (circleId: number) => circlesById.get(circleId)?.color !== 'blue'
@@ -55,7 +59,7 @@ export const publicMovementPaths = (from: number, move: PublicMoveEvidence): num
   return routes
 }
 
-export const buildInferenceContext = (evidence: PublicRoundEvidence): InferenceContext => {
+export const buildInferenceContext = (evidence: PublicRoundEvidence, trackVisitTurns = false): InferenceContext => {
   const positiveIds = [
     ...new Set(
       evidence.observations
@@ -78,7 +82,11 @@ export const buildInferenceContext = (evidence: PublicRoundEvidence): InferenceC
     observationsByMove.set(observation.afterMove, observations)
   }
 
-  return { evidence, bitForCircle, negativeUntil, observationsByMove, transitionsByMove: new Map() }
+  // Pack one row of numbered move slots per confirmed location, including slot 0.
+  const visitTurnStride = trackVisitTurns ? Math.max(0, ...evidence.moves.map(move => move.endSlot)) + 1 : 0
+  const visitTurnBits = trackVisitTurns
+    ? new Map(positiveIds.map((id, index) => [id, 1n << BigInt(index * visitTurnStride)])) : undefined
+  return { evidence, bitForCircle, negativeUntil, observationsByMove, transitionsByMove: new Map(), visitTurnBits, visitTurnStride }
 }
 
 const visitedBits = new Map([...circlesById.keys()].map(id => [id, 1n << BigInt(id)]))
@@ -103,11 +111,16 @@ const inferenceTransitions = (context: InferenceContext, moveIndex: number, from
       if (position === undefined) continue
       let positiveMask = 0n
       let visitedMask = 0n
-      for (const id of path) {
+      let clueVisitTurns = context.visitTurnBits ? 0n : undefined
+      for (let step = 0; step < path.length; step++) {
+        const id = path[step]!
         positiveMask |= context.bitForCircle.get(id) ?? 0n
         visitedMask |= visitedBit(id)
+        if (clueVisitTurns !== undefined) {
+          clueVisitTurns |= (context.visitTurnBits!.get(id) ?? 0n) << BigInt(move.startSlot + step)
+        }
       }
-      transitions.push({ position, positiveMask, visitedMask })
+      transitions.push({ position, positiveMask, visitedMask, clueVisitTurns })
     }
   }
   origins.set(from, transitions)
@@ -153,6 +166,7 @@ const remainingHypotheses = (context: InferenceContext, missedLocations = 0n): H
     positiveMask: startMask,
     visitedUnion: startVisited,
     visitedIntersection: startVisited,
+    clueVisitTurns: context.visitTurnBits?.get(evidence.start) ?? (context.visitTurnBits ? 0n : undefined),
   })
 
   for (let moveIndex = 1; moveIndex <= evidence.moves.length; moveIndex += 1) {
@@ -164,13 +178,16 @@ const remainingHypotheses = (context: InferenceContext, missedLocations = 0n): H
         const position = transition.position
         const visitedUnion = hypothesis.visitedUnion | transition.visitedMask
         const visitedIntersection = hypothesis.visitedIntersection | transition.visitedMask
+        const clueVisitTurns = context.visitTurnBits
+          ? (hypothesis.clueVisitTurns ?? 0n) | (transition.clueVisitTurns ?? 0n) : undefined
         const key = keyFor(position, mask)
         const existing = next.get(key)
         if (existing) {
           existing.visitedUnion |= visitedUnion
           existing.visitedIntersection &= visitedIntersection
+          if (clueVisitTurns !== undefined) existing.clueVisitTurns = (existing.clueVisitTurns ?? 0n) | clueVisitTurns
         } else {
-          next.set(key, { position, positiveMask: mask, visitedUnion, visitedIntersection })
+          next.set(key, { position, positiveMask: mask, visitedUnion, visitedIntersection, clueVisitTurns })
         }
       }
     }
@@ -196,6 +213,26 @@ export const possibleJackLocations = (evidence: PublicRoundEvidence | null): Set
   if (!evidence) return new Set()
   const hypotheses = remainingHypotheses(buildInferenceContext(evidence))
   return new Set(hypotheses.map((hypothesis) => hypothesis.position))
+}
+
+const clueVisitTurnsCache = new WeakMap<PublicRoundEvidence, Map<number, number[]>>()
+
+export const possibleClueVisitTurns = (evidence: PublicRoundEvidence | null): Map<number, number[]> => {
+  if (!evidence || !evidence.observations.some(observation => observation.kind === 'clue' && observation.found)) return new Map()
+  const cached = clueVisitTurnsCache.get(evidence)
+  if (cached) return cached
+  const context = buildInferenceContext(evidence, true)
+  // Histories sharing a position and satisfied-clue mask admit the same future
+  // evidence, so their possible visit times can be unioned without losing constraints.
+  const visits = remainingHypotheses(context).reduce((mask, hypothesis) => mask | (hypothesis.clueVisitTurns ?? 0n), 0n)
+  const result = new Map<number, number[]>()
+  for (const [id, bit] of context.visitTurnBits!) {
+    const turns = Array.from({ length: context.visitTurnStride }, (_, slot) => slot)
+      .filter(slot => (visits & (bit << BigInt(slot))) !== 0n)
+    if (turns.length) result.set(id, turns)
+  }
+  clueVisitTurnsCache.set(evidence, result)
+  return result
 }
 
 const evidenceAfterMove = (

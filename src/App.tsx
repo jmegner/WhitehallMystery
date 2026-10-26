@@ -31,6 +31,7 @@ import {
   movementLabel,
   possibleJackSearchOutcomes,
   possibleJackSearchOutcomesAfterMove,
+  possibleClueVisitTurns,
   type SearchOutcome,
 } from './game/inference'
 import { automaticInvestigatorActions } from './game/investigatorAuto'
@@ -42,6 +43,7 @@ import { useZoomedViewport } from './useZoomedViewport'
 import ReplayControls from './ReplayControls'
 import { gameReplayTurns, loadReplayPosition, saveReplayPosition, type ReplayTurn } from './game/replay'
 import { indicatorTextAttributes } from './indicatorLayout'
+import { clueTurnLabel } from './clueTurnLabel'
 import { useShiftHeld } from './useShiftHeld'
 import { useControlHeld } from './useControlHeld'
 import {
@@ -243,6 +245,7 @@ interface BoardProps {
   legalCrossingIds: Set<string>
   possibleIds: Set<number>
   possibleOutcomes: Map<number, SearchOutcome>
+  clueVisitTurns: Map<number, number[]>
   worstCrossingEliminations: Map<string, number>
   showPossible: boolean
   nextTurn: boolean
@@ -301,6 +304,7 @@ function GameBoard({
   legalCrossingIds,
   possibleIds,
   possibleOutcomes,
+  clueVisitTurns,
   worstCrossingEliminations,
   showPossible,
   nextTurn,
@@ -1014,10 +1018,16 @@ function GameBoard({
       {/* Text paints last so pieces and their glow cannot hide indicators. */}
       <g className="map-text-indicators" pointerEvents="none">
         {showPossible &&
-          [...possibleOutcomes].filter(([, outcome]) => outcome.ifNo.size > 0).map(([id, outcome]) => {
+          [...possibleOutcomes].filter(([id, outcome]) => outcome.ifNo.size > 0 || clueVisitTurns.has(id)).map(([id, outcome]) => {
             const circle = circlesById.get(id)
             if (!circle) return null
             const position = indicatorTextAttributes(circle.x, circle.y, 'clue', alternateIndicatorAngle)
+            const turns = clueVisitTurns.get(id)
+            if (turns) {
+              const label = clueTurnLabel(turns)
+              return <text key={`clue-turns-${id}`} className="possible-outcome-count clue-visit-turns" {...position}
+                aria-label={`Possible visit turns at ${id}: ${label.fullText}`}>{label.text}</text>
+            }
             return (
               <text
                 key={`possible-count-${id}`}
@@ -1036,7 +1046,7 @@ function GameBoard({
           .map(([id, label]) => {
             const circle = circlesById.get(id)
             if (!circle) return null
-            const hasClue = showPossible && (possibleOutcomes.get(id)?.ifNo.size ?? 0) > 0
+            const hasClue = showPossible && ((possibleOutcomes.get(id)?.ifNo.size ?? 0) > 0 || clueVisitTurns.has(id))
             const position = indicatorTextAttributes(circle.x, circle.y, 'locationDistance', alternateIndicatorAngle, hasClue)
             return (
               <text
@@ -1916,6 +1926,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const showPossibilityMarkers =
     (showPossible && isInspectorInteraction(state.stage)) ||
     (showInvestigatorKnowledge && state.stage === 'jackMove')
+  const clueVisitTurns = showPossibilityMarkers ? possibleClueVisitTurns(boardState.publicRound) : new Map<number, number[]>()
   if (remote?.waiting && !replayTurn && !showCurrentInvestigatorTargets) { legalCircleIds.clear(); legalCrossingIds.clear(); coachReachableCircleIds.clear() }
   if (replayTurn) { legalCircleIds.clear(); legalCrossingIds.clear() }
   const handleCircle = (circleId: number) => {
@@ -2237,6 +2248,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 legalCrossingIds={legalCrossingIds}
                 possibleIds={possibleIds}
                 possibleOutcomes={possibleOutcomes}
+                clueVisitTurns={clueVisitTurns}
                 worstCrossingEliminations={worstCrossingEliminations}
                 showPossible={showPossibilityMarkers}
                 nextTurn={effectiveNextTurn && isInspectorInteraction(state.stage)}

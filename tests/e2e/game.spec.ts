@@ -1462,7 +1462,7 @@ test('previews positive and negative search outcomes for Jack maybes', async ({ 
   const outcomeCount = page.locator('[aria-label^="Search outcome at 13:"]')
   await expect(outcomeCount).toHaveText('40/12')
   await expect(page.locator('[aria-label^="Search outcome at 33:"]')).toHaveCount(0)
-  await expect(outcomeCount.locator('.outcome-count-no')).toHaveCSS('fill', 'rgb(18, 63, 104)')
+  await expect(outcomeCount.locator('.outcome-count-no')).toHaveCSS('fill', 'rgb(36, 92, 138)')
   await expect(outcomeCount.locator('.outcome-count-yes')).toHaveCSS('fill', 'rgb(255, 3, 167)')
   await expect(page.locator('.possible-marker').first()).toBeVisible()
   const certaintyMarker = page.locator('.possible-certainty-marker').first()

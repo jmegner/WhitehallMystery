@@ -810,7 +810,11 @@ button:disabled {
 }
 
 .outcome-count-no {
-  fill: #123f68;
+  fill: #245c8a;
+}
+
+.clue-visit-turns {
+  fill: #000;
 }
 
 .outcome-count-separator {
