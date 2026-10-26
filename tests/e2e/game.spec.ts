@@ -1462,8 +1462,8 @@ test('previews positive and negative search outcomes for Jack maybes', async ({ 
     }
   })
   expect(certaintyPresentation).toEqual({
-    pinkRadius: '19.5',
-    purpleRadius: '19.5',
+    pinkRadius: '20.5',
+    purpleRadius: '20.5',
     purpleStroke: 'rgb(122, 60, 175)',
     purpleDashes: '3px, 3px',
   })

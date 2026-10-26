@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { reviewScreenshot } from './reviewScreenshot'
 import { createInitialGame } from '../../src/game/gameEngine'
 import { possibleJackLocationsAfterMove, possibleJackSearchOutcomes, publicMovementPaths, worstCaseCrossingEliminations } from '../../src/game/inference'
-import { circles } from '../../src/game/mapData'
+import { adjacentCirclesForCrossing, circles, crossings } from '../../src/game/mapData'
 
 async function openHunt(page: Page) {
   const investigatorPositions = { yellow: 'DM', blue: 'FP', red: 'HZ' }
@@ -20,6 +20,65 @@ async function openHunt(page: Page) {
   await page.goto('/')
   return state
 }
+
+async function expectSeparateLocationOutlines(page: Page) {
+  const gaps = await page.locator('.game-board').evaluate(board => {
+    const groups = new Map<string, Array<{ radius: number; width: number; kind: string }>>()
+    // Certainty and Coach gap strokes intentionally form a single multicolor
+    // indicator. Measure each distinct ring once.
+    for (const ring of board.querySelectorAll<SVGCircleElement>(
+      '.legal-circle, .clue-marker, .discovery-marker, .private-discovery-marker, .possible-marker, .possible-outcome-marker, .investigator-maybe-circle, .hovered-investigator-maybe-circle, .route-preview-location, .investigator-route-preview-location',
+    )) {
+      const key = `${ring.getAttribute('cx')},${ring.getAttribute('cy')}`
+      const group = groups.get(key) ?? []
+      group.push({ radius: ring.r.baseVal.value, width: Number.parseFloat(getComputedStyle(ring).strokeWidth), kind: ring.getAttribute('class')! })
+      groups.set(key, group)
+    }
+    return [...groups.values()].flatMap(group => group.sort((a, b) => a.radius - b.radius).slice(1).map((outer, index) => {
+      const inner = group[index]!
+      return { inner: inner.kind, outer: outer.kind, gap: outer.radius - outer.width / 2 - inner.radius - inner.width / 2 }
+    }))
+  })
+  expect(gaps.length).toBeGreaterThan(0)
+  expect(gaps.filter(({ gap }) => gap < 1)).toEqual([])
+  return gaps
+}
+
+for (const mode of ['search', 'arrest'] as const) {
+  test(`${mode} keeps possible-location outlines clear of valid choices and hover outlines`, async ({ page }) => {
+    await openHunt(page)
+    if (mode === 'arrest') await page.getByRole('button', { name: 'Execute arrest', exact: true }).click()
+    await page.mouse.move(0, 0)
+    const gaps = await expectSeparateLocationOutlines(page)
+    expect(gaps.some(({ inner, outer }) => inner === 'legal-circle' && outer === 'possible-marker')).toBe(true)
+    await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath(`${mode}-location-outlines.png`) })
+    await page.locator('.investigator-piece.yellow').hover()
+    await expectSeparateLocationOutlines(page)
+    await page.locator('.inference-hover-target').first().hover()
+    await expect(page.locator('.possible-marker')).toHaveCount(0)
+    await expectSeparateLocationOutlines(page)
+  })
+}
+
+test('clue and reached discovery outlines stay clear of valid choices and possibilities', async ({ page }) => {
+  const yellow = crossings.find(crossing => adjacentCirclesForCrossing(crossing.id).includes(51))!.id
+  const investigatorPositions = { yellow, blue: 'FP', red: 'HZ' }
+  const state = { ...createInitialGame(), stage: 'investigatorAction', inspectorActionMode: 'arrest',
+    moveSlot: 4, currentJack: 99, discoveryLocations: [51, 46, 147, 159], reachedDiscoveries: [51], clueLocations: [51], investigatorPositions,
+    publicRound: { start: 51, observations: [], moves: [1, 2, 3, 4].map(slot => ({
+      type: 'normal', startSlot: slot, endSlot: slot, investigatorPositions,
+    })) } }
+  await page.addInitScript(state => {
+    localStorage.setItem('whitehall-mystery.game.v1', JSON.stringify({ version: 1, state }))
+    localStorage.setItem('whitehall-mystery.show-possible-locations', 'true')
+  }, state)
+  await page.goto('/')
+  await page.mouse.move(0, 0)
+  const gaps = await expectSeparateLocationOutlines(page)
+  expect(gaps.some(({ inner, outer }) => inner === 'legal-circle' && outer.startsWith('clue-marker'))).toBe(true)
+  expect(gaps.some(({ inner, outer }) => inner.startsWith('clue-marker') && outer === 'discovery-marker')).toBe(true)
+  await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath('clue-discovery-outlines.png') })
+})
 
 interface HeldAnalysisWorker {
   terminated: boolean

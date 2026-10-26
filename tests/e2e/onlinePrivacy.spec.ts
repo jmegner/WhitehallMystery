@@ -1,6 +1,6 @@
 import { expect, test, type Page } from './fixtures'
 import { reviewScreenshot } from './reviewScreenshot'
-import { gameReducer, legalJackDestinations } from '../../src/game/gameEngine'
+import { gameReducer, legalInspectorActionCircles, legalJackDestinations } from '../../src/game/gameEngine'
 import type { HistoryCommand } from '../../src/game/history'
 import type { OnlineServerMessage, OnlineSnapshot } from '../../src/game/onlineProtocol'
 import type { GameAction } from '../../src/game/types'
@@ -170,5 +170,64 @@ test('online privacy: a new investigator turn starts with plain maybes until the
     await investigators.mouse.move(0, 0)
     await expect(investigators.locator('.possible-outcome-marker')).toHaveCount(0)
     await reviewScreenshot(investigators, { path: 'test-results/online-public-maybes.png', fullPage: true })
+  } finally { await context.close() }
+})
+
+test('Jack’s future overlay follows the investigators’ current move and action targets without allowing Jack to act', async ({ page: jack, browser }) => {
+  const context = await browser.newContext()
+  const investigators = await context.newPage()
+  try {
+    await secondJackTurn(jack, investigators)
+    await jack.getByLabel('future', { exact: true }).check()
+    await jack.getByLabel('know', { exact: true }).check()
+    await jack.getByLabel('Legal Jack destinations').getByRole('button').first().click()
+    await jack.getByRole('button', { name: 'Record move privately' }).click()
+    await expect(investigators.getByRole('heading', { name: 'Yellow Investigator: Move', exact: true })).toBeVisible()
+
+    const indicators = (page: Page) => page.locator('.game-board').evaluate(board =>
+      [...board.querySelectorAll('.legal-crossing, .legal-circle, .active-investigator-ring, .possible-marker, .possible-certainty-marker, .possible-outcome-count, .investigator-hover-turn-count')].map(element => ({
+        kind: element.getAttribute('class'), x: element.getAttribute('cx') ?? element.getAttribute('x'),
+        y: element.getAttribute('cy') ?? element.getAttribute('y'), radius: element.getAttribute('r'),
+        stroke: getComputedStyle(element).stroke, text: element.textContent,
+      })))
+    const expectMatching = async () => {
+      await settled(jack, (await snapshot(investigators)).revision)
+      await jack.mouse.move(0, 0)
+      await investigators.mouse.move(0, 0)
+      await expect.poll(() => indicators(jack)).toEqual(await indicators(investigators))
+      await expect(jack.locator('.investigator-maybe-circle, .investigator-maybe-crossing')).toHaveCount(0)
+      await expect(jack.locator('.jack-marker')).toHaveCount(1)
+      await expect(investigators.locator(privateMarkers)).toHaveCount(0)
+    }
+    await expectMatching()
+    await jack.locator('.investigator-piece.blue').hover()
+    await investigators.locator('.investigator-piece.blue').hover()
+    await expect(jack.locator('.investigator-hover-turn-count').first()).toBeVisible()
+    await expect.poll(() => indicators(jack)).toEqual(await indicators(investigators))
+    const originalRevision = (await snapshot(jack)).revision
+    await jack.getByLabel('Yellow Investigator at crossing FP, selectable to stay', { exact: true }).click()
+    expect((await snapshot(jack)).revision).toBe(originalRevision)
+    expect((await snapshot(investigators)).history.state.activeInvestigator).toBe(0)
+
+    for (const crossingId of ['FP', 'HP', 'HZ']) {
+      await sendActions(investigators, [{ type: 'moveInvestigator', crossingId }])
+      await expectMatching()
+    }
+    await sendActions(investigators, [{ type: 'setInspectorActionMode', mode: 'arrest' }])
+    await expectMatching()
+    await jack.reload()
+    await expect(jack.getByLabel('future', { exact: true })).toBeChecked()
+    await expectMatching()
+    await sendActions(investigators, [{ type: 'setInspectorActionMode', mode: 'search' }])
+    const state = (await snapshot(investigators)).history.state
+    const miss = legalInspectorActionCircles(state).find(id => !state.roundTrail.includes(id))!
+    await sendActions(investigators, [{ type: 'searchCircle', circleId: miss }])
+    await expectMatching()
+    await jack.getByLabel('future', { exact: true }).uncheck()
+    await expect(jack.locator('.legal-crossing, .legal-circle, .active-investigator-ring')).toHaveCount(0)
+    await jack.getByLabel('future', { exact: true }).check()
+    await expectMatching()
+    await reviewScreenshot(jack.locator('.game-board'), { path: test.info().outputPath('jack-observing-investigators.png') })
+    await reviewScreenshot(investigators.locator('.game-board'), { path: test.info().outputPath('investigator-current-turn.png') })
   } finally { await context.close() }
 })

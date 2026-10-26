@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { reviewScreenshot } from './reviewScreenshot'
-import { createInitialGame, legalInspectorActionCircles, legalJackDestinations } from '../../src/game/gameEngine'
+import { createInitialGame, legalInspectorActionCircles, legalInvestigatorDestinations, legalJackDestinations } from '../../src/game/gameEngine'
 import { jackEscapeForecast } from '../../src/game/aiJackLookahead'
 import { currentHistoryState, type GameHistory } from '../../src/game/history'
 import type { GameState } from '../../src/game/types'
@@ -531,6 +531,43 @@ for (const edge of ['top', 'bottom'] as const) {
     expect(await saved(page)).toEqual(before)
   })
 }
+
+test('Blue and Red movement controls undo the previous investigator move and preserve it through refresh', async ({ page }) => {
+  await restore(page, { ...investigatorState(), stage: 'investigatorMove' })
+  await page.goto('/')
+  await fillViewport(page)
+  const undo = floating(page).getByRole('button', { name: 'Undo', exact: true })
+  await expect(undo).toHaveCount(0)
+
+  for (const [color, nextLetter] of [['yellow', 'B'], ['blue', 'R']] as const) {
+    const before = await saved(page)
+    const destination = legalInvestigatorDestinations(before).find(crossing => crossing !== before.investigatorPositions[color])!
+    await page.getByLabel(`Legal ${color} Investigator destinations`, { exact: true })
+      .getByRole('button', { name: destination, exact: true }).click()
+    const moved = await saved(page)
+    expect(moved.investigatorPositions[color]).toBe(destination)
+    await page.reload()
+    for (const width of [320, 1000]) {
+      await fillViewport(page, width, width === 320 ? 224 : 600)
+      await expect(focusButton(page)).toHaveText(`Focus ${nextLetter}`)
+      await expect(undo).toBeEnabled()
+      await expect(undo).toHaveAttribute('title', 'Undo the previous investigator’s move')
+      await expectFloatingPositions(page)
+      await reviewScreenshot(page, { path: test.info().outputPath(`floating-move-${nextLetter}-${width}.png`) })
+    }
+    await undo.click()
+    expect(await saved(page)).toEqual(before)
+    await page.reload()
+    expect(await saved(page)).toEqual(before)
+    await page.getByLabel('Action history controls', { exact: true })
+      .getByRole('button', { name: 'Redo', exact: true }).click()
+    expect(await saved(page)).toEqual(moved)
+  }
+  await page.getByLabel('Legal red Investigator destinations', { exact: true })
+    .getByRole('button', { name: 'HZ', exact: true }).click()
+  await fillViewport(page)
+  await expect(undo).toHaveCount(0)
+})
 
 for (const stage of ['jackMove', 'investigatorMove', 'investigatorAction'] as const) {
   test(`Focus stays available and centers the visible active piece during ${stage} without changing the game`, async ({ page }) => {

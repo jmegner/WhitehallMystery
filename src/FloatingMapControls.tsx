@@ -11,11 +11,13 @@ interface Props {
   panel: HTMLElement | null
   state: GameState
   dispatch: (action: GameAction) => void
+  onUndo: () => void
+  canUndo: boolean
   waiting: boolean
   endTurnLabel?: string
 }
 
-export default function FloatingMapControls({ panel, state, dispatch, waiting, endTurnLabel }: Props) {
+export default function FloatingMapControls({ panel, state, dispatch, onUndo, canUndo, waiting, endTurnLabel }: Props) {
   const viewport = useBoardPanelViewport(panel)
   if (waiting) return null
   const investigator = state.stage === 'investigatorMove' || state.stage === 'investigatorAction'
@@ -43,6 +45,9 @@ export default function FloatingMapControls({ panel, state, dispatch, waiting, e
       <button type="button" className="primary-button" disabled={!jackMoveReadyToConfirm(state)}
         onClick={() => dispatch({ type: 'confirmJackMove' })}>Submit move</button>
     </>
+  } else if (state.stage === 'investigatorMove' && (investigator === 'blue' || investigator === 'red')) {
+    controls = <button type="button" className="secondary-button" disabled={!canUndo}
+      title="Undo the previous investigator’s move" onClick={onUndo}>Undo</button>
   } else if (state.stage === 'investigatorAction') {
     const mode = state.inspectorActionMode === 'arrest' ? 'Arrest' : 'Search'
     controls = state.checkedThisAction.length === 0 ? <button type="button" className={mode === 'Arrest' ? 'danger-button' : 'secondary-button'}

@@ -1365,6 +1365,47 @@ button:disabled {
   color: white;
 }
 
+.zoomed-jack-handoff {
+  position: fixed;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 20px;
+  border: 0;
+  color: #f7ead4;
+  background: linear-gradient(145deg, #292927, #1d1e1e);
+  transform-origin: top left;
+  overflow: auto;
+}
+
+.zoomed-jack-handoff::backdrop {
+  background: #16191b;
+}
+
+.zoomed-handoff-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  min-height: 100%;
+  width: min(400px, 100%);
+  margin: auto;
+  text-align: center;
+}
+
+.zoomed-handoff-content h1 {
+  margin: 0 0 8px;
+  font-size: 2rem;
+  line-height: 1.1;
+}
+
+.zoomed-handoff-content button {
+  min-height: 48px;
+  padding: 12px;
+  font-size: 1rem;
+  touch-action: manipulation;
+}
+
 @media (max-width: 1050px) {
   .map-top-controls {
     display: flex;
