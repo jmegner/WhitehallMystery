@@ -8,16 +8,23 @@ export interface ZoomedViewport {
   scale: number
 }
 
+const readZoomedViewport = (): ZoomedViewport | null => {
+  const viewport = window.visualViewport
+  return viewport && viewport.scale > 1 && viewport.width <= 768 ? {
+    left: viewport.offsetLeft, top: viewport.offsetTop,
+    width: viewport.width, height: viewport.height, scale: viewport.scale,
+  } : null
+}
+
 export function useZoomedViewport(): ZoomedViewport | null {
-  const [position, setPosition] = useState<ZoomedViewport | null>(null)
+  // Rendering the full handoff even briefly can resize the mobile viewport
+  // before the compact screen mounts, permanently changing its scroll offset.
+  const [position, setPosition] = useState(readZoomedViewport)
   useLayoutEffect(() => {
     const viewport = window.visualViewport
     if (!viewport) return
     const measure = () => {
-      const next = viewport.scale > 1 && viewport.width <= 768 ? {
-        left: viewport.offsetLeft, top: viewport.offsetTop,
-        width: viewport.width, height: viewport.height, scale: viewport.scale,
-      } : null
+      const next = readZoomedViewport()
       setPosition(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next)
     }
     measure()

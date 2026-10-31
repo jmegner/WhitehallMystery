@@ -117,9 +117,9 @@ export function useBoardHover(board: RefObject<SVGSVGElement | null>, previewSco
         event.stopImmediatePropagation()
       }
     }
-    const contextMenu = (event: Event) => {
-      if (press || pinned) event.preventDefault()
-    }
+    // A missed target (or a native pointer cancellation) must not expose the
+    // browser's image menu instead of the board's long-press interaction.
+    const contextMenu = (event: Event) => event.preventDefault()
     const dragStart = (event: Event) => event.preventDefault()
     const viewportChanged = () => {
       if (press) clear()
@@ -145,7 +145,7 @@ export function useBoardHover(board: RefObject<SVGSVGElement | null>, previewSco
     document.addEventListener('visibilitychange', hidden)
     svg.addEventListener('pointerover', over)
     svg.addEventListener('pointerleave', leave)
-    svg.addEventListener('contextmenu', contextMenu)
+    svg.addEventListener('contextmenu', contextMenu, true)
     svg.addEventListener('dragstart', dragStart)
     return () => {
       cancelPress()
@@ -162,7 +162,7 @@ export function useBoardHover(board: RefObject<SVGSVGElement | null>, previewSco
       document.removeEventListener('visibilitychange', hidden)
       svg.removeEventListener('pointerover', over)
       svg.removeEventListener('pointerleave', leave)
-      svg.removeEventListener('contextmenu', contextMenu)
+      svg.removeEventListener('contextmenu', contextMenu, true)
       svg.removeEventListener('dragstart', dragStart)
     }
   }, [board])

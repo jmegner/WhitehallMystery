@@ -44,13 +44,13 @@ test('game-over past displays selected rounds and all rounds, preserving prefere
   await expect(page.locator('.past-path-line')).toHaveCount(0)
   await past.check()
   await expect(page.locator('.past-path-line')).toHaveCount(8)
-  await expect(page.locator('.past-path-step text')).toHaveText(['1.1', '1.2', '1.3', '1.4', '2.1', '2.2', '3.1', '3.2'])
+  await expect(page.locator('.past-path-step text')).toHaveText(['1.1,1.3', '1.2', '1.4', '2.1', '2.2', '3.1', '3.2'])
   for (const index of [1, 2, 3]) {
     await round.selectOption(String(index))
     const moves = index === 1 ? 4 : 2
     await expect(page.locator('.past-path-line')).toHaveCount(moves)
     await expect(page.locator(`.past-path-line[data-round="${index}"]`)).toHaveCount(moves)
-    await expect(page.locator('.past-path-step')).toHaveCount(moves)
+    await expect(page.locator('.past-path-step')).toHaveCount(index === 1 ? 3 : moves)
   }
   await round.selectOption('2')
   await page.reload()

@@ -85,7 +85,7 @@ test('replays whole side turns and rounds with analysis controls, persists its p
   }
   await expect(controls.getByRole('button', { name: 'Next turn' })).toBeDisabled()
   await expect(status).toContainText(`Investigators · ${turns.length}/${turns.length}`)
-  await expect(page.locator('.past-path-step')).toHaveCount(turns.at(-1)!.state.roundTrail.length - 1)
+  await expect(page.locator('.past-path-step')).toHaveCount(new Set(turns.at(-1)!.state.roundTrail.slice(1)).size)
   await expect(page.locator('.notice')).toContainText(history.entries.at(-1)!.state.result!.reason)
   await controls.getByRole('button', { name: 'Exit replay' }).click()
   await expect(page.getByRole('heading', { name: 'Jack Escaped', exact: true })).toBeVisible()

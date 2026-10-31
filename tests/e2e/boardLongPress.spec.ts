@@ -39,6 +39,16 @@ async function center(target: Locator) {
   const box = (await target.boundingBox())!
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
 }
+async function crossingEdge(page: Page, target: Locator) {
+  await target.evaluate(element => element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }))
+  await page.clock.runFor(50)
+  return target.evaluate(element => {
+    const circle = element as SVGCircleElement
+    // Outside the old 12-unit hit radius, inside the enlarged invisible target.
+    const point = new DOMPoint(circle.cx.baseVal.value + 16, circle.cy.baseVal.value).matrixTransform(circle.getScreenCTM()!)
+    return { x: point.x, y: point.y }
+  })
+}
 async function blankPoint(page: Page) {
   const svg = page.locator('.game-board')
   await svg.scrollIntoViewIfNeeded()
@@ -96,6 +106,23 @@ test('mouse long-press prevents native context menus and selecting discoveries',
   await expect.poll(() => cursor(page)).toBe(1)
 })
 
+test('the entire map suppresses native context menus even when a hold misses every target', async ({ page }) => {
+  await restore(page, jackState())
+  const svg = page.locator('.game-board')
+  for (const target of [svg, svg.locator('image')]) {
+    expect(await target.evaluate(element => element.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })))).toBe(false)
+  }
+  const point = await blankPoint(page)
+  expect(await page.evaluate(point => document.elementFromPoint(point.x, point.y)?.tagName.toLowerCase(), point)).not.toBe('image')
+  await page.mouse.move(point.x, point.y)
+  await page.mouse.down()
+  await page.waitForTimeout(600)
+  expect(await svg.evaluate(element => element.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })))).toBe(false)
+  await page.mouse.up()
+  expect(await page.locator('.app-header').evaluate(element => element.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true })))).toBe(true)
+  expect(await cursor(page)).toBe(0)
+})
+
 test.describe('touch long-press', () => {
   test.use({ hasTouch: true })
   test.skip(({ browserName }) => browserName !== 'chromium', 'Native touch gestures use Chromium CDP.')
@@ -143,6 +170,39 @@ test.describe('touch long-press', () => {
     await expect.poll(() => cursor(page)).toBe(1)
     await expect(page.getByRole('heading', { name: 'Blue Investigator: Move', exact: true })).toBeVisible()
     await expect(page.locator('.investigator-hover-turn-count')).toHaveCount(0)
+  })
+
+  test('crossing edge holds preview routes, and edge taps still move the investigator', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await restore(page, investigatorState('investigatorMove'))
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 })
+    const touch = await touchInput(page)
+    const distant = page.getByLabel('Crossing HD', { exact: true })
+    let point = await crossingEdge(page, distant)
+    expect(await page.evaluate(point => document.elementFromPoint(point.x, point.y)?.getAttribute('data-board-hover'), point)).toBe('crossing:HD')
+    // CDP touch coordinates are relative to the visible viewport after panning.
+    const touchPoint = (point: { x: number; y: number }) => page.evaluate(point => ({
+      x: point.x - window.visualViewport!.offsetLeft, y: point.y - window.visualViewport!.offsetTop,
+    }), point)
+    const pointerTarget = page.evaluate(() => new Promise<{ x: number; y: number; target: string | null }>(resolve => {
+      window.addEventListener('pointerdown', event => resolve({ x: event.clientX, y: event.clientY,
+        target: (event.target as Element).getAttribute('data-board-hover') }), { once: true })
+    }))
+    await touch.start([await touchPoint(point)])
+    expect(await pointerTarget).toEqual({ x: expect.closeTo(point.x), y: expect.closeTo(point.y), target: 'crossing:HD' })
+    await page.clock.fastForward(600)
+    await expect(page.locator('.investigator-route-turn-count').first()).toBeVisible()
+    await touch.end()
+    await expect(page.locator('.investigator-route-turn-count').first()).toBeVisible()
+    expect(await cursor(page)).toBe(0)
+    const choice = page.locator('.investigator-distance-preview-hover-target').first()
+    point = await crossingEdge(page, choice)
+    await touch.start([await touchPoint(point)])
+    await touch.end()
+    await expect.poll(() => cursor(page)).toBe(1)
+    await expect(page.getByRole('heading', { name: 'Blue Investigator: Move', exact: true })).toBeVisible()
+    await cdp.detach()
   })
 
   for (const mode of ['search', 'arrest'] as const) {

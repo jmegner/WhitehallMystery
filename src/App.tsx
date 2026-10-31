@@ -44,6 +44,8 @@ import ReplayControls from './ReplayControls'
 import { gameReplayTurns, loadReplayPosition, saveReplayPosition, type ReplayTurn } from './game/replay'
 import { indicatorTextAttributes } from './indicatorLayout'
 import { clueTurnLabel } from './clueTurnLabel'
+import { pastPathVisits } from './pastPathVisits'
+import PastPathMarker from './PastPathMarker'
 import { useShiftHeld } from './useShiftHeld'
 import { useControlHeld } from './useControlHeld'
 import {
@@ -397,7 +399,7 @@ function GameBoard({
   const pastPaths = (replayTurn || (showPastPath && privateJackView) || peekAtJack
     ? [{ round: state.round, locations: state.roundTrail }]
     : showPastPath && state.stage === 'gameOver' ? pastRoundPaths : []).map(({ round, locations }) => ({
-      round, circles: locations.map(id => circlesById.get(id)).filter(circle => circle !== undefined),
+      round, locations, circles: locations.map(id => circlesById.get(id)).filter(circle => circle !== undefined),
     }))
   const pastPathSegments = pastPaths.flatMap(({ round, circles }) =>
     trimmedRouteSegments(circles).map(segment => ({ ...segment, round })))
@@ -914,7 +916,7 @@ function GameBoard({
               className={`map-hit-target${legal ? ' selectable' : ''}${investigatorStartPreview ? ' investigator-start-hover-target' : ''}${investigatorRoutePreviewTarget ? ' investigator-route-preview-hover-target' : ''}${investigatorMoveDistancePreviewTarget ? ' investigator-distance-preview-hover-target' : ''}`}
               cx={crossing.x}
               cy={crossing.y}
-              r="12"
+              r="18"
               data-board-hover={`crossing:${crossing.id}`}
               onClick={() => {
                 if (!legal) return
@@ -1134,18 +1136,16 @@ function GameBoard({
             )
           })}
 
-        {pastPaths.flatMap(({ round, circles }) => circles.slice(1).map((circle, index) => (
-          <g
-            key={`past-path-step-${round}-${index + 1}`}
-            className="past-path-step"
-            data-round={round}
-            transform={`translate(${circle.x + 19} ${circle.y - 15})`}
-            aria-label={`${state.stage === 'gameOver' ? `Round ${round} ` : ''}Past path move ${index + 1}, location ${circle.id}`}
-          >
-            <circle r={pastPaths.length > 1 ? 12 : 8} />
-            <text y="3" textAnchor="middle">{pastPaths.length > 1 ? `${round}.${index + 1}` : index + 1}</text>
-          </g>
-        )))}
+        {pastPathVisits(pastPaths).map(({ location, visits, label }) => {
+          const circle = circlesById.get(location)
+          if (!circle) return null
+          const description = visits.length === 1
+            ? `${state.stage === 'gameOver' ? `Round ${visits[0]!.round} ` : ''}Past path move ${visits[0]!.move}, location ${location}`
+            : `Past path moves ${label}, location ${location}`
+          return <PastPathMarker key={`past-path-step-${location}`} x={circle.x} y={circle.y} location={location}
+            rounds={[...new Set(visits.map(visit => visit.round))].join(',')} label={label} description={description}
+            rightEdge={BOARD_VIEWPORT.x + BOARD_VIEWPORT.width} />
+        })}
       </g>
     </svg>
   )
@@ -1706,6 +1706,8 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const boardState = observingInvestigators ? currentHistoryState(history) : state
   const showCurrentInvestigatorTargets = observingInvestigators && showInvestigatorMaybes
   const [showInvestigatorTurnAnnouncement, setShowInvestigatorTurnAnnouncement] = useState(false)
+  const [handoffHeight, setHandoffHeight] = useState<number>()
+  const showingHandoff = !replayTurn && (!!history.pendingReveal || isHandoff(state.stage))
   const [investigatorAuto, setInvestigatorAuto] = useState(() => {
     const storage = browserStorage()
     return storage ? loadInvestigatorAutoPreference(storage) : 'off' as const
@@ -1763,6 +1765,14 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
       next = gameHistoryReducer(next, continueCommand)
       setShowInvestigatorTurnAnnouncement(true)
       window.setTimeout(() => setShowInvestigatorTurnAnnouncement(false), 1000)
+    }
+    if (!history.pendingReveal && !isHandoff(currentHistoryState(history).stage) &&
+      (next.pendingReveal || isHandoff(currentHistoryState(next).stage))) {
+      // Removing the board must not shorten the document and clamp the mobile
+      // viewport's scroll position before the privacy screen appears.
+      const viewport = window.visualViewport
+      setHandoffHeight(viewport && viewport.scale > 1 && viewport.width <= 768
+        ? document.documentElement.scrollHeight : undefined)
     }
     if (ai) {
       ai.onChange(next)
@@ -1849,9 +1859,9 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     if (commands.length > 0) applyHistoryCommands(commands)
   }
   const handleRevealUndo = () => applyHistoryCommand({ type: 'revealUndo' })
-  if (!replayTurn && (history.pendingReveal || isHandoff(state.stage))) {
+  if (showingHandoff) {
     return (
-      <>
+      <div style={{ minHeight: handoffHeight, overflowAnchor: 'none' }}>
       {!remote && <nav className="game-navigation" aria-label="Saved games">
         <button type="button" onClick={onNewGame}>New game</button>
         <button type="button" onClick={onResumeGame}>Resume game</button>
@@ -1870,7 +1880,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
         historyRevealTarget={history.pendingReveal}
         onRevealUndo={handleRevealUndo}
       />
-      </>
+      </div>
     )
   }
 
