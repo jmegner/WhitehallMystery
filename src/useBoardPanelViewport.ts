@@ -15,6 +15,7 @@ export function useBoardPanelViewport(panel: HTMLElement | null): BoardPanelView
   const [position, setPosition] = useState<BoardPanelViewport | null>(null)
   useLayoutEffect(() => {
     if (!panel) return
+    const moveTrack = panel.closest('.app-shell')?.querySelector('.move-track')
     let frame = 0
     const measure = () => {
       frame = 0
@@ -25,13 +26,14 @@ export function useBoardPanelViewport(panel: HTMLElement | null): BoardPanelView
       const height = viewport?.height ?? window.innerHeight
       const scale = viewport?.scale ?? 1
       const rect = panel.getBoundingClientRect()
+      const regionTop = Math.min(rect.top, moveTrack?.getBoundingClientRect().top ?? rect.top)
       const visibleWidth = Math.max(0, Math.min(rect.right, left + width) - Math.max(rect.left, left))
-      const visibleHeight = Math.max(0, Math.min(rect.bottom, top + height) - Math.max(rect.top, top))
+      const visibleHeight = Math.max(0, Math.min(rect.bottom, top + height) - Math.max(regionTop, top))
       // Only inspect a rendered active piece; never infer a hidden Jack target.
       const piece = panel.querySelector('[data-active-playing-piece]')?.getBoundingClientRect()
       const hasActivePiece = !!piece && piece.width > 0 && piece.height > 0
-      // Include the toolbar, map and legend: the panel can span the viewport
-      // even while the map itself still fits. Allow subpixel edge rounding.
+      // Include the move track, toolbar, map and legend, so controls stay
+      // available while the track is visible. Allow subpixel edge rounding.
       const next = visibleWidth >= width * MINIMUM_BOARD_VIEWPORT_WIDTH && visibleHeight >= height - 1
         ? { left: left + width / 2, bottom: Math.min(rect.bottom, top + height) - 12 / scale,
           width: width * scale - 24, scale, hasActivePiece }
@@ -41,6 +43,7 @@ export function useBoardPanelViewport(panel: HTMLElement | null): BoardPanelView
     const schedule = () => { if (!frame) frame = requestAnimationFrame(measure) }
     const observer = new ResizeObserver(schedule)
     observer.observe(panel)
+    if (moveTrack) observer.observe(moveTrack)
     // Header wrapping can move the panel without resizing the panel itself.
     observer.observe(document.body)
     // Moves, phase changes and turn handoffs can change the active piece

@@ -165,44 +165,60 @@ for (const side of ['Jack', 'Investigators', 'Discovery setup'] as const) {
 test.describe('narrow desktop with the whole map visible', () => {
   test.use({ deviceScaleFactor: 1.5 })
   for (const side of ['Jack', 'Investigators'] as const) {
-    test(`${side} keeps controls at the map top even when the map occupies over 75% of the window`, async ({ page }) => {
+    test(`${side} floats with the move track visible and returns to map-top controls when the full board panel fits`, async ({ page }) => {
       await restore(page, side === 'Jack' ? jackState() : investigatorState())
       await page.setViewportSize({ width: 1600, height: 1200 })
       await page.goto('/')
       await expect(floating(page)).toHaveCount(0)
       await page.setViewportSize({ width: 974, height: 1167 })
+      await page.evaluate(() => document.fonts.ready)
+      // Keep the whole map visible, but leave some of the legend below the
+      // viewport. Only including the move track makes this region fill it.
+      const height = await page.evaluate(() => {
+        const track = document.querySelector('.move-track')!.getBoundingClientRect()
+        const map = document.querySelector('.board-frame')!.getBoundingClientRect()
+        const panel = document.querySelector('.board-panel')!.getBoundingClientRect()
+        return Math.floor((map.bottom + panel.bottom) / 2 - track.top)
+      })
+      await page.setViewportSize({ width: 974, height })
       await page.locator('.move-track').evaluate(element => {
         window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top)
       })
-      const checkMapTop = async () => {
+      const checkControls = async (position: 'fixed' | 'absolute') => {
         await expect(floating(page)).toHaveCount(1)
-        await expect(floating(page)).toHaveCSS('position', 'absolute')
+        await expect(floating(page)).toHaveCSS('position', position)
         await expect(floating(page)).toBeInViewport()
         const map = (await page.locator('.board-frame').boundingBox())!
         const controls = (await floating(page).boundingBox())!
         expect(map.height).toBeGreaterThan(page.viewportSize()!.height * 0.75)
         expect(map.y).toBeGreaterThanOrEqual(0)
         expect(map.y + map.height).toBeLessThanOrEqual(page.viewportSize()!.height)
-        await expectClearMapTop(page)
-        expect(Math.abs(controls.x + controls.width / 2 - map.x - map.width / 2)).toBeLessThan(1)
+        if (position === 'fixed') {
+          await expect(page.locator('.move-track')).toBeInViewport()
+          await expectFloatingPositions(page)
+          await expect(page.locator('.map-top-controls')).toHaveCount(0)
+        } else {
+          await expectClearMapTop(page)
+          expect(Math.abs(controls.x + controls.width / 2 - map.x - map.width / 2)).toBeLessThan(1)
+        }
       }
-      await checkMapTop()
+      await checkControls('fixed')
       await expect(floating(page).getByRole('button', { name: side === 'Jack' ? 'Submit move' : 'Pass', exact: true })).toBeVisible()
       await reviewScreenshot(page, { path: test.info().outputPath(`${side}-narrow-desktop.png`) })
       // Scroll until the top of the map reaches the viewport; it still fits.
       await page.locator('.board-frame').evaluate(element => {
         window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top)
       })
-      await checkMapTop()
+      await checkControls('absolute')
       await fillViewport(page)
       await expect(floating(page)).toHaveCount(1)
       await expect(floating(page)).toHaveCSS('position', 'fixed')
       await expect(page.locator('.map-top-controls')).toHaveCount(0)
-      await page.setViewportSize({ width: 974, height: 1167 })
+      await page.setViewportSize({ width: 974, height })
       await page.locator('.move-track').evaluate(element => {
         window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top)
       })
-      await checkMapTop()
+      await checkControls('fixed')
     })
   }
 })
@@ -256,7 +272,7 @@ test('map-top Submit handles discovery setup and a separate Pass works in the st
   await expect(activePiece(page)).toHaveCount(0)
   await expect(focusButton(page)).toHaveCount(0)
   await expect(floating(page)).toHaveCSS('position', 'absolute')
-  await floating(page).getByRole('button', { name: 'Submit discoveries', exact: true }).click()
+  await floating(page).getByRole('button', { name: 'Submit disc. locations', exact: true }).click()
   expect((await saved(page)).stage).toBe('investigatorSetup')
   await expect(floating(page)).toHaveCount(0)
   await page.evaluate(({ id, state }) => {
@@ -270,6 +286,74 @@ test('map-top Submit handles discovery setup and a separate Pass works in the st
   await expect(floating(page).getByRole('button', { name: 'Toggle search/arrest: Search' })).toBeVisible()
   await floating(page).getByRole('button', { name: 'Pass', exact: true }).click()
   expect((await saved(page)).activeInvestigator).toBe(1)
+})
+
+test.describe('zoomed discovery setup', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+  for (const scale of [2, 3]) {
+    test(`floating discovery submission and quadrant replacement work with touch at ${scale}x zoom`, async ({ page, context }) => {
+      await restore(page, createInitialGame())
+      await page.goto('/')
+      await page.evaluate(() => document.fonts.ready)
+      const cdp = await context.newCDPSession(page)
+      await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: scale })
+      const showMoveTrack = async () => {
+        await page.locator('.move-track').evaluate(element => element.scrollIntoView({ block: 'start', behavior: 'instant' }))
+        await expect(page.locator('.track-heading strong')).toBeInViewport()
+        await expect(floating(page)).toHaveCSS('position', 'fixed')
+        await expect(page.locator('.map-top-controls')).toHaveCount(0)
+        await expectFloatingPositions(page)
+      }
+      const tap = async (target: ReturnType<Page['locator']>) => {
+        const point = await target.evaluate(element => {
+          const rect = element.getBoundingClientRect()
+          const viewport = window.visualViewport!
+          return { x: rect.left + rect.width / 2 - viewport.offsetLeft,
+            y: rect.top + rect.height / 2 - viewport.offsetTop }
+        })
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] })
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      }
+      const choose = async (location: number) => {
+        const target = page.getByLabel(`Location ${location}, selectable`, { exact: true })
+        await target.evaluate(element => element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }))
+        await tap(target)
+      }
+      const submit = floating(page).getByRole('button', { name: 'Submit disc. locations', exact: true })
+      await showMoveTrack()
+      await expect(submit).toBeDisabled()
+      await expect(submit).toHaveAttribute('title', /0\/4 selected/)
+      await expect(focusButton(page)).toHaveCount(0)
+
+      await choose(33)
+      await choose(34)
+      expect((await saved(page)).discoveryLocations).toEqual([34])
+      await expect(submit).toBeDisabled()
+      for (const location of [46, 147, 159]) await choose(location)
+      expect((await saved(page)).discoveryLocations).toEqual([34, 46, 147, 159])
+      await expect(submit).toBeEnabled()
+
+      // Clearing a quadrant disables submission; replacing a full selection
+      // keeps four choices and remains enabled through a refresh.
+      await choose(34)
+      await expect(submit).toBeDisabled()
+      await choose(33)
+      await expect(submit).toBeEnabled()
+      await choose(34)
+      expect((await saved(page)).discoveryLocations).toEqual([34, 46, 147, 159])
+      await page.reload()
+      await showMoveTrack()
+      await expect(submit).toBeEnabled()
+      await expect(submit).toHaveAttribute('title', 'Confirm the four selected discovery locations')
+      await reviewScreenshot(page, { path: test.info().outputPath(`discovery-submit-${scale}x.png`) })
+      await tap(submit)
+      expect((await saved(page)).stage).toBe('investigatorSetup')
+      expect((await saved(page)).discoveryLocations).toEqual([34, 46, 147, 159])
+      await expect(page.locator('.private-discovery-marker')).toHaveCount(0)
+      await expect(submit).toHaveCount(0)
+      await cdp.detach()
+    })
+  }
 })
 
 for (const action of ['search', 'arrest'] as const) {

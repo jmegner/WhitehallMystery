@@ -808,13 +808,20 @@ test('Rand enters the public investigator view without a reveal handoff', async 
   await expect(page.locator('.investigator-turn-announcement')).toBeHidden({ timeout: 2500 })
 })
 
-test('discovery choices only outline quadrants that still need a location', async ({ page }) => {
+test('discovery choices can replace a quadrant selection while outlines still prompt for missing quadrants', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('Location 33, selectable').click()
 
-  await expect(page.getByLabel('Location 34, selectable')).toHaveCount(0)
-  await expect(page.getByLabel('Location 34', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Location 34, selectable')).toBeVisible()
+  await expect(page.getByLabel('Location 34, selectable').locator('xpath=..').locator('.legal-circle')).toHaveCount(0)
   await expect(page.getByLabel('Location 33, selectable').locator('xpath=..').locator('.legal-circle')).toHaveCount(0)
+
+  await page.getByLabel('Location 34, selectable').click()
+  await expect(page.locator('.quadrant-card.complete strong')).toHaveText(['34'])
+  await page.reload()
+  await expect(page.locator('.quadrant-card.complete strong')).toHaveText(['34'])
+  await page.getByLabel('Action history controls', { exact: true }).getByRole('button', { name: 'Undo', exact: true }).click()
+  await expect(page.locator('.quadrant-card.complete strong')).toHaveText(['33'])
 
   // The selected location remains clickable so Jack can clear that quadrant.
   await page.getByLabel('Location 33, selectable').click()

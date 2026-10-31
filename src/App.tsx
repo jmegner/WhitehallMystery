@@ -856,7 +856,7 @@ function GameBoard({
 
       {circles.map((circle) => {
         const legal = legalCircleIds.has(circle.id)
-        const selectable = legal || (state.stage === 'jackDiscoverySetup' && state.discoveryLocations.includes(circle.id))
+        const selectable = legal || (state.stage === 'jackDiscoverySetup' && circle.color === 'white')
         const coachReachable = coachReachableCircleIds.has(circle.id)
         const inferenceHoverTarget = showPossible && possibleOutcomes.has(circle.id)
         const routePreviewHoverTarget =

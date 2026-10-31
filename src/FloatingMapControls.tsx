@@ -28,7 +28,9 @@ export default function FloatingMapControls({ panel, state, dispatch, onUndo, ca
     controls = <button type="button" className="primary-button" onClick={() => dispatch({ type: 'continueHandoff' })}>{endTurnLabel}</button>
   } else if (state.stage === 'jackDiscoverySetup') {
     controls = <button type="button" className="primary-button" disabled={state.discoveryLocations.length !== 4}
-      onClick={() => dispatch({ type: 'confirmDiscoveries' })}>Submit discoveries</button>
+      title={state.discoveryLocations.length === 4 ? 'Confirm the four selected discovery locations'
+        : `Choose one white location in each quadrant before submitting (${state.discoveryLocations.length}/4 selected)`}
+      onClick={() => dispatch({ type: 'confirmDiscoveries' })}>Submit disc. locations</button>
   } else if (state.stage === 'jackMove') {
     // Start from an empty draft, including when halfway through a Coach route.
     // A remaining tile is insufficient: there must be a legal destination too.
