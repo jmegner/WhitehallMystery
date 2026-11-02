@@ -1708,6 +1708,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const [showInvestigatorTurnAnnouncement, setShowInvestigatorTurnAnnouncement] = useState(false)
   const [handoffHeight, setHandoffHeight] = useState<number>()
   const showingHandoff = !replayTurn && (!!history.pendingReveal || isHandoff(state.stage))
+  const canContinueFromMap = !replayTurn && !online && !remote?.waiting && isInvestigatorReview(state)
   const [investigatorAuto, setInvestigatorAuto] = useState(() => {
     const storage = browserStorage()
     return storage ? loadInvestigatorAutoPreference(storage) : 'off' as const
@@ -2273,13 +2274,14 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 onCircleMiddleClick={handleCircleMiddleClick}
                 onCrossing={handleCrossing}
                 onMapClick={() => {
-                  if (!replayTurn && !online && !remote?.waiting && isInvestigatorReview(state)) {
+                  if (canContinueFromMap) {
                     dispatch({ type: 'continueHandoff' })
                   }
                 }}
               />
             </div>
             <FloatingMapControls panel={boardPanel} state={state} dispatch={dispatch} waiting={!!replayTurn || (!!remote?.waiting && !ai?.awaitingEnd)}
+              canContinueFromMap={canContinueFromMap}
               onUndo={handleUndo} canUndo={remote ? online?.requestUndo ? online.requestUndo.canRequest
                 : !online?.waiting && history.cursor > remote.turnStart : undoMode(history) !== 'disabled'}
               endTurnLabel={ai?.awaitingEnd ? 'End turn' : online && isInvestigatorReview(state)
@@ -2288,9 +2290,6 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               <div className="investigator-turn-announcement" role="status" aria-live="assertive">
                 Investigators’ Turn
               </div>
-            )}
-            {!replayTurn && !online && !remote?.waiting && isInvestigatorReview(state) && (
-              <div className="map-continue-prompt">Results shown · Click anywhere on the map to continue</div>
             )}
           </div>
           <div className="board-legend" aria-label="Board marker legend">

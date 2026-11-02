@@ -283,9 +283,16 @@ test('investigator Peek reveals AI Jack only when enabled, persists, and preserv
   expect(await savedHistory(page)).toEqual(beforePeek)
   await page.getByRole('button', { name: 'Rand Side', exact: true }).click()
   await expect(page.getByRole('heading', { name: /Yellow Investigator: Move|Jack Was Stopped|Jack Escaped/ })).toBeVisible({ timeout: 15000 })
+  // Jack can advance two spaces with Coach, or reach the next round.
+  await expect.poll(async () => {
+    const after = currentHistoryState(await savedHistory(page))
+    return after.stage === 'gameOver' || after.round > state.round || after.moveSlot > state.moveSlot
+  }, { timeout: 15000 }).toBe(true)
+  const afterTurn = await savedHistory(page)
   await page.reload()
   await expect(page.getByLabel('Versus AI game')).toContainText('You are the investigator')
-  await expect(page.locator('.public-log')).toContainText(/M2:|arrested Jack/)
+  expect(await savedHistory(page)).toEqual(afterTurn)
+  await expect(page.locator('.public-log')).toContainText(`M${currentHistoryState(afterTurn).moveSlot}:`)
   await reviewScreenshot(page, { path: test.info().outputPath('versus-ai-investigator.png'), fullPage: true })
   expect(errors).toEqual([])
 })

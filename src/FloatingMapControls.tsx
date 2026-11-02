@@ -15,23 +15,31 @@ interface Props {
   canUndo: boolean
   waiting: boolean
   endTurnLabel?: string
+  canContinueFromMap: boolean
 }
 
-export default function FloatingMapControls({ panel, state, dispatch, onUndo, canUndo, waiting, endTurnLabel }: Props) {
+export default function FloatingMapControls({ panel, state, dispatch, onUndo, canUndo, waiting, endTurnLabel, canContinueFromMap }: Props) {
   const viewport = useBoardPanelViewport(panel)
   if (waiting) return null
   const investigator = state.stage === 'investigatorMove' || state.stage === 'investigatorAction'
     ? activeInvestigatorColor(state) : undefined
   let controls
-  let pass
-  if (endTurnLabel) {
-    controls = <button type="button" className="primary-button" onClick={() => dispatch({ type: 'continueHandoff' })}>{endTurnLabel}</button>
+  let rightControls
+  const floatingResults = canContinueFromMap && viewport && viewport.scale > 1
+  if (floatingResults || endTurnLabel) {
+    controls = <button type="button" className="primary-button"
+      title="Finish reviewing the results and continue to the next turn"
+      onClick={() => dispatch({ type: 'continueHandoff' })}>{floatingResults ? 'End Turn' : endTurnLabel}</button>
   } else if (state.stage === 'jackDiscoverySetup') {
     controls = <button type="button" className="primary-button" disabled={state.discoveryLocations.length !== 4}
       title={state.discoveryLocations.length === 4 ? 'Confirm the four selected discovery locations'
         : `Choose one white location in each quadrant before submitting (${state.discoveryLocations.length}/4 selected)`}
       onClick={() => dispatch({ type: 'confirmDiscoveries' })}>Submit disc. locations</button>
   } else if (state.stage === 'jackMove') {
+    if (state.jackMoveSelection.type === 'coach' && state.jackMoveSelection.path.length === 1) {
+      rightControls = <button type="button" className="secondary-button" disabled={!canUndo}
+        title="Undo the first Coach location choice" onClick={onUndo}>Undo</button>
+    }
     // Start from an empty draft, including when halfway through a Coach route.
     // A remaining tile is insufficient: there must be a legal destination too.
     const types = MOVE_TYPES.filter(type => legalJackDestinations({ ...state, jackMoveSelection: { type, path: [] } }).length > 0)
@@ -58,7 +66,7 @@ export default function FloatingMapControls({ panel, state, dispatch, onUndo, ca
         onClick={() => dispatch({ type: 'setInspectorActionMode', mode: mode === 'Search' ? 'arrest' : 'search' })}>
         {mode} <span aria-hidden="true">↔</span>
       </button> : null
-    pass = <button type="button" className="secondary-button"
+    rightControls = <button type="button" className="secondary-button"
       title={state.checkedThisAction.length ? 'End this investigator’s search' : 'Pass this investigator’s action'}
       onClick={() => {
         const next = investigator === 'yellow' ? 'blue' : investigator === 'blue' ? 'red' : 'yellow'
@@ -69,15 +77,17 @@ export default function FloatingMapControls({ panel, state, dispatch, onUndo, ca
       }}>Pass</button>
   }
 
+  const prompt = canContinueFromMap && !floatingResults
+    ? <div className="map-continue-prompt">Results shown · Click anywhere on the map to continue</div> : null
   // The CSS breakpoint matches the control panel's single-column layout. This
   // fallback stays anchored to the map; viewport-filling board panels use the portal.
-  if (!viewport) return controls || pass ? <div className="floating-map-controls map-top-controls" data-investigator={investigator}
+  if (!viewport) return <>{prompt}{(controls || rightControls) && <div className="floating-map-controls map-top-controls" data-investigator={investigator}
     role="group" aria-label="Floating map controls">
     {controls}
-    {pass}
-  </div> : null
-  if (!controls && !pass && !viewport.hasActivePiece) return null
-  return createPortal(<div className="floating-map-controls" data-investigator={investigator} role="group" aria-label="Floating map controls"
+    {rightControls}
+  </div>}</>
+  if (!controls && !rightControls && !viewport.hasActivePiece) return prompt
+  return <>{prompt}{createPortal(<div className="floating-map-controls" data-investigator={investigator} role="group" aria-label="Floating map controls"
     style={{ left: viewport.left, top: viewport.bottom, width: viewport.width,
       transform: `translate(-50%, -100%) scale(${1 / viewport.scale})` }}>
     {viewport.hasActivePiece && <div className="floating-control-cluster floating-controls-left"><button type="button" className="secondary-button"
@@ -89,6 +99,6 @@ export default function FloatingMapControls({ panel, state, dispatch, onUndo, ca
       Focus{investigator ? ` ${investigator[0].toUpperCase()}` : ''}
     </button></div>}
     {controls && <div className="floating-control-cluster floating-controls-center">{controls}</div>}
-    {pass && <div className="floating-control-cluster floating-controls-right">{pass}</div>}
-  </div>, document.body)
+    {rightControls && <div className="floating-control-cluster floating-controls-right">{rightControls}</div>}
+  </div>, document.body)}</>
 }

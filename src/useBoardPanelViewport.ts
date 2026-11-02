@@ -32,10 +32,13 @@ export function useBoardPanelViewport(panel: HTMLElement | null): BoardPanelView
       // Only inspect a rendered active piece; never infer a hidden Jack target.
       const piece = panel.querySelector('[data-active-playing-piece]')?.getBoundingClientRect()
       const hasActivePiece = !!piece && piece.width > 0 && piece.height > 0
+      // Pinch zoom keeps controls reachable even after panning off the map.
+      const zoomed = scale > 1
       // Include the move track, toolbar, map and legend, so controls stay
       // available while the track is visible. Allow subpixel edge rounding.
-      const next = visibleWidth >= width * MINIMUM_BOARD_VIEWPORT_WIDTH && visibleHeight >= height - 1
-        ? { left: left + width / 2, bottom: Math.min(rect.bottom, top + height) - 12 / scale,
+      const shouldFloat = zoomed || (visibleWidth >= width * MINIMUM_BOARD_VIEWPORT_WIDTH && visibleHeight >= height - 1)
+      const next = shouldFloat
+        ? { left: left + width / 2, bottom: (zoomed ? top + height : Math.min(rect.bottom, top + height)) - 12 / scale,
           width: width * scale - 24, scale, hasActivePiece }
         : null
       setPosition(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next)

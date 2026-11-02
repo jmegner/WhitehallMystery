@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type CDPSession, type Locator, type Page } from '@playwright/test'
 import { reviewScreenshot } from './reviewScreenshot'
 import { createInitialGame, legalInspectorActionCircles, legalInvestigatorDestinations, legalJackDestinations } from '../../src/game/gameEngine'
 import { jackEscapeForecast } from '../../src/game/aiJackLookahead'
@@ -39,6 +39,32 @@ async function fillViewport(page: Page, width = 1000, height = 600) {
   })
 }
 const floating = (page: Page) => page.getByRole('group', { name: 'Floating map controls', exact: true })
+
+async function touchTap(cdp: CDPSession, target: Locator) {
+  const point = await target.evaluate(element => {
+    const rect = element.getBoundingClientRect()
+    const viewport = window.visualViewport!
+    return { x: rect.left + rect.width / 2 - viewport.offsetLeft, y: rect.top + rect.height / 2 - viewport.offsetTop }
+  })
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] })
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+}
+
+async function expectFloatingBounds(page: Page) {
+  await expect(floating(page)).toHaveCSS('position', 'fixed')
+  await expect.poll(() => floating(page).evaluate(element => {
+    const viewport = window.visualViewport!
+    const groups = [...element.querySelectorAll('.floating-control-cluster')].map(group => group.getBoundingClientRect())
+    return [...element.querySelectorAll('button')].every(button => {
+      const rect = button.getBoundingClientRect()
+      return rect.left >= viewport.offsetLeft && rect.right <= viewport.offsetLeft + viewport.width &&
+        rect.top >= viewport.offsetTop && rect.bottom <= viewport.offsetTop + viewport.height && rect.height * viewport.scale >= 43 &&
+        button.scrollWidth <= button.clientWidth
+    }) && groups.every((rect, index) =>
+      Math.abs((rect.bottom - viewport.offsetTop - viewport.height) * viewport.scale + 12) < 2 &&
+      groups.every((other, otherIndex) => index === otherIndex || rect.right <= other.left || other.right <= rect.left))
+  })).toBe(true)
+}
 
 async function expectFloatingPositions(page: Page) {
   // Font swapping changes button widths. Measure only the settled layout,
@@ -539,6 +565,84 @@ test('floating controls stay inside the visual viewport during pinch zoom and pa
   await reviewScreenshot(page, { path: test.info().outputPath('pinched-floating-controls.png') })
   await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 })
   await cdp.detach()
+})
+
+test.describe('controls stay available whenever zoomed', () => {
+  test.use({ viewport: { width: 390, height: 600 }, isMobile: true, hasTouch: true })
+  for (const stage of ['jackDiscoverySetup', 'jackMove', 'investigatorMove', 'investigatorAction'] as const) {
+    test(`${stage} keeps controls over the header and below the map`, async ({ page, context }) => {
+      const state = stage === 'jackDiscoverySetup' ? createInitialGame() : stage === 'jackMove' ? jackState()
+        : { ...investigatorState(), stage, activeInvestigator: 1 }
+      await restore(page, state)
+      await page.goto('/')
+      await page.evaluate(() => document.fonts.ready)
+      const cdp = await context.newCDPSession(page)
+      await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 3 })
+      await page.evaluate(() => scrollTo(0, 0))
+      await expect.poll(() => page.locator('.game-board').evaluate(element =>
+        element.getBoundingClientRect().top >= window.visualViewport!.offsetTop + window.visualViewport!.height)).toBe(true)
+      const action = floating(page).getByRole('button', { name: stage === 'jackDiscoverySetup' ? 'Submit disc. locations'
+        : stage === 'jackMove' ? 'Submit move' : stage === 'investigatorMove' ? 'Undo' : 'Pass', exact: true })
+      await expect(action).toBeVisible()
+      await expectFloatingBounds(page)
+      await page.locator('.control-panel').evaluate(element => element.lastElementChild!.scrollIntoView({ block: 'end', behavior: 'instant' }))
+      await expect.poll(() => page.locator('.game-board').evaluate(element =>
+        element.getBoundingClientRect().bottom <= window.visualViewport!.offsetTop)).toBe(true)
+      await expect(action).toBeVisible()
+      await expectFloatingBounds(page)
+      expect(await saved(page)).toEqual(state)
+      if (stage !== 'jackDiscoverySetup') {
+        await touchTap(cdp, focusButton(page))
+        await expect(activePiece(page)).toBeInViewport()
+        await expect(action).toBeVisible()
+        expect(await saved(page)).toEqual(state)
+      }
+      await cdp.detach()
+    })
+  }
+
+  for (const [width, scale] of [[320, 2], [390, 3]]) {
+    test(`Coach first-location Undo works with touch at ${width}px and ${scale}x zoom`, async ({ page, context }) => {
+      await page.setViewportSize({ width: width!, height: 600 })
+      await restore(page, jackState())
+      await page.goto('/')
+      await page.evaluate(() => document.fonts.ready)
+      const cdp = await context.newCDPSession(page)
+      await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: scale! })
+      await touchTap(cdp, floating(page).getByRole('button', { name: 'Cycle move type: Street', exact: true }))
+      const before = await saved(page)
+      const first = legalJackDestinations(before)[0]!
+      const choose = async (location: number) => {
+        const target = page.getByLabel(`Location ${location}, selectable`, { exact: true })
+        await target.evaluate(element => element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }))
+        await touchTap(cdp, target)
+      }
+      const undo = floating(page).getByRole('button', { name: 'Undo', exact: true })
+      await expect(undo).toHaveCount(0)
+      await choose(first)
+      await expect(undo).toBeEnabled()
+      await expect(undo).toHaveAttribute('title', 'Undo the first Coach location choice')
+      await expect(floating(page).getByRole('button', { name: 'Submit move', exact: true })).toBeDisabled()
+      await page.reload()
+      await expect(undo).toBeEnabled()
+      await page.evaluate(() => scrollTo(0, 0))
+      // All four buttons must remain reachable, wrapping the center controls
+      // when a narrow phone cannot fit them in a single row.
+      await expectFloatingBounds(page)
+      await reviewScreenshot(page, { path: test.info().outputPath(`coach-undo-${width}-${scale}x.png`) })
+      await touchTap(cdp, undo)
+      expect(await saved(page)).toEqual(before)
+      await expect(undo).toHaveCount(0)
+      await page.reload()
+      expect(await saved(page)).toEqual(before)
+      await choose(first)
+      const second = legalJackDestinations(await saved(page))[0]!
+      await choose(second)
+      await expect(undo).toHaveCount(0)
+      await expect(floating(page).getByRole('button', { name: 'Submit move', exact: true })).toBeEnabled()
+      await cdp.detach()
+    })
+  }
 })
 
 test('floating Submit respects WaitEnd and hides during the AI turn', async ({ page }) => {
