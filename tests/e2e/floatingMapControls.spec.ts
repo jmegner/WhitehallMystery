@@ -166,9 +166,10 @@ async function expectClearMapTop(page: Page) {
   })).toEqual({ overlaps: [], atMapTop: true, compact: true })
 }
 
-for (const side of ['Jack', 'Investigators', 'Discovery setup'] as const) {
+for (const side of ['Jack', 'Investigators', 'Discovery setup', 'Initial deployment'] as const) {
   test(`${side} map-top controls clear all locations and crossings as the map shrinks`, async ({ page }) => {
-    await restore(page, side === 'Jack' ? jackState() : side === 'Investigators' ? investigatorState() : createInitialGame())
+    await restore(page, side === 'Jack' ? jackState() : side === 'Investigators' ? investigatorState()
+      : side === 'Initial deployment' ? { ...createInitialGame(), stage: 'investigatorSetup', discoveryLocations: [33, 46, 147, 159] } : createInitialGame())
     await page.setViewportSize({ width: 974, height: 1600 })
     await page.goto('/')
     for (const width of [1050, 974, 680, 390, 320]) {
@@ -229,7 +230,7 @@ test.describe('narrow desktop with the whole map visible', () => {
         }
       }
       await checkControls('fixed')
-      await expect(floating(page).getByRole('button', { name: side === 'Jack' ? 'Submit move' : 'Pass', exact: true })).toBeVisible()
+      await expect(floating(page).getByRole('button', { name: side === 'Jack' ? 'Submit' : 'Pass', exact: true })).toBeVisible()
       await reviewScreenshot(page, { path: test.info().outputPath(`${side}-narrow-desktop.png`) })
       // Scroll until the top of the map reaches the viewport; it still fits.
       await page.locator('.board-frame').evaluate(element => {
@@ -286,7 +287,7 @@ test('map-top controls are centered in one column and mutually exclusive with vi
   await floating(page).getByRole('button', { name: 'Cycle move type: Coach' }).click()
   const destination = legalJackDestinations(await saved(page))[0]!
   await page.getByLabel(`Location ${destination}, selectable`, { exact: true }).click()
-  await floating(page).getByRole('button', { name: 'Submit move', exact: true }).click()
+  await floating(page).getByRole('button', { name: 'Submit', exact: true }).click()
   expect((await saved(page)).currentJack).toBe(destination)
   await expect(floating(page)).toHaveCount(0)
 })
@@ -300,7 +301,8 @@ test('map-top Submit handles discovery setup and a separate Pass works in the st
   await expect(floating(page)).toHaveCSS('position', 'absolute')
   await floating(page).getByRole('button', { name: 'Submit disc. locations', exact: true }).click()
   expect((await saved(page)).stage).toBe('investigatorSetup')
-  await expect(floating(page)).toHaveCount(0)
+  await expect(floating(page).getByRole('button', { name: 'Typical', exact: true })).toBeVisible()
+  await expect(floating(page).getByRole('button', { name: 'Submit disc. locations', exact: true })).toHaveCount(0)
   await page.evaluate(({ id, state }) => {
     const key = `whitehall-mystery.saved-game.v1.${id}`
     const game = JSON.parse(localStorage.getItem(key)!)
@@ -406,7 +408,7 @@ test('Jack cycles only legal move types, completes both Coach steps, and submits
   await expect(page.locator('.game-board')).toBeVisible()
   await expect(floating(page)).toHaveCount(0)
   await fillViewport(page)
-  const submit = floating(page).getByRole('button', { name: 'Submit move', exact: true })
+  const submit = floating(page).getByRole('button', { name: 'Submit', exact: true })
   await expect(submit).toBeDisabled()
   const cycle = () => floating(page).getByRole('button', { name: /^Cycle move type:/ })
   await expect(cycle()).toHaveAccessibleName('Cycle move type: Street')
@@ -458,7 +460,7 @@ test('hides the move cycle with only one valid type and removes floating control
   await restore(page, { ...jackState(), specialRemaining: { coach: 0, alley: 0, boat: 0 } })
   await page.goto('/')
   await fillViewport(page)
-  await expect(floating(page).getByRole('button', { name: 'Submit move' })).toBeVisible()
+  await expect(floating(page).getByRole('button', { name: 'Submit', exact: true })).toBeVisible()
   await expect(floating(page).getByRole('button', { name: /^Cycle move type:/ })).toHaveCount(0)
   await page.locator('.control-panel').scrollIntoViewIfNeeded()
   await expect(floating(page)).not.toBeInViewport()
@@ -482,7 +484,7 @@ test('Jack can use a forced special move with the cycle hidden and record it thr
   const destination = destinations[0]!
   await page.getByLabel(`Location ${destination}, selectable`, { exact: true }).click()
   expect((await saved(page)).jackMoveSelection).toEqual({ type: 'alley', path: [destination] })
-  await floating(page).getByRole('button', { name: 'Submit move' }).click()
+  await floating(page).getByRole('button', { name: 'Submit', exact: true }).click()
   expect(await saved(page)).toMatchObject({ stage: 'investigatorMove', currentJack: destination,
     moveSlot: 2, specialRemaining: { alley: 0 } })
 })
@@ -582,7 +584,7 @@ test.describe('controls stay available whenever zoomed', () => {
       await expect.poll(() => page.locator('.game-board').evaluate(element =>
         element.getBoundingClientRect().top >= window.visualViewport!.offsetTop + window.visualViewport!.height)).toBe(true)
       const action = floating(page).getByRole('button', { name: stage === 'jackDiscoverySetup' ? 'Submit disc. locations'
-        : stage === 'jackMove' ? 'Submit move' : stage === 'investigatorMove' ? 'Undo' : 'Pass', exact: true })
+        : stage === 'jackMove' ? 'Submit' : stage === 'investigatorMove' ? 'Undo' : 'Pass', exact: true })
       await expect(action).toBeVisible()
       await expectFloatingBounds(page)
       await page.locator('.control-panel').evaluate(element => element.lastElementChild!.scrollIntoView({ block: 'end', behavior: 'instant' }))
@@ -602,7 +604,7 @@ test.describe('controls stay available whenever zoomed', () => {
   }
 
   for (const [width, scale] of [[320, 2], [390, 3]]) {
-    test(`Coach first-location Undo works with touch at ${width}px and ${scale}x zoom`, async ({ page, context }) => {
+    test(`Coach Undo steps back through both location choices with touch at ${width}px and ${scale}x zoom`, async ({ page, context }) => {
       await page.setViewportSize({ width: width!, height: 600 })
       await restore(page, jackState())
       await page.goto('/')
@@ -622,7 +624,9 @@ test.describe('controls stay available whenever zoomed', () => {
       await choose(first)
       await expect(undo).toBeEnabled()
       await expect(undo).toHaveAttribute('title', 'Undo the first Coach location choice')
-      await expect(floating(page).getByRole('button', { name: 'Submit move', exact: true })).toBeDisabled()
+      const submit = floating(page).getByRole('button', { name: 'Submit', exact: true })
+      await expect(submit).toBeDisabled()
+      await expect(submit).toHaveAttribute('title', 'Confirm the selected move')
       await page.reload()
       await expect(undo).toBeEnabled()
       await page.evaluate(() => scrollTo(0, 0))
@@ -636,10 +640,30 @@ test.describe('controls stay available whenever zoomed', () => {
       await page.reload()
       expect(await saved(page)).toEqual(before)
       await choose(first)
+      const afterFirst = await saved(page)
       const second = legalJackDestinations(await saved(page))[0]!
       await choose(second)
+      const afterSecond = await saved(page)
+      await expect(undo).toBeEnabled()
+      await expect(undo).toHaveAttribute('title', 'Undo the second Coach location choice')
+      await expect(submit).toBeEnabled()
+      await page.reload()
+      expect(await saved(page)).toEqual(afterSecond)
+      await expect(undo).toBeEnabled()
+      await expectFloatingBounds(page)
+      await reviewScreenshot(page, { path: test.info().outputPath(`coach-undo-second-${width}-${scale}x.png`) })
+      await touchTap(cdp, undo)
+      expect(await saved(page)).toEqual(afterFirst)
+      await expect(undo).toHaveAttribute('title', 'Undo the first Coach location choice')
+      await expect(submit).toBeDisabled()
+      await touchTap(cdp, undo)
+      expect(await saved(page)).toEqual(before)
       await expect(undo).toHaveCount(0)
-      await expect(floating(page).getByRole('button', { name: 'Submit move', exact: true })).toBeEnabled()
+      await choose(first)
+      await choose(second)
+      await touchTap(cdp, submit)
+      expect(await saved(page)).toMatchObject({ stage: 'investigatorMove', currentJack: second,
+        moveSlot: before.moveSlot + 2, specialRemaining: { coach: before.specialRemaining.coach - 1 } })
       await cdp.detach()
     })
   }
@@ -652,7 +676,7 @@ test('floating Submit respects WaitEnd and hides during the AI turn', async ({ p
   await holdAiWorker(page)
   await page.goto('/')
   await fillViewport(page)
-  await floating(page).getByRole('button', { name: 'Submit move' }).click()
+  await floating(page).getByRole('button', { name: 'Submit', exact: true }).click()
   await expect(floating(page).getByRole('button', { name: 'End turn', exact: true })).toBeVisible()
   await expect(floating(page).getByRole('button', { name: /^Cycle move type:/ })).toHaveCount(0)
   await floating(page).getByRole('button', { name: 'End turn', exact: true }).click()

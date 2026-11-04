@@ -1,5 +1,5 @@
 import { gameReducer } from './gameEngine'
-import { INVESTIGATOR_ORDER, type GameAction, type GameState, type InvestigatorColor, type JackMoveType } from './types'
+import { INVESTIGATOR_ORDER, type GameAction, type GameState, type InvestigatorColor, type JackMoveType, type PublicMoveEvidence } from './types'
 
 export type PlayerView = 'jack' | 'investigators'
 
@@ -135,19 +135,19 @@ const recapInvestigatorName = (color: InvestigatorColor) =>
 export interface JackRoundPath {
   round: number
   locations: number[]
+  moves?: PublicMoveEvidence[]
 }
 
 export const gameOverJackPaths = (history: GameHistory): JackRoundPath[] => {
   if (currentHistoryState(history).stage !== 'gameOver') return []
-  const rounds = new Map<number, number[]>()
+  const rounds = new Map<number, JackRoundPath>()
   // Each snapshot contains committed moves for its current round, including
   // both Coach steps. Ignore drafts and the redo tail of a rewound history.
   for (let index = 0; index <= history.cursor; index += 1) {
-    const { round, roundTrail } = history.entries[index]!.state
-    rounds.set(round, roundTrail)
+    const { round, roundTrail, publicRound } = history.entries[index]!.state
+    rounds.set(round, { round, locations: roundTrail, ...(publicRound ? { moves: publicRound.moves } : {}) })
   }
-  return [...rounds].filter(([, locations]) => locations.length > 0)
-    .map(([round, locations]) => ({ round, locations }))
+  return [...rounds.values()].filter(path => path.locations.length > 0)
 }
 
 export const gameRecap = (history: GameHistory): string[] => {

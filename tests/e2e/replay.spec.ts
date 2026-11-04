@@ -42,6 +42,7 @@ test('replays whole side turns and rounds with analysis controls, persists its p
   await expect(controls.getByRole('button', { name: 'Previous round' })).toBeDisabled()
   await expect(page.locator('.jack-marker')).toHaveCount(1)
   await expect(page.locator('.past-path-step')).toHaveCount(2)
+  await expect(page.locator('.past-path-step text')).toHaveText(['1C', '2C'])
   const past = page.getByRole('checkbox', { name: 'past', exact: true })
   await expect(past).toBeChecked()
   await expect(past).toBeDisabled()

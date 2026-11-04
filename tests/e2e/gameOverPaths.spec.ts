@@ -14,7 +14,13 @@ function finishedHistory(): GameHistory {
   const paths = [[33, 44, 55, 44, 46], [46, 60, 147], [147, 86, target]]
   const history: GameHistory = { cursor: 2, pendingReveal: null, entries: paths.map((roundTrail, index) => ({
     state: { ...base, round: index + 1, roundTrail, moveSlot: roundTrail.length - 1, currentJack: roundTrail.at(-1)!,
-      publicRound: { start: roundTrail[0]!, moves: [], observations: [] } },
+      publicRound: { start: roundTrail[0]!, observations: [], moves: (index === 0 ? [
+        { type: 'coach' as const, startSlot: 1, endSlot: 2 }, { type: 'alley' as const, startSlot: 3, endSlot: 3 },
+        { type: 'normal' as const, startSlot: 4, endSlot: 4 },
+      ] : [
+        { type: index === 1 ? 'boat' as const : 'normal' as const, startSlot: 1, endSlot: 1 },
+        { type: 'normal' as const, startSlot: 2, endSlot: 2 },
+      ]).map(move => ({ ...move, investigatorPositions: { yellow: 'CF', blue: 'DC', red: 'HZ' } })) } },
     action: index === 0 ? null : { type: 'continueHandoff' }, counted: index !== 0,
   })) }
   return gameHistoryReducer(history, { type: 'apply', action: { type: 'arrestCircle', circleId: target } })
@@ -44,7 +50,7 @@ test('game-over past displays selected rounds and all rounds, preserving prefere
   await expect(page.locator('.past-path-line')).toHaveCount(0)
   await past.check()
   await expect(page.locator('.past-path-line')).toHaveCount(8)
-  await expect(page.locator('.past-path-step text')).toHaveText(['1.1,1.3', '1.2', '1.4', '2.1', '2.2', '3.1', '3.2'])
+  await expect(page.locator('.past-path-step text')).toHaveText(['1.1C,1.3A', '1.2C', '1.4', '2.1B', '2.2', '3.1', '3.2'])
   for (const index of [1, 2, 3]) {
     await round.selectOption(String(index))
     const moves = index === 1 ? 4 : 2

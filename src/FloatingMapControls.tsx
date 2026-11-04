@@ -16,9 +16,10 @@ interface Props {
   waiting: boolean
   endTurnLabel?: string
   canContinueFromMap: boolean
+  onTypicalDeployment?: () => void
 }
 
-export default function FloatingMapControls({ panel, state, dispatch, onUndo, canUndo, waiting, endTurnLabel, canContinueFromMap }: Props) {
+export default function FloatingMapControls({ panel, state, dispatch, onUndo, canUndo, waiting, endTurnLabel, canContinueFromMap, onTypicalDeployment }: Props) {
   const viewport = useBoardPanelViewport(panel)
   if (waiting) return null
   const investigator = state.stage === 'investigatorMove' || state.stage === 'investigatorAction'
@@ -36,9 +37,9 @@ export default function FloatingMapControls({ panel, state, dispatch, onUndo, ca
         : `Choose one white location in each quadrant before submitting (${state.discoveryLocations.length}/4 selected)`}
       onClick={() => dispatch({ type: 'confirmDiscoveries' })}>Submit disc. locations</button>
   } else if (state.stage === 'jackMove') {
-    if (state.jackMoveSelection.type === 'coach' && state.jackMoveSelection.path.length === 1) {
+    if (state.jackMoveSelection.type === 'coach' && state.jackMoveSelection.path.length > 0) {
       rightControls = <button type="button" className="secondary-button" disabled={!canUndo}
-        title="Undo the first Coach location choice" onClick={onUndo}>Undo</button>
+        title={`Undo the ${state.jackMoveSelection.path.length === 1 ? 'first' : 'second'} Coach location choice`} onClick={onUndo}>Undo</button>
     }
     // Start from an empty draft, including when halfway through a Coach route.
     // A remaining tile is insufficient: there must be a legal destination too.
@@ -53,8 +54,11 @@ export default function FloatingMapControls({ panel, state, dispatch, onUndo, ca
         {movementLabel(current)} <span aria-hidden="true">↻</span>
       </button>}
       <button type="button" className="primary-button" disabled={!jackMoveReadyToConfirm(state)}
-        onClick={() => dispatch({ type: 'confirmJackMove' })}>Submit move</button>
+        title="Confirm the selected move" onClick={() => dispatch({ type: 'confirmJackMove' })}>Submit</button>
     </>
+  } else if (state.stage === 'investigatorSetup' && onTypicalDeployment) {
+    controls = <button type="button" className="primary-button"
+      title="Place all three investigators at the AI’s usual starting crossings" onClick={onTypicalDeployment}>Typical</button>
   } else if (state.stage === 'investigatorMove' && (investigator === 'blue' || investigator === 'red')) {
     controls = <button type="button" className="secondary-button" disabled={!canUndo}
       title="Undo the previous investigator’s move" onClick={onUndo}>Undo</button>

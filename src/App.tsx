@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { planInvestigatorDeployment } from './game/aiDeployment'
 import { useBoardHover } from './useBoardHover'
 import { useWorstCrossingEliminations } from './useWorstCrossingEliminations'
 import type { CSSProperties } from 'react'
@@ -397,9 +398,9 @@ function GameBoard({
     ? circlesById.get(state.currentJack)
     : undefined
   const pastPaths = (replayTurn || (showPastPath && privateJackView) || peekAtJack
-    ? [{ round: state.round, locations: state.roundTrail }]
-    : showPastPath && state.stage === 'gameOver' ? pastRoundPaths : []).map(({ round, locations }) => ({
-      round, locations, circles: locations.map(id => circlesById.get(id)).filter(circle => circle !== undefined),
+    ? [{ round: state.round, locations: state.roundTrail, moves: state.publicRound?.moves }]
+    : showPastPath && state.stage === 'gameOver' ? pastRoundPaths : []).map(({ round, locations, moves }) => ({
+      round, locations, moves, circles: locations.map(id => circlesById.get(id)).filter(circle => circle !== undefined),
     }))
   const pastPathSegments = pastPaths.flatMap(({ round, circles }) =>
     trimmedRouteSegments(circles).map(segment => ({ ...segment, round })))
@@ -1140,7 +1141,7 @@ function GameBoard({
           const circle = circlesById.get(location)
           if (!circle) return null
           const description = visits.length === 1
-            ? `${state.stage === 'gameOver' ? `Round ${visits[0]!.round} ` : ''}Past path move ${visits[0]!.move}, location ${location}`
+            ? `${state.stage === 'gameOver' ? `Round ${visits[0]!.round} ` : ''}Past path move ${visits[0]!.move}${visits[0]!.type !== 'normal' ? ` via ${movementLabel(visits[0]!.type)}` : ''}, location ${location}`
             : `Past path moves ${label}, location ${location}`
           return <PastPathMarker key={`past-path-step-${location}`} x={circle.x} y={circle.y} location={location}
             rounds={[...new Set(visits.map(visit => visit.round))].join(',')} label={label} description={description}
@@ -1280,9 +1281,10 @@ interface ControlsProps {
 interface GameControlsProps extends ControlsProps {
   onUndoRoute: () => void
   onUndoSecondLocation: () => void
+  onTypicalDeployment?: () => void
 }
 
-function GameControls({ state, dispatch, onUndoRoute, onUndoSecondLocation }: GameControlsProps) {
+function GameControls({ state, dispatch, onUndoRoute, onUndoSecondLocation, onTypicalDeployment }: GameControlsProps) {
   const activeColor = activeInvestigatorColor(state)
 
   if (state.stage === 'jackDiscoverySetup') {
@@ -1322,6 +1324,8 @@ function GameControls({ state, dispatch, onUndoRoute, onUndoSecondLocation }: Ga
         <p>
           Place the <strong className={`color-word ${activeColor}`}>{activeColor}</strong> Investigator on one of the remaining yellow-bordered crossings.
         </p>
+        {onTypicalDeployment && <button type="button" className="primary-button"
+          title="Place all three investigators at the AI’s usual starting crossings" onClick={onTypicalDeployment}>Typical</button>}
         <TargetButtons
           values={choices}
           label="Available deployment crossings"
@@ -1802,6 +1806,13 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
       if (online.requestUndo.canRequest) online.requestUndo.onRequest()
     } else applyHistoryCommand({ type: 'undo' })
   }
+  const handleTypicalDeployment = !replayTurn && !remote?.waiting && state.stage === 'investigatorSetup' &&
+    state.activeInvestigator === 0 && INVESTIGATOR_ORDER.every(color => state.investigatorPositions[color] === undefined)
+    ? () => {
+      const positions = planInvestigatorDeployment(state, () => 0)
+      applyHistoryCommands(INVESTIGATOR_ORDER.map(color => ({ type: 'apply' as const,
+        action: { type: 'placeInvestigator' as const, crossingId: positions[color]! } })), investigatorAuto)
+    } : undefined
   const handleUndoRoute = () => {
     applyHistoryCommands(state.jackMoveSelection.path.map(() => ({ type: 'undo' as const })))
   }
@@ -2281,6 +2292,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               />
             </div>
             <FloatingMapControls panel={boardPanel} state={state} dispatch={dispatch} waiting={!!replayTurn || (!!remote?.waiting && !ai?.awaitingEnd)}
+              onTypicalDeployment={handleTypicalDeployment}
               canContinueFromMap={canContinueFromMap}
               onUndo={handleUndo} canUndo={remote ? online?.requestUndo ? online.requestUndo.canRequest
                 : !online?.waiting && history.cursor > remote.turnStart : undoMode(history) !== 'disabled'}
@@ -2374,6 +2386,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
             dispatch={dispatch}
             onUndoRoute={handleUndoRoute}
             onUndoSecondLocation={handleUndo}
+            onTypicalDeployment={handleTypicalDeployment}
           />}
 
           <PublicHuntLog key={gameId} state={state} recap={recap} gameId={gameId} />

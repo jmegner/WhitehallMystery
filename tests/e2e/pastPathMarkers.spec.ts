@@ -2,14 +2,16 @@ import { expect, test, type Page } from '@playwright/test'
 import { createInitialGame } from '../../src/game/gameEngine'
 import { circles } from '../../src/game/mapData'
 import { reviewScreenshot } from './reviewScreenshot'
+import type { PublicMoveEvidence } from '../../src/game/types'
 
-async function restore(page: Page, trail: number[]) {
+async function restore(page: Page, trail: number[], moves?: Pick<PublicMoveEvidence, 'type' | 'startSlot' | 'endSlot'>[]) {
   const positions = { yellow: 'FP', blue: 'HP', red: 'HZ' }
+  const committedMoves: Pick<PublicMoveEvidence, 'type' | 'startSlot' | 'endSlot'>[] = moves ?? trail.slice(1).map((_, index) => ({
+    type: 'normal', startSlot: index + 1, endSlot: index + 1,
+  }))
   const state = { ...createInitialGame(), stage: 'jackMove', currentJack: trail.at(-1)!, moveSlot: trail.length - 1,
     discoveryLocations: [33, 46, 147, 159], reachedDiscoveries: [33], roundTrail: trail, investigatorPositions: positions,
-    publicRound: { start: trail[0]!, observations: [], moves: trail.slice(1).map((_, index) => ({
-      type: 'normal', startSlot: index + 1, endSlot: index + 1, investigatorPositions: positions,
-    })) } }
+    publicRound: { start: trail[0]!, observations: [], moves: committedMoves.map(move => ({ ...move, investigatorPositions: positions })) } }
   await page.addInitScript(state => {
     if (localStorage.getItem('whitehall-mystery.game.v1')) return
     localStorage.setItem('whitehall-mystery.game.v1', JSON.stringify({ version: 1, state }))
@@ -68,4 +70,28 @@ test('long backtracking lists remain complete and inside the right edge of the b
   const board = (await page.locator('.game-board').boundingBox())!
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(board.x + board.width)
   await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath('right-edge-backtracking.png') })
+})
+
+test('past visit suffixes show committed Coach, Alley and Boat moves in compact grouped labels', async ({ page }) => {
+  await restore(page, [33, 13, 33, 13, 33, 13, 33, 13], [
+    { type: 'coach', startSlot: 1, endSlot: 2 }, { type: 'normal', startSlot: 3, endSlot: 3 },
+    { type: 'alley', startSlot: 4, endSlot: 4 }, { type: 'boat', startSlot: 5, endSlot: 5 },
+    { type: 'normal', startSlot: 6, endSlot: 6 }, { type: 'normal', startSlot: 7, endSlot: 7 },
+  ])
+  await page.getByRole('checkbox', { name: 'past', exact: true }).check()
+  const first = page.locator('.past-path-step[data-location="13"] text')
+  const second = page.locator('.past-path-step[data-location="33"] text')
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 })
+    await expect(first).toHaveText('1C,3,5B,7')
+    await expect(second).toHaveText('2C,4A,6')
+    await expectTightRectangles(page)
+    await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath(`special-move-badges-${width}.png`) })
+  }
+  await page.getByRole('button', { name: 'Coach (2)', exact: true }).click()
+  await expect(first).toHaveText('1C,3,5B,7')
+  await expect(second).toHaveText('2C,4A,6')
+  await page.reload()
+  await expect(first).toHaveText('1C,3,5B,7')
+  await expect(second).toHaveText('2C,4A,6')
 })
