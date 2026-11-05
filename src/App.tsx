@@ -2291,7 +2291,8 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 }}
               />
             </div>
-            <FloatingMapControls panel={boardPanel} state={state} dispatch={dispatch} waiting={!!replayTurn || (!!remote?.waiting && !ai?.awaitingEnd)}
+            <FloatingMapControls panel={boardPanel} gameId={gameId} state={state} dispatch={dispatch} waiting={!!replayTurn || (!!remote?.waiting && !ai?.awaitingEnd)}
+              side={remote?.role ?? playerViewForState(state) ?? 'investigators'}
               onTypicalDeployment={handleTypicalDeployment}
               canContinueFromMap={canContinueFromMap}
               onUndo={handleUndo} canUndo={remote ? online?.requestUndo ? online.requestUndo.canRequest

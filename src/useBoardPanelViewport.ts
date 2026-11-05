@@ -3,15 +3,17 @@ import { MINIMUM_BOARD_VIEWPORT_WIDTH } from './focusBoardPiece'
 
 interface BoardPanelViewport {
   left: number
+  top: number
   bottom: number
   width: number
   scale: number
   hasActivePiece: boolean
+  touchOverview: boolean
 }
 
 // Browser zoom changes the layout viewport; pinch zoom changes the visual
 // viewport. Follow both, including panning, without changing the map's layout.
-export function useBoardPanelViewport(panel: HTMLElement | null): BoardPanelViewport | null {
+export function useBoardPanelViewport(panel: HTMLElement | null, allowTouchZoom = false): BoardPanelViewport | null {
   const [position, setPosition] = useState<BoardPanelViewport | null>(null)
   useLayoutEffect(() => {
     if (!panel) return
@@ -34,12 +36,13 @@ export function useBoardPanelViewport(panel: HTMLElement | null): BoardPanelView
       const hasActivePiece = !!piece && piece.width > 0 && piece.height > 0
       // Pinch zoom keeps controls reachable even after panning off the map.
       const zoomed = scale > 1
+      const touchOverview = allowTouchZoom && navigator.maxTouchPoints > 0 && !zoomed
       // Include the move track, toolbar, map and legend, so controls stay
       // available while the track is visible. Allow subpixel edge rounding.
-      const shouldFloat = zoomed || (visibleWidth >= width * MINIMUM_BOARD_VIEWPORT_WIDTH && visibleHeight >= height - 1)
+      const shouldFloat = zoomed || touchOverview || (visibleWidth >= width * MINIMUM_BOARD_VIEWPORT_WIDTH && visibleHeight >= height - 1)
       const next = shouldFloat
-        ? { left: left + width / 2, bottom: (zoomed ? top + height : Math.min(rect.bottom, top + height)) - 12 / scale,
-          width: width * scale - 24, scale, hasActivePiece }
+        ? { left: left + width / 2, top: top + 12 / scale, bottom: (zoomed || touchOverview ? top + height : Math.min(rect.bottom, top + height)) - 12 / scale,
+          width: width * scale - 24, scale, hasActivePiece, touchOverview }
         : null
       setPosition(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next)
     }
@@ -68,6 +71,6 @@ export function useBoardPanelViewport(panel: HTMLElement | null): BoardPanelView
       window.visualViewport?.removeEventListener('scroll', schedule)
       window.visualViewport?.removeEventListener('resize', schedule)
     }
-  }, [panel])
+  }, [panel, allowTouchZoom])
   return position
 }

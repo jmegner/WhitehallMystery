@@ -191,6 +191,16 @@ const searchJackRoutes = (state: GameState, firstMoveType: JackMoveType, target?
   return { planningState, initialRoutes, distances, predecessors }
 }
 
+// Match the Street preview: investigators block the next move, then future
+// moves use the unrestricted street graph because their positions may change.
+export const nearestUnvisitedDiscoveryStreetDistance = (state: GameState): number | undefined => {
+  const discoveries = [...unreachedDiscoveries(state)]
+  if (state.currentJack === null || discoveries.length === 0) return undefined
+  if (discoveries.includes(state.currentJack)) return 0
+  const { distances } = searchJackRoutes(state, 'normal')
+  return Math.min(...discoveries.map(id => distances.get(id) ?? Infinity))
+}
+
 const routeTurnLabels = (search: JackRouteSearch, includedNodes = new Set(search.distances.keys())) => {
   const { planningState, initialRoutes, distances } = search
   const start = planningState.currentJack

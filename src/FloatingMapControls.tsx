@@ -4,12 +4,18 @@ import { movementLabel } from './game/inference'
 import type { GameAction, GameState, JackMoveType } from './game/types'
 import { useBoardPanelViewport } from './useBoardPanelViewport'
 import { focusBoardPiece } from './focusBoardPiece'
+import { floatingTurnSummary } from './floatingTurnSummary'
+import type { PlayerView } from './game/history'
+import { boardZoomRegion, zoomToBoardRegion } from './boardZoom'
+import { rememberBoardViewport, useSavedBoardViewport } from './useSavedBoardViewport'
 
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
 
 interface Props {
   panel: HTMLElement | null
+  gameId: string
   state: GameState
+  side: PlayerView
   dispatch: (action: GameAction) => void
   onUndo: () => void
   canUndo: boolean
@@ -19,8 +25,10 @@ interface Props {
   onTypicalDeployment?: () => void
 }
 
-export default function FloatingMapControls({ panel, state, dispatch, onUndo, canUndo, waiting, endTurnLabel, canContinueFromMap, onTypicalDeployment }: Props) {
-  const viewport = useBoardPanelViewport(panel)
+export default function FloatingMapControls({ panel, gameId, state, side, dispatch, onUndo, canUndo, waiting, endTurnLabel, canContinueFromMap, onTypicalDeployment }: Props) {
+  const zoomRegion = boardZoomRegion(state)
+  const viewport = useBoardPanelViewport(panel, !!zoomRegion)
+  useSavedBoardViewport(panel, gameId)
   if (waiting) return null
   const investigator = state.stage === 'investigatorMove' || state.stage === 'investigatorAction'
     ? activeInvestigatorColor(state) : undefined
@@ -83,18 +91,30 @@ export default function FloatingMapControls({ panel, state, dispatch, onUndo, ca
 
   const prompt = canContinueFromMap && !floatingResults
     ? <div className="map-continue-prompt">Results shown · Click anywhere on the map to continue</div> : null
+  const summary = floatingTurnSummary(state, side)
+  const summaryText = <output className="floating-turn-summary" aria-label="Floating turn summary" title={summary.description}
+    style={viewport ? { left: viewport.left, top: viewport.top, transform: `translateX(-50%) scale(${1 / viewport.scale})` } : undefined}>
+    {summary.text}
+  </output>
   // The CSS breakpoint matches the control panel's single-column layout. This
   // fallback stays anchored to the map; viewport-filling board panels use the portal.
   if (!viewport) return <>{prompt}{(controls || rightControls) && <div className="floating-map-controls map-top-controls" data-investigator={investigator}
     role="group" aria-label="Floating map controls">
+    {summaryText}
     {controls}
     {rightControls}
   </div>}</>
-  if (!controls && !rightControls && !viewport.hasActivePiece) return prompt
-  return <>{prompt}{createPortal(<div className="floating-map-controls" data-investigator={investigator} role="group" aria-label="Floating map controls"
+  if (!controls && !rightControls && !viewport.hasActivePiece && !viewport.touchOverview) return prompt
+  return <>{prompt}{createPortal(<>{summaryText}<div className="floating-map-controls" data-investigator={investigator} role="group" aria-label="Floating map controls"
     style={{ left: viewport.left, top: viewport.bottom, width: viewport.width,
       transform: `translate(-50%, -100%) scale(${1 / viewport.scale})` }}>
-    {viewport.hasActivePiece && <div className="floating-control-cluster floating-controls-left"><button type="button" className="secondary-button"
+    {viewport.touchOverview && zoomRegion ? <div className="floating-control-cluster floating-controls-left"><button type="button" className="secondary-button"
+      title="Zoom to the map area relevant to the current phase"
+      onPointerDown={event => event.preventDefault()}
+      onClick={() => {
+        if (panel) void zoomToBoardRegion(panel, zoomRegion).then(() => rememberBoardViewport(gameId))
+      }}>Zoom</button></div>
+    : viewport.hasActivePiece && <div className="floating-control-cluster floating-controls-left"><button type="button" className="secondary-button"
       title="Center on the active piece while keeping the floating controls visible"
       onClick={() => {
         const piece = panel?.querySelector<SVGElement>('[data-active-playing-piece] circle')
@@ -104,5 +124,5 @@ export default function FloatingMapControls({ panel, state, dispatch, onUndo, ca
     </button></div>}
     {controls && <div className="floating-control-cluster floating-controls-center">{controls}</div>}
     {rightControls && <div className="floating-control-cluster floating-controls-right">{rightControls}</div>}
-  </div>, document.body)}</>
+  </div></>, document.body)}</>
 }
