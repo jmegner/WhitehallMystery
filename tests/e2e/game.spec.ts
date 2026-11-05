@@ -780,6 +780,30 @@ test('Blue route previews cannot end this turn on another investigator', async (
   await expect(page.locator('.investigator-route-preview-line').first()).toBeVisible()
 })
 
+test('Blue at KP previews GW and GZ when another investigator occupies HV', async ({ page }) => {
+  const state = { ...createInitialGame(), stage: 'investigatorMove', activeInvestigator: 1,
+    investigatorPositions: { yellow: 'HV', blue: 'KP', red: 'JC' } }
+  await page.addInitScript(state => {
+    localStorage.setItem('whitehall-mystery.game.v1', JSON.stringify({ version: 1, state }))
+  }, state)
+  await page.setViewportSize({ width: 1440, height: 1400 })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Blue Investigator: Move' })).toBeVisible()
+  for (const [target, arrival] of [['GW', '3b'], ['GZ', '4a']]) {
+    const crossing = page.getByLabel(`Crossing ${target}`, { exact: true })
+    await crossing.hover()
+    await expect(crossing).toHaveCSS('cursor', 'help')
+    await expect(page.locator('.investigator-route-preview-line').first()).toBeVisible()
+    await expect(page.locator(`.investigator-route-turn-count[aria-label^="Crossing ${target}:"]`)).toHaveText(arrival)
+  }
+  await expect(page.locator('.investigator-route-turn-count[aria-label^="Crossing HW:"]')).toHaveText('1a')
+  await expect(page.locator('.investigator-route-turn-count[aria-label^="Crossing HV:"]')).toHaveText('2a')
+  await page.mouse.move(0, 0)
+  await expect(page.locator('.investigator-route-preview-line')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Blue Investigator: Move' })).toBeVisible()
+  await expect(page.locator('.investigator-piece.blue')).toHaveAttribute('data-board-hover', 'investigator:blue:KP')
+})
+
 test('Red routes from JS to HD show only the earliest arrival at every crossing', async ({ page }) => {
   const state = { ...createInitialGame(), stage: 'investigatorMove', activeInvestigator: 2,
     investigatorPositions: { yellow: 'JQ', blue: 'CP', red: 'JS' } }

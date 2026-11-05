@@ -288,6 +288,25 @@ describe('investigator movement previews', () => {
     const passing = shortestInvestigatorRoutePreview({ ...state, investigatorPositions: { ...state.investigatorPositions, yellow: firstStep } }, 'HR')
     expect(passing.turnLabels.get(firstStep)).toBe('1a')
   })
+
+  test('Blue at KP can preview GZ by stopping early when HV blocks the shortest first-turn stop', () => {
+    const state: GameState = { ...createInitialGame(), stage: 'investigatorMove', activeInvestigator: 1,
+      investigatorPositions: { yellow: 'HV', blue: 'KP', red: 'JC' } }
+    const preview = shortestInvestigatorRoutePreview(state, 'GZ')
+    expect(preview.segments).toContainEqual({ from: 'KP', to: 'HW', throughLocationPaths: [[112]] })
+    expect(preview.segments).toContainEqual({ from: 'HW', to: 'HV', throughLocationPaths: [[]] })
+    expect(preview.turnLabels.get('HW')).toBe('1a')
+    expect(preview.turnLabels.get('HV')).toBe('2a')
+    expect(preview.turnLabels.get('GZ')).toBe('4a')
+    expect(preview.turnLabels.has('KP')).toBe(false)
+    const legal = new Set(legalInvestigatorDestinations(state))
+    for (const [crossing, label] of preview.turnLabels) {
+      if (label.startsWith('1')) expect(legal.has(crossing)).toBe(true)
+    }
+    expect(shortestInvestigatorRoutePreview(state, 'GW').turnLabels.get('GW')).toBe('3b')
+    const unoccupied = { ...state, investigatorPositions: { ...state.investigatorPositions, yellow: 'FC' } }
+    expect(shortestInvestigatorRoutePreview(unoccupied, 'GZ').turnLabels.get('GZ')).toBe('3b')
+  })
 })
 
 describe('corrected map connections and alleys', () => {

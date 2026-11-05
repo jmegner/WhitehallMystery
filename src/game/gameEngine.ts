@@ -401,7 +401,12 @@ export const distinctInvestigatorFirstMoveRoutes = (routes: string[][]): string[
   })
 }
 
-const shortestInvestigatorRoutePaths = (start: string, target: string, firstMoveDestinations: Set<string>): string[][] => {
+interface InvestigatorRoutePath {
+  crossings: string[]
+  firstTurnSteps: number
+}
+
+const shortestInvestigatorRoutePaths = (start: string, target: string, firstMoveDestinations: Set<string>): InvestigatorRoutePath[] => {
   const distancesToTarget = new Map<string, number>([[target, 0]])
   const queue = [target]
   for (let index = 0; index < queue.length; index += 1) {
@@ -415,31 +420,32 @@ const shortestInvestigatorRoutePaths = (start: string, target: string, firstMove
     }
   }
 
-  const shortestDistance = distancesToTarget.get(start)
-  if (shortestDistance === undefined) return []
-  const routes: string[][] = []
-  const route = [start]
-  const collectRoutes = (remainingSteps: number) => {
-    const current = route.at(-1)
-    if (!current) return
-    if (route.length === 3 && !firstMoveDestinations.has(current)) return
-    if (remainingSteps === 0) {
-      if (current === target) routes.push([...route])
-      return
+  if (!distancesToTarget.has(start)) return []
+  const oneStepMoves = [...investigatorTransitions.get(start)?.keys() ?? []].map(to => [start, to])
+  const twoStepMoves = oneStepMoves.flatMap(route =>
+    [...investigatorTransitions.get(route[1]!)?.keys() ?? []].map(to => [...route, to]))
+  // Occupancy restricts this turn's stop, not the crossings passed through.
+  // Include shorter first moves so waiting at a legal stop can beat a detour.
+  const firstMoves = [[start], ...oneStepMoves, ...distinctInvestigatorFirstMoveRoutes(twoStepMoves)]
+    .filter(route => firstMoveDestinations.has(route.at(-1)!) && distancesToTarget.has(route.at(-1)!))
+  const shortestArrival = Math.min(...firstMoves.map(route => 2 + distancesToTarget.get(route.at(-1)!)!))
+  const routes: InvestigatorRoutePath[] = []
+  const stops = new Set<string>()
+  for (const firstMove of firstMoves) {
+    const stop = firstMove.at(-1)!
+    if (stops.has(stop) || 2 + distancesToTarget.get(stop)! !== shortestArrival) continue
+    stops.add(stop)
+    const crossings = [...firstMove]
+    let current = stop
+    while (current !== target) {
+      const next = [...investigatorTransitions.get(current)?.keys() ?? []]
+        .find(neighbor => distancesToTarget.get(neighbor) === distancesToTarget.get(current)! - 1)!
+      crossings.push(next)
+      current = next
     }
-    for (const neighbor of investigatorTransitions.get(current)?.keys() ?? []) {
-      // Every step must bring the target one crossing closer. Allowing an
-      // extra step in the same turn also delays arrival at intermediate crossings.
-      if (distancesToTarget.get(neighbor) !== remainingSteps - 1) {
-        continue
-      }
-      route.push(neighbor)
-      collectRoutes(remainingSteps - 1)
-      route.pop()
-    }
+    routes.push({ crossings, firstTurnSteps: firstMove.length - 1 })
   }
-  collectRoutes(shortestDistance)
-  return distinctInvestigatorFirstMoveRoutes(routes)
+  return routes
 }
 
 export const shortestInvestigatorRoutePreview = (state: GameState, target: string): InvestigatorRoutePreview => {
@@ -450,8 +456,8 @@ export const shortestInvestigatorRoutePreview = (state: GameState, target: strin
 
   const segments: InvestigatorRoutePreview['segments'] = []
   const segmentKeys = new Set<string>()
-  const turnLabels = new Map<string, string>()
-  for (const route of shortestInvestigatorRoutePaths(start, target, new Set(legalInvestigatorDestinations(state)))) {
+  const arrivalSteps = new Map<string, number>()
+  for (const { crossings: route, firstTurnSteps } of shortestInvestigatorRoutePaths(start, target, new Set(legalInvestigatorDestinations(state)))) {
     for (let step = 0; step < route.length - 1; step += 1) {
       const from = route[step]!
       const to = route[step + 1]!
@@ -464,12 +470,13 @@ export const shortestInvestigatorRoutePreview = (state: GameState, target: strin
           throughLocationPaths: investigatorTransitions.get(from)?.get(to)?.slice(0, 1) ?? [],
         })
       }
-      const arrivalStep = step + 1
-      turnLabels.set(to, `${Math.ceil(arrivalStep / 2)}${arrivalStep % 2 === 1 ? 'a' : 'b'}`)
+      const arrivalStep = step + 1 + (step >= firstTurnSteps ? 2 - firstTurnSteps : 0)
+      if (to !== start && arrivalStep < (arrivalSteps.get(to) ?? Infinity)) arrivalSteps.set(to, arrivalStep)
     }
   }
 
-  return { segments, turnLabels }
+  return { segments, turnLabels: new Map([...arrivalSteps].map(([id, step]) =>
+    [id, `${Math.ceil(step / 2)}${step % 2 === 1 ? 'a' : 'b'}`])) }
 }
 
 export const investigatorPreviewDestinations = (
