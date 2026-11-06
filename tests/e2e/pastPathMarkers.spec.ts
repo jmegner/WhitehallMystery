@@ -35,6 +35,45 @@ async function expectTightRectangles(page: Page) {
   await expect(page.locator('.past-path-step circle')).toHaveCount(0)
 }
 
+test('hovered shortest routes paint above overlapping past badges without blocking board input', async ({ page }) => {
+  await restore(page, [33, 13, 33, 13, 33])
+  await page.getByRole('checkbox', { name: 'past', exact: true }).check()
+  await page.getByRole('checkbox', { name: 'maybes', exact: true }).check()
+  await page.locator('.map-hit-target[data-board-hover="location:1"]').hover()
+  await expect(page.locator('.route-preview-line').first()).toBeVisible()
+  const label = page.locator('.route-turn-count[aria-label^="Location 13:"]')
+  await expect(label).toBeVisible()
+  await page.evaluate(() => document.fonts.ready)
+  // Inspect the browser's actual stacking at an overlap. Temporarily enable
+  // hit testing on these decorative shapes without changing their paint order.
+  const stacking = await label.evaluate(label => {
+    const badge = document.querySelector('.past-path-step[data-location="13"] rect')! as SVGRectElement
+    const a = label.getBoundingClientRect()
+    const b = badge.getBoundingClientRect()
+    const left = Math.max(a.left, b.left), right = Math.min(a.right, b.right)
+    const top = Math.max(a.top, b.top), bottom = Math.min(a.bottom, b.bottom)
+    const shapes = [label, badge] as SVGElement[]
+    const previous = shapes.map(shape => shape.style.pointerEvents)
+    shapes.forEach(shape => { shape.style.pointerEvents = 'all' })
+    const hits = document.elementsFromPoint((left + right) / 2, (top + bottom) / 2)
+    shapes.forEach((shape, index) => { shape.style.pointerEvents = previous[index]! })
+    return { overlap: right > left && bottom > top, labelHit: hits.indexOf(label), badgeHit: hits.indexOf(badge) }
+  })
+  expect(stacking.overlap).toBe(true)
+  expect(stacking.labelHit).toBeGreaterThanOrEqual(0)
+  expect(stacking.badgeHit).toBeGreaterThan(stacking.labelHit)
+  expect(await page.locator('.map-hover-indicators *').evaluateAll(elements =>
+    elements.every(element => getComputedStyle(element).pointerEvents === 'none'),
+  )).toBe(true)
+  await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath('route-above-past.png') })
+  await page.locator('.jack-marker').hover()
+  await expect(page.locator('.route-preview-line')).toHaveCount(0)
+  expect(await page.locator('.route-turn-count').count()).toBeGreaterThan(0)
+  await page.mouse.move(0, 0)
+  await expect(page.locator('.route-turn-count')).toHaveCount(0)
+  await expect(page.locator('.past-path-step')).toHaveCount(2)
+})
+
 test('past badges show every backtracking visit in tight rectangles and preserve the past preference', async ({ page }) => {
   await restore(page, [33, 13, 33, 13, 33, 13, 33, 13])
   await expect(page.locator('.past-path-step')).toHaveCount(0)

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { createInitialGame } from '../../src/game/gameEngine'
 import { createGameHistory } from '../../src/game/history'
+import { possibleJackSearchOutcomes } from '../../src/game/inference'
 import type { GameState } from '../../src/game/types'
 
 function knownClueState(): GameState {
@@ -115,6 +116,40 @@ test('InvAuto executes a coordinated three-investigator capture', async ({ page 
   await expect(log).not.toContainText('searched')
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Jack Was Stopped', exact: true })).toBeVisible()
+})
+
+test('InvAuto med completes the last useful search despite adjacent impossible visits', async ({ page }) => {
+  const positions = { yellow: 'FP', blue: 'HP', red: 'HZ' }
+  const state: GameState = {
+    ...createInitialGame(), stage: 'investigatorAction', inspectorActionMode: 'search', activeInvestigator: 2,
+    currentJack: 75, roundTrail: [33, 34, 54, 72, 73, 74, 75], moveSlot: 6,
+    discoveryLocations: [33, 46, 147, 159], reachedDiscoveries: [33],
+    investigatorPositions: { ...positions, red: 'CQ' }, publicLog: [],
+    publicRound: { start: 33, moves: [1, 2, 3, 4, 5, 6].map(slot => ({
+      type: 'normal', startSlot: slot, endSlot: slot, investigatorPositions: positions,
+    })), observations: [43, 59].map(circleId => ({
+      kind: 'clue', circleId, found: false, afterMove: 6, investigator: 'blue',
+    })) },
+  }
+  const outcomes = possibleJackSearchOutcomes(state.publicRound)
+  expect(outcomes.has(43)).toBe(false)
+  expect(outcomes.has(59)).toBe(false)
+  // This needs the final-useful-search rule, rather than Med's yes=1 rule.
+  expect(outcomes.get(42)!.ifYes.size).toBeGreaterThan(1)
+  await restoreGame(page, state, 'same-device')
+  await page.goto('/')
+  await page.getByLabel('InvAuto', { exact: true }).selectOption('med')
+  await expect(page.locator('.public-log-section li')).toHaveCount(0)
+  await page.getByLabel('Locations adjacent to the red Investigator').getByRole('button', { name: '44', exact: true }).click()
+  await expect(page.getByText('Results shown · Click anywhere on the map to continue')).toBeVisible()
+  await expect(page.locator('.public-log-section li')).toHaveText([
+    'M6: red ended the clue search.', 'M6: red searched 42: no clue.', 'M6: red searched 44: no clue.',
+  ])
+  await page.reload()
+  await expect(page.getByLabel('InvAuto', { exact: true })).toHaveValue('med')
+  await expect(page.getByText('Results shown · Click anywhere on the map to continue')).toBeVisible()
+  await expect(page.locator('.public-log')).not.toContainText('red searched 43:')
+  await expect(page.locator('.public-log')).not.toContainText('red searched 59:')
 })
 
 for (const level of ['med', 'hi']) test(`InvAuto ${level} continues the appropriate searches after the player starts searching`, async ({ page }) => {

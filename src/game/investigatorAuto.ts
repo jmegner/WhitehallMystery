@@ -47,9 +47,10 @@ const nextAutomaticActions = (
   const targets = investigatorTargets(adjacent, outcomes, possible, resolved, state.checkedThisAction)
 
   if (searching) {
-    const unsearched = remaining.filter(id => !resolved.has(id))
-    if (mode === 'med' && unsearched.length === 1) return [{ type: 'searchCircle', circleId: unsearched[0]! }]
     if (targets.searches.length === 0) return [{ type: 'passInspectorAction' }]
+    // Certain answers and searches that cannot narrow the possibilities do
+    // not compete with the final useful search.
+    if (mode === 'med' && targets.searches.length === 1) return [{ type: 'searchCircle', circleId: targets.searches[0]! }]
     const searches = mode === 'med' ? targets.searches.filter(id => outcomes.get(id)!.ifYes.size === 1) : targets.searches
     if (!searches.length) return []
     const id = orderedSearches(searches, outcomes, possible, state.investigatorPositions,

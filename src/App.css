@@ -417,13 +417,18 @@ button:disabled {
   position: fixed;
   z-index: 30;
   display: grid;
-  /* Center controls when space allows; shrink empty sides before wrapping. */
-  grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr);
+  /* Keep one row, centering controls when the side clusters leave room. */
+  grid-template-columns: minmax(max-content, 1fr) max-content minmax(max-content, 1fr);
   align-items: end;
   gap: 8px;
   width: max-content;
   pointer-events: none;
   transform-origin: center bottom;
+}
+
+.floating-map-controls:not(.map-top-controls) {
+  /* This width already accounts for pinch zoom, unlike viewport units. */
+  container-type: inline-size;
 }
 
 .floating-turn-summary {
@@ -453,18 +458,19 @@ button:disabled {
 
 .floating-control-cluster {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
-  gap: 8px;
+  gap: clamp(3px, 1.5cqw, 8px);
   width: max-content;
   max-width: 100%;
   min-width: 0;
-  padding: 4px;
+  padding: clamp(2px, 1cqw, 4px);
   box-sizing: border-box;
   border: 1px solid #bfa783;
   border-radius: 12px;
   background: rgb(242 232 213 / 95%);
   box-shadow: 0 3px 14px rgb(0 0 0 / 35%);
+  font-size: clamp(0.8125rem, 4cqw, 1rem);
   pointer-events: auto;
 }
 
@@ -476,7 +482,8 @@ button:disabled {
   min-height: 44px;
   min-width: 44px;
   max-width: 100%;
-  padding: 8px;
+  padding: clamp(4px, 2cqw, 8px);
+  white-space: nowrap;
   touch-action: manipulation;
   pointer-events: auto;
 }

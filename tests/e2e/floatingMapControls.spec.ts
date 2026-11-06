@@ -66,6 +66,13 @@ async function expectFloatingBounds(page: Page) {
   })).toBe(true)
 }
 
+async function expectSingleControlRow(page: Page) {
+  await expect.poll(() => floating(page).getByRole('button').evaluateAll(buttons => {
+    const bounds = buttons.map(button => button.getBoundingClientRect())
+    return Math.max(...bounds.map(rect => rect.top)) - Math.min(...bounds.map(rect => rect.top))
+  })).toBeLessThan(1)
+}
+
 async function expectFloatingPositions(page: Page) {
   // Font swapping changes button widths. Measure only the settled layout,
   // rather than relying on development startup to have already loaded fonts.
@@ -435,6 +442,21 @@ test('Jack cycles only legal move types, completes both Coach steps, and submits
   const first = legalJackDestinations(await saved(page))[0]!
   await page.getByLabel(`Location ${first}, selectable`, { exact: true }).click()
   await expect(submit).toBeDisabled()
+  for (const width of [1000, 390, 360, 320]) {
+    await fillViewport(page, width, Math.min(600, Math.floor(width * 0.7)))
+    await expect(floating(page).getByRole('button')).toHaveCount(4)
+    await expectFloatingBounds(page)
+    await expectSingleControlRow(page)
+    const sizes = await floating(page).getByRole('button').evaluateAll(buttons =>
+      buttons.map(button => ({ font: parseFloat(getComputedStyle(button).fontSize), height: button.getBoundingClientRect().height })),
+    )
+    for (const size of sizes) {
+      expect(size.font).toBeGreaterThanOrEqual(13)
+      expect(size.font).toBeLessThanOrEqual(16)
+      expect(size.height).toBe(44)
+    }
+    if (width === 320) await reviewScreenshot(page, { path: test.info().outputPath('coach-four-controls-one-row.png') })
+  }
   const second = legalJackDestinations(await saved(page))[0]!
   await page.getByLabel(`Location ${second}, selectable`, { exact: true }).click()
   await expect(submit).toBeEnabled()
@@ -630,9 +652,9 @@ test.describe('controls stay available whenever zoomed', () => {
       await page.reload()
       await expect(undo).toBeEnabled()
       await page.evaluate(() => scrollTo(0, 0))
-      // All four buttons must remain reachable, wrapping the center controls
-      // when a narrow phone cannot fit them in a single row.
+      // All four controls share a single row even on a narrow, zoomed phone.
       await expectFloatingBounds(page)
+      await expectSingleControlRow(page)
       await reviewScreenshot(page, { path: test.info().outputPath(`coach-undo-${width}-${scale}x.png`) })
       await touchTap(cdp, undo)
       expect(await saved(page)).toEqual(before)
@@ -651,6 +673,7 @@ test.describe('controls stay available whenever zoomed', () => {
       expect(await saved(page)).toEqual(afterSecond)
       await expect(undo).toBeEnabled()
       await expectFloatingBounds(page)
+      await expectSingleControlRow(page)
       await reviewScreenshot(page, { path: test.info().outputPath(`coach-undo-second-${width}-${scale}x.png`) })
       await touchTap(cdp, undo)
       expect(await saved(page)).toEqual(afterFirst)

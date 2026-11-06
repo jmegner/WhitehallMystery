@@ -60,6 +60,36 @@ describe('investigator auto actions', () => {
     expect(automaticInvestigatorActions(createGameHistory({ ...state, reachedDiscoveries: [59, 33] }), medOutcomes, 'med').commands).toEqual([])
   })
 
+  test.each(['impossible visit', 'certain visit', 'unchanged possibilities'] as const)(
+    'Med searches the last useful location while ignoring adjacent locations with %s', irrelevant => {
+      const outcomes = medOutcomes()
+      for (const id of [42, 59]) {
+        const outcome = outcomes.get(id)!
+        if (irrelevant === 'impossible visit') outcomes.delete(id)
+        else if (irrelevant === 'certain visit') {
+          outcome.ifYes = new Set(outcome.ifNo)
+          outcome.ifNo.clear()
+        }
+        else outcome.ifYes = new Set(outcome.ifNo)
+      }
+      const history = createGameHistory(medState())
+      const result = automaticInvestigatorActions(history, () => outcomes, 'med')
+      expect(result.commands).toEqual([
+        { type: 'apply', action: { type: 'searchCircle', circleId: 43 } },
+        { type: 'apply', action: { type: 'passInspectorAction' } },
+      ])
+      expect(currentHistoryState(result.next).stage).toBe('investigatorTurnResult')
+      expect(currentHistoryState(result.next).publicRound?.observations).toEqual([
+        { kind: 'clue', circleId: 43, found: false, afterMove: 0, investigator: 'red' },
+      ])
+      const undone = gameHistoryReducer(result.next, { type: 'undo' })
+      expect(currentHistoryState(undone).checkedThisAction).toEqual([44, 43])
+      expect(currentHistoryState(gameHistoryReducer(undone, { type: 'redo' }))).toEqual(currentHistoryState(result.next))
+      expect(automaticInvestigatorActions(createGameHistory({ ...medState(), checkedThisAction: [] }),
+        () => outcomes, 'med').commands).toEqual([])
+    },
+  )
+
   test.each([1, 2])('ends only the active search with InvAuto off when investigator %i has one known clue left', activeInvestigator => {
     const state = { ...knownClueState(), activeInvestigator,
       investigatorPositions: { yellow: 'DB', blue: 'CF', red: activeInvestigator === 2 ? 'CF' : 'HZ' } }

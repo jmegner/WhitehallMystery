@@ -555,6 +555,38 @@ function GameBoard({
     )
   const boardImage = `${import.meta.env.BASE_URL}map_pptx_simplified.jpg`
 
+  // With future hidden, these markers exist only while hovering a piece.
+  const investigatorMaybeMarkers = (
+    <>
+      {[...investigatorMaybeCircles].map((id) => {
+        const circle = circlesById.get(id)
+        return circle ? (
+          <circle
+            key={`investigator-maybe-circle-${id}`}
+            className="investigator-maybe-circle"
+            cx={circle.x}
+            cy={circle.y}
+            r={investigatorMaybeRadius(id)}
+          />
+        ) : null
+      })}
+
+      {[...investigatorMaybeCrossings].map((id) => {
+        const crossing = crossingsById.get(id)
+        return crossing ? (
+          <rect
+            key={`investigator-maybe-crossing-${id}`}
+            className={`investigator-maybe-crossing${state.stage === 'jackDiscoverySetup' && crossing.starting ? ' possible-investigator-start' : ''}`}
+            x={crossing.x - INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
+            y={crossing.y - INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
+            width={INVESTIGATOR_MAYBE_CROSSING_SIZE}
+            height={INVESTIGATOR_MAYBE_CROSSING_SIZE}
+          />
+        ) : null
+      })}
+    </>
+  )
+
   return (
     <svg
       ref={board}
@@ -599,167 +631,7 @@ function GameBoard({
         />
       ))}
 
-      {routePreview.segments.flatMap(({ from, to, crossingPaths }) => crossingPaths.map((routeCrossings, option) => {
-        const fromCircle = circlesById.get(from)
-        const toCircle = circlesById.get(to)
-        if (!fromCircle || !toCircle) return null
-        const points = [
-          fromCircle,
-          ...routeCrossings.map((id) => crossingsById.get(id)).filter((crossing) => crossing !== undefined),
-          toCircle,
-        ]
-        const first = points[0]
-        const second = points[1]
-        const penultimate = points[points.length - 2]
-        const last = points[points.length - 1]
-        if (!first || !second || !penultimate || !last) return null
-        const startDistance = Math.hypot(second.x - first.x, second.y - first.y)
-        const endDistance = Math.hypot(last.x - penultimate.x, last.y - penultimate.y)
-        if (startDistance === 0 || endDistance === 0) return null
-        const displayedPoints = [
-          {
-            x: first.x + ((second.x - first.x) / startDistance) * ROUTE_CIRCLE_RADIUS,
-            y: first.y + ((second.y - first.y) / startDistance) * ROUTE_CIRCLE_RADIUS,
-          },
-          ...points.slice(1, -1),
-          {
-            x: last.x - ((last.x - penultimate.x) / endDistance) * ROUTE_CIRCLE_RADIUS,
-            y: last.y - ((last.y - penultimate.y) / endDistance) * ROUTE_CIRCLE_RADIUS,
-          },
-        ]
-        return (
-          <polyline
-            key={`route-preview-${from}-${to}-${option}`}
-            className="route-preview-line"
-            points={displayedPoints.map((point) => `${point.x},${point.y}`).join(' ')}
-            data-route-from={from}
-            data-route-to={to}
-            data-route-option={option}
-          />
-        )
-      }))}
-
-      {investigatorRoutePreview.segments.flatMap(({ from, to, throughLocationPaths }) =>
-        throughLocationPaths.map((throughLocations, option) => {
-          const fromCrossing = crossingsById.get(from)
-          const toCrossing = crossingsById.get(to)
-          if (!fromCrossing || !toCrossing) return null
-          const points = [
-            fromCrossing,
-            ...throughLocations.map((id) => circlesById.get(id)).filter((circle) => circle !== undefined),
-            toCrossing,
-          ]
-          const first = points[0]
-          const second = points[1]
-          const penultimate = points[points.length - 2]
-          const last = points[points.length - 1]
-          if (!first || !second || !penultimate || !last) return null
-          const startDistance = Math.hypot(second.x - first.x, second.y - first.y)
-          const endDistance = Math.hypot(last.x - penultimate.x, last.y - penultimate.y)
-          if (startDistance === 0 || endDistance === 0) return null
-          const displayedPoints = [
-            {
-              x: first.x + ((second.x - first.x) / startDistance) * CROSSING_OUTLINES.legal.radius,
-              y: first.y + ((second.y - first.y) / startDistance) * CROSSING_OUTLINES.legal.radius,
-            },
-            ...points.slice(1, -1),
-            {
-              x: last.x - ((last.x - penultimate.x) / endDistance) * CROSSING_OUTLINES.legal.radius,
-              y: last.y - ((last.y - penultimate.y) / endDistance) * CROSSING_OUTLINES.legal.radius,
-            },
-          ]
-          return (
-            <polyline
-              key={`investigator-route-preview-${from}-${to}-${option}`}
-              className="investigator-route-preview-line"
-              points={displayedPoints.map((point) => `${point.x},${point.y}`).join(' ')}
-              data-route-from={from}
-              data-route-to={to}
-              data-route-option={option}
-            />
-          )
-        }),
-      )}
-
-      {[...routePreview.turnLabels].map(([id]) => {
-        const circle = circlesById.get(id)
-        return circle ? (
-          <circle
-            key={`route-preview-location-${id}`}
-            className="route-preview-location"
-            cx={circle.x}
-            cy={circle.y}
-            r={routePreviewLocationRadius(id)}
-          />
-        ) : null
-      })}
-
-      {[...investigatorRouteCrossingIds].map((id) => {
-        const crossing = crossingsById.get(id)
-        return crossing ? (
-          <circle
-            key={`investigator-route-preview-crossing-${id}`}
-            className="investigator-route-preview-crossing"
-            cx={crossing.x}
-            cy={crossing.y}
-            r={investigatorRouteCrossingRadius(id)}
-          />
-        ) : null
-      })}
-
-      {[...investigatorMaybeCircles].map((id) => {
-        const circle = circlesById.get(id)
-        return circle ? (
-          <circle
-            key={`investigator-maybe-circle-${id}`}
-            className="investigator-maybe-circle"
-            cx={circle.x}
-            cy={circle.y}
-            r={investigatorMaybeRadius(id)}
-          />
-        ) : null
-      })}
-
-      {[...investigatorMaybeCrossings].map((id) => {
-        const crossing = crossingsById.get(id)
-        return crossing ? (
-          <rect
-            key={`investigator-maybe-crossing-${id}`}
-            className={`investigator-maybe-crossing${state.stage === 'jackDiscoverySetup' && crossing.starting ? ' possible-investigator-start' : ''}`}
-            x={crossing.x - INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
-            y={crossing.y - INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
-            width={INVESTIGATOR_MAYBE_CROSSING_SIZE}
-            height={INVESTIGATOR_MAYBE_CROSSING_SIZE}
-          />
-        ) : null
-      })}
-
-      {[...hoveredInvestigatorMaybeCircles].map((id) => {
-        const circle = circlesById.get(id)
-        return circle ? (
-          <circle
-            key={`hovered-investigator-maybe-circle-${id}`}
-            className={`hovered-investigator-maybe-circle ${hoveredInvestigatorColor ?? ''}`}
-            cx={circle.x}
-            cy={circle.y}
-            r={hoveredInvestigatorMaybeRadius(id)}
-          />
-        ) : null
-      })}
-
-      {[...hoveredInvestigatorMaybeCrossings].map((id) => {
-        const crossing = crossingsById.get(id)
-        return crossing ? (
-          <rect
-            key={`hovered-investigator-maybe-crossing-${id}`}
-            className={`hovered-investigator-maybe-crossing ${hoveredInvestigatorColor ?? ''}`}
-            x={crossing.x - HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
-            y={crossing.y - HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
-            width={HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE}
-            height={HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE}
-          />
-        ) : null
-      })}
+      {showInvestigatorMaybes && investigatorMaybeMarkers}
 
       {showPossible && !hoveredOutcome &&
         [...possibleIds].map((id) => {
@@ -779,35 +651,6 @@ function GameBoard({
               <circle className="possible-marker" cx={circle.x} cy={circle.y} r={radius} />
             </g>
           ) : null
-        })}
-
-      {showPossible && hoveredOutcome &&
-        [...new Set([...hoveredOutcome.ifNo, ...hoveredOutcome.ifYes])].map((id) => {
-          const circle = circlesById.get(id)
-          if (!circle) return null
-          const remainsIfNo = hoveredOutcome.ifNo.has(id)
-          const remainsIfYes = hoveredOutcome.ifYes.has(id)
-          const radii = outcomeMarkerRadii(id, remainsIfNo, remainsIfYes)
-          return (
-            <g key={`outcome-${id}`}>
-              {remainsIfNo && (
-                <circle
-                  className="possible-outcome-marker possible-outcome-no"
-                  cx={circle.x}
-                  cy={circle.y}
-                  r={remainsIfYes ? radii.inner : radii.single}
-                />
-              )}
-              {remainsIfYes && (
-                <circle
-                  className="possible-outcome-marker possible-outcome-yes"
-                  cx={circle.x}
-                  cy={circle.y}
-                  r={remainsIfNo ? radii.outer : radii.single}
-                />
-              )}
-            </g>
-          )
         })}
 
       {state.clueLocations.map((id) => {
@@ -1020,7 +863,7 @@ function GameBoard({
           ) : null
         })()}
 
-      {/* Text paints last so pieces and their glow cannot hide indicators. */}
+      {/* Persistent labels paint above pieces and their glow. */}
       <g className="map-text-indicators" pointerEvents="none">
         {showPossible &&
           [...possibleOutcomes].filter(([id, outcome]) => outcome.ifNo.size > 0 || clueVisitTurns.has(id)).map(([id, outcome]) => {
@@ -1046,56 +889,6 @@ function GameBoard({
               </text>
             )
           })}
-
-        {[...displayedTurnLabels]
-          .map(([id, label]) => {
-            const circle = circlesById.get(id)
-            if (!circle) return null
-            const hasClue = showPossible && ((possibleOutcomes.get(id)?.ifNo.size ?? 0) > 0 || clueVisitTurns.has(id))
-            const position = indicatorTextAttributes(circle.x, circle.y, 'locationDistance', alternateIndicatorAngle, hasClue)
-            return (
-              <text
-                key={`route-turn-${id}`}
-                className="route-turn-count"
-                {...position}
-                aria-label={`Location ${id}: ${label} turns away`}
-              >
-                {label}
-              </text>
-            )
-          })}
-
-        {[...investigatorRoutePreview.turnLabels].map(([id, label]) => {
-          const crossing = crossingsById.get(id)
-          if (!crossing) return null
-          const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingTurn', alternateIndicatorAngle)
-          return (
-            <text
-              key={`investigator-route-turn-${id}`}
-              className="investigator-route-turn-count"
-              {...position}
-              aria-label={`Crossing ${id}: ${label} turns away`}
-            >
-              {label}
-            </text>
-          )
-        })}
-
-        {[...hoveredInvestigatorTurnLabels].map(([id, label]) => {
-          const crossing = crossingsById.get(id)
-          if (!crossing) return null
-          const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingTurn', alternateIndicatorAngle)
-          return (
-            <text
-              key={`investigator-hover-turn-${id}`}
-              className="investigator-hover-turn-count"
-              {...position}
-              aria-label={`Crossing ${id}: ${label} turns from ${investigatorDistanceStartId}`}
-            >
-              {label}
-            </text>
-          )
-        })}
 
         {!showCrossingTurnLabels && positiveWorstCounts.map(([id, count]) => {
           const crossing = crossingsById.get(id)
@@ -1148,6 +941,224 @@ function GameBoard({
           return <PastPathMarker key={`past-path-step-${location}`} x={circle.x} y={circle.y} location={location}
             rounds={[...new Set(visits.map(visit => visit.round))].join(',')} label={label} description={description}
             rightEdge={BOARD_VIEWPORT.x + BOARD_VIEWPORT.width} />
+        })}
+      </g>
+      {/* Temporary previews paint above every persistent marker and never intercept input. */}
+      <g className="map-hover-indicators" pointerEvents="none">
+        {!showInvestigatorMaybes && investigatorMaybeMarkers}
+
+        {routePreview.segments.flatMap(({ from, to, crossingPaths }) => crossingPaths.map((routeCrossings, option) => {
+          const fromCircle = circlesById.get(from)
+          const toCircle = circlesById.get(to)
+          if (!fromCircle || !toCircle) return null
+          const points = [
+            fromCircle,
+            ...routeCrossings.map((id) => crossingsById.get(id)).filter((crossing) => crossing !== undefined),
+            toCircle,
+          ]
+          const first = points[0]
+          const second = points[1]
+          const penultimate = points[points.length - 2]
+          const last = points[points.length - 1]
+          if (!first || !second || !penultimate || !last) return null
+          const startDistance = Math.hypot(second.x - first.x, second.y - first.y)
+          const endDistance = Math.hypot(last.x - penultimate.x, last.y - penultimate.y)
+          if (startDistance === 0 || endDistance === 0) return null
+          const displayedPoints = [
+            {
+              x: first.x + ((second.x - first.x) / startDistance) * ROUTE_CIRCLE_RADIUS,
+              y: first.y + ((second.y - first.y) / startDistance) * ROUTE_CIRCLE_RADIUS,
+            },
+            ...points.slice(1, -1),
+            {
+              x: last.x - ((last.x - penultimate.x) / endDistance) * ROUTE_CIRCLE_RADIUS,
+              y: last.y - ((last.y - penultimate.y) / endDistance) * ROUTE_CIRCLE_RADIUS,
+            },
+          ]
+          return (
+            <polyline
+              key={`route-preview-${from}-${to}-${option}`}
+              className="route-preview-line"
+              points={displayedPoints.map((point) => `${point.x},${point.y}`).join(' ')}
+              data-route-from={from}
+              data-route-to={to}
+              data-route-option={option}
+            />
+          )
+        }))}
+
+        {investigatorRoutePreview.segments.flatMap(({ from, to, throughLocationPaths }) =>
+          throughLocationPaths.map((throughLocations, option) => {
+            const fromCrossing = crossingsById.get(from)
+            const toCrossing = crossingsById.get(to)
+            if (!fromCrossing || !toCrossing) return null
+            const points = [
+              fromCrossing,
+              ...throughLocations.map((id) => circlesById.get(id)).filter((circle) => circle !== undefined),
+              toCrossing,
+            ]
+            const first = points[0]
+            const second = points[1]
+            const penultimate = points[points.length - 2]
+            const last = points[points.length - 1]
+            if (!first || !second || !penultimate || !last) return null
+            const startDistance = Math.hypot(second.x - first.x, second.y - first.y)
+            const endDistance = Math.hypot(last.x - penultimate.x, last.y - penultimate.y)
+            if (startDistance === 0 || endDistance === 0) return null
+            const displayedPoints = [
+              {
+                x: first.x + ((second.x - first.x) / startDistance) * CROSSING_OUTLINES.legal.radius,
+                y: first.y + ((second.y - first.y) / startDistance) * CROSSING_OUTLINES.legal.radius,
+              },
+              ...points.slice(1, -1),
+              {
+                x: last.x - ((last.x - penultimate.x) / endDistance) * CROSSING_OUTLINES.legal.radius,
+                y: last.y - ((last.y - penultimate.y) / endDistance) * CROSSING_OUTLINES.legal.radius,
+              },
+            ]
+            return (
+              <polyline
+                key={`investigator-route-preview-${from}-${to}-${option}`}
+                className="investigator-route-preview-line"
+                points={displayedPoints.map((point) => `${point.x},${point.y}`).join(' ')}
+                data-route-from={from}
+                data-route-to={to}
+                data-route-option={option}
+              />
+            )
+          }),
+        )}
+
+        {[...routePreview.turnLabels].map(([id]) => {
+          const circle = circlesById.get(id)
+          return circle ? (
+            <circle
+              key={`route-preview-location-${id}`}
+              className="route-preview-location"
+              cx={circle.x}
+              cy={circle.y}
+              r={routePreviewLocationRadius(id)}
+            />
+          ) : null
+        })}
+
+        {[...investigatorRouteCrossingIds].map((id) => {
+          const crossing = crossingsById.get(id)
+          return crossing ? (
+            <circle
+              key={`investigator-route-preview-crossing-${id}`}
+              className="investigator-route-preview-crossing"
+              cx={crossing.x}
+              cy={crossing.y}
+              r={investigatorRouteCrossingRadius(id)}
+            />
+          ) : null
+        })}
+
+        {[...hoveredInvestigatorMaybeCircles].map((id) => {
+          const circle = circlesById.get(id)
+          return circle ? (
+            <circle
+              key={`hovered-investigator-maybe-circle-${id}`}
+              className={`hovered-investigator-maybe-circle ${hoveredInvestigatorColor ?? ''}`}
+              cx={circle.x}
+              cy={circle.y}
+              r={hoveredInvestigatorMaybeRadius(id)}
+            />
+          ) : null
+        })}
+
+        {[...hoveredInvestigatorMaybeCrossings].map((id) => {
+          const crossing = crossingsById.get(id)
+          return crossing ? (
+            <rect
+              key={`hovered-investigator-maybe-crossing-${id}`}
+              className={`hovered-investigator-maybe-crossing ${hoveredInvestigatorColor ?? ''}`}
+              x={crossing.x - HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
+              y={crossing.y - HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE / 2}
+              width={HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE}
+              height={HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE}
+            />
+          ) : null
+        })}
+
+        {showPossible && hoveredOutcome &&
+          [...new Set([...hoveredOutcome.ifNo, ...hoveredOutcome.ifYes])].map((id) => {
+            const circle = circlesById.get(id)
+            if (!circle) return null
+            const remainsIfNo = hoveredOutcome.ifNo.has(id)
+            const remainsIfYes = hoveredOutcome.ifYes.has(id)
+            const radii = outcomeMarkerRadii(id, remainsIfNo, remainsIfYes)
+            return (
+              <g key={`outcome-${id}`}>
+                {remainsIfNo && (
+                  <circle
+                    className="possible-outcome-marker possible-outcome-no"
+                    cx={circle.x}
+                    cy={circle.y}
+                    r={remainsIfYes ? radii.inner : radii.single}
+                  />
+                )}
+                {remainsIfYes && (
+                  <circle
+                    className="possible-outcome-marker possible-outcome-yes"
+                    cx={circle.x}
+                    cy={circle.y}
+                    r={remainsIfNo ? radii.outer : radii.single}
+                  />
+                )}
+              </g>
+            )
+          })}
+
+        {[...displayedTurnLabels]
+          .map(([id, label]) => {
+            const circle = circlesById.get(id)
+            if (!circle) return null
+            const hasClue = showPossible && ((possibleOutcomes.get(id)?.ifNo.size ?? 0) > 0 || clueVisitTurns.has(id))
+            const position = indicatorTextAttributes(circle.x, circle.y, 'locationDistance', alternateIndicatorAngle, hasClue)
+            return (
+              <text
+                key={`route-turn-${id}`}
+                className="route-turn-count"
+                {...position}
+                aria-label={`Location ${id}: ${label} turns away`}
+              >
+                {label}
+              </text>
+            )
+          })}
+
+        {[...investigatorRoutePreview.turnLabels].map(([id, label]) => {
+          const crossing = crossingsById.get(id)
+          if (!crossing) return null
+          const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingTurn', alternateIndicatorAngle)
+          return (
+            <text
+              key={`investigator-route-turn-${id}`}
+              className="investigator-route-turn-count"
+              {...position}
+              aria-label={`Crossing ${id}: ${label} turns away`}
+            >
+              {label}
+            </text>
+          )
+        })}
+
+        {[...hoveredInvestigatorTurnLabels].map(([id, label]) => {
+          const crossing = crossingsById.get(id)
+          if (!crossing) return null
+          const position = indicatorTextAttributes(crossing.x, crossing.y, 'crossingTurn', alternateIndicatorAngle)
+          return (
+            <text
+              key={`investigator-hover-turn-${id}`}
+              className="investigator-hover-turn-count"
+              {...position}
+              aria-label={`Crossing ${id}: ${label} turns from ${investigatorDistanceStartId}`}
+            >
+              {label}
+            </text>
+          )
         })}
       </g>
     </svg>
@@ -2379,6 +2390,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                   InvAuto
                   <select
                     aria-label="InvAuto"
+                    title="Off: manual actions. Med: automate forced actions and obvious follow-up searches, ignoring searches that add no information. Hi: also choose between useful follow-up searches."
                     value={investigatorAuto}
                     onChange={(event) => {
                       const mode = event.target.value as InvestigatorAutoMode
