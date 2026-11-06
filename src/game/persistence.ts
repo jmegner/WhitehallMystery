@@ -12,6 +12,7 @@ export const INVESTIGATOR_KNOW_STORAGE_KEY = 'whitehall-mystery.show-investigato
 export const POSSIBLE_LOCATIONS_STORAGE_KEY = 'whitehall-mystery.show-possible-locations'
 export const WORST_CROSSINGS_STORAGE_KEY = 'whitehall-mystery.show-worst-crossings'
 export const NEXT_TURN_STORAGE_KEY = 'whitehall-mystery.show-next-turn'
+export const SPRINT_STORAGE_KEY = 'whitehall-mystery.sprint'
 export const JACK_PEEK_STORAGE_KEY = 'whitehall-mystery.show-jack-peek'
 export const INVESTIGATOR_AUTO_STORAGE_KEY = 'whitehall-mystery.investigator-auto'
 export const AI_WAIT_END_STORAGE_KEY = 'whitehall-mystery.ai-wait-end'

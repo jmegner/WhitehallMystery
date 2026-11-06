@@ -15,13 +15,14 @@ interface AnalysisResult {
 export function useWorstCrossingEliminations(
   evidence: PublicRoundEvidence | null,
   nextStreetPositions?: Partial<Record<InvestigatorColor, string>>,
+  sprint = false,
 ): Map<string, number> {
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const nextTurn = !!nextStreetPositions
   const yellow = nextStreetPositions?.yellow
   const blue = nextStreetPositions?.blue
   const red = nextStreetPositions?.red
-  const perspective = nextTurn ? `next:${[yellow, blue, red].filter(Boolean).sort().join(',')}` : 'current'
+  const perspective = `${sprint}:${nextTurn ? `next:${[yellow, blue, red].filter(Boolean).sort().join(',')}` : 'current'}`
 
   useEffect(() => {
     if (!evidence || cache.get(evidence)?.has(perspective)) return
@@ -41,14 +42,14 @@ export function useWorstCrossingEliminations(
     // A browser that cannot start a worker still gets the same exact answers.
     const fallback = () => {
       worker?.terminate()
-      if (!cancelled && !finished) finish(worstCaseCrossingEliminations(evidence, positions))
+      if (!cancelled && !finished) finish(worstCaseCrossingEliminations(evidence, positions, sprint))
     }
     try {
       worker = new Worker(new URL('./game/crossingAnalysis.worker.ts', import.meta.url), { type: 'module' })
       worker.onmessage = (event: MessageEvent<Map<string, number>>) => finish(event.data)
       worker.onerror = fallback
       worker.onmessageerror = fallback
-      worker.postMessage({ evidence, nextStreetPositions: positions } satisfies CrossingAnalysisRequest)
+      worker.postMessage({ evidence, nextStreetPositions: positions, sprint } satisfies CrossingAnalysisRequest)
     } catch {
       fallback()
     }
@@ -56,7 +57,7 @@ export function useWorstCrossingEliminations(
       cancelled = true
       worker?.terminate()
     }
-  }, [evidence, perspective, nextTurn, yellow, blue, red])
+  }, [evidence, perspective, nextTurn, yellow, blue, red, sprint])
 
   if (!evidence) return emptyCounts
   if (result?.evidence === evidence && result.perspective === perspective) return result.counts

@@ -85,6 +85,7 @@ import {
   POSSIBLE_LOCATIONS_STORAGE_KEY,
   WORST_CROSSINGS_STORAGE_KEY,
   NEXT_TURN_STORAGE_KEY,
+  SPRINT_STORAGE_KEY,
   loadBooleanPreference,
   loadInvestigatorAutoPreference,
   loadStoredHistory,
@@ -96,6 +97,7 @@ import {
   INVESTIGATOR_ORDER,
   type GameAction,
   type GameState,
+  type PublicMoveEvidence,
   type InvestigatorAutoMode,
   type InvestigatorColor,
   type JackMoveType,
@@ -1665,9 +1667,14 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   })
   const controlHeld = useControlHeld()
   const effectiveNextTurn = nextTurn !== controlHeld
+  const [sprint, setSprint] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, SPRINT_STORAGE_KEY) : false
+  })
   const worstCrossingEliminations = useWorstCrossingEliminations(
     showWorst && isInspectorInteraction(state.stage) && !history.pendingReveal ? state.publicRound : null,
     effectiveNextTurn ? state.investigatorPositions : undefined,
+    sprint,
   )
   const [showCrossingIds, setShowCrossingIds] = useState(() => {
     const storage = browserStorage()
@@ -1923,21 +1930,22 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
 
   let possibleOutcomes = new Map<number, SearchOutcome>()
   if (showPossible && isInspectorInteraction(state.stage)) {
-    possibleOutcomes = possibleJackSearchOutcomes(state.publicRound, effectiveNextTurn ? state.investigatorPositions : undefined)
+    possibleOutcomes = possibleJackSearchOutcomes(state.publicRound, effectiveNextTurn ? state.investigatorPositions : undefined, sprint)
   } else if (showInvestigatorKnowledge && observingInvestigators) {
-    possibleOutcomes = possibleJackSearchOutcomes(boardState.publicRound)
+    possibleOutcomes = possibleJackSearchOutcomes(boardState.publicRound, undefined, sprint)
   } else if (showInvestigatorKnowledge && state.stage === 'jackMove') {
     const { yellow, blue, red } = state.investigatorPositions
     if (replayTurn) {
       // This move is already recorded. Show the knowledge at its result,
       // rather than adding another hypothetical move as live planning does.
-      possibleOutcomes = possibleJackSearchOutcomes(state.publicRound)
+      possibleOutcomes = possibleJackSearchOutcomes(state.publicRound, undefined, sprint)
     } else if (yellow && blue && red) {
       possibleOutcomes = possibleJackSearchOutcomesAfterMove(
         state.publicRound,
         state.jackMoveSelection.type,
         { yellow, blue, red },
         state.moveSlot,
+        sprint,
       )
     }
   }
@@ -1948,7 +1956,15 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const showPossibilityMarkers =
     (showPossible && isInspectorInteraction(state.stage)) ||
     (showInvestigatorKnowledge && state.stage === 'jackMove')
-  const clueVisitTurns = showPossibilityMarkers ? possibleClueVisitTurns(boardState.publicRound) : new Map<number, number[]>()
+  let clueForecast: PublicMoveEvidence | undefined
+  const { yellow, blue, red } = state.investigatorPositions
+  if (sprint && yellow && blue && red && ((isInspectorInteraction(state.stage) && effectiveNextTurn) ||
+    (state.stage === 'jackMove' && !replayTurn && !observingInvestigators))) {
+    const type = state.stage === 'jackMove' ? state.jackMoveSelection.type : 'normal'
+    clueForecast = { type, startSlot: state.moveSlot + 1, endSlot: state.moveSlot + (type === 'coach' ? 2 : 1),
+      investigatorPositions: { yellow, blue, red } }
+  }
+  const clueVisitTurns = showPossibilityMarkers ? possibleClueVisitTurns(boardState.publicRound, sprint, clueForecast) : new Map<number, number[]>()
   if (remote?.waiting && !replayTurn && !showCurrentInvestigatorTargets) { legalCircleIds.clear(); legalCrossingIds.clear(); coachReachableCircleIds.clear() }
   if (replayTurn) { legalCircleIds.clear(); legalCrossingIds.clear() }
   const handleCircle = (circleId: number) => {
@@ -2169,7 +2185,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                       if (storage) saveBooleanPreference(storage, INVESTIGATOR_KNOW_STORAGE_KEY, checked)
                     }}
                   />
-                  know
+                  maybes
                   {showInvestigatorKnowledge && <strong>{possibleIds.size}</strong>}
                 </label>
               )}
@@ -2226,6 +2242,18 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                   />
                   maybes
                   {showPossible && <strong>{possibleIds.size}</strong>}
+                </label>
+              )}
+              {(state.stage === 'jackMove' || isInspectorInteraction(state.stage)) && state.publicRound && (
+                <label className="sprint-toggle"
+                  title="assume Jack reaches locations as early as possible; keep routes with the least total delay that fit public clues, allowing backtracking when required">
+                  <input type="checkbox" checked={sprint} onChange={event => {
+                    const checked = event.target.checked
+                    setSprint(checked)
+                    const storage = browserStorage()
+                    if (storage) saveBooleanPreference(storage, SPRINT_STORAGE_KEY, checked)
+                  }} />
+                  sprint
                 </label>
               )}
               {!replayTurn && canPeek && isInspectorInteraction(state.stage) && (

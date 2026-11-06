@@ -179,7 +179,7 @@ test('Jack’s future overlay follows the investigators’ current move and acti
   try {
     await secondJackTurn(jack, investigators)
     await jack.getByLabel('future', { exact: true }).check()
-    await jack.getByLabel('know', { exact: true }).check()
+    await jack.getByLabel('maybes', { exact: true }).check()
     await jack.getByLabel('Legal Jack destinations').getByRole('button').first().click()
     await jack.getByRole('button', { name: 'Record move privately' }).click()
     await expect(investigators.getByRole('heading', { name: 'Yellow Investigator: Move', exact: true })).toBeVisible()

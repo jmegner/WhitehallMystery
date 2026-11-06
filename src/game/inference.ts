@@ -3,6 +3,7 @@ import type { InvestigatorColor, JackMoveType, PublicMoveEvidence, PublicRoundEv
 
 interface Hypothesis {
   position: number
+  inefficiency: number
   positiveMask: bigint
   visitedUnion: bigint
   visitedIntersection: bigint
@@ -23,10 +24,13 @@ interface InferenceContext {
   transitionsByMove: Map<number, Map<number, InferenceTransition[]>>
   visitTurnBits?: Map<number, bigint>
   visitTurnStride: number
+  earliestArrivals?: Map<number, number>
+  searchThroughMove: number
 }
 
 interface InferenceTransition {
   position: number
+  inefficiency: number
   positiveMask: bigint
   visitedMask: bigint
   clueVisitTurns?: bigint
@@ -59,7 +63,28 @@ export const publicMovementPaths = (from: number, move: PublicMoveEvidence): num
   return routes
 }
 
-export const buildInferenceContext = (evidence: PublicRoundEvidence, trackVisitTurns = false): InferenceContext => {
+// Public move types and investigator blockers define the earliest numbered
+// slot at which each location could be visited. Clues constrain explanations,
+// not this reference: a forced late visit must still count as inefficiency.
+const earliestPublicArrivals = (evidence: PublicRoundEvidence): Map<number, number> => {
+  const earliest = new Map([[evidence.start, 0]])
+  let positions = new Set([evidence.start])
+  for (const move of evidence.moves) {
+    const next = new Set<number>()
+    for (const from of positions) {
+      for (const path of publicMovementPaths(from, move)) {
+        path.forEach((id, step) => {
+          earliest.set(id, Math.min(earliest.get(id) ?? Infinity, move.startSlot + step))
+        })
+        next.add(path.at(-1)!)
+      }
+    }
+    positions = next
+  }
+  return earliest
+}
+
+export const buildInferenceContext = (evidence: PublicRoundEvidence, trackVisitTurns = false, sprint = false): InferenceContext => {
   const positiveIds = [
     ...new Set(
       evidence.observations
@@ -86,7 +111,8 @@ export const buildInferenceContext = (evidence: PublicRoundEvidence, trackVisitT
   const visitTurnStride = trackVisitTurns ? Math.max(0, ...evidence.moves.map(move => move.endSlot)) + 1 : 0
   const visitTurnBits = trackVisitTurns
     ? new Map(positiveIds.map((id, index) => [id, 1n << BigInt(index * visitTurnStride)])) : undefined
-  return { evidence, bitForCircle, negativeUntil, observationsByMove, transitionsByMove: new Map(), visitTurnBits, visitTurnStride }
+  return { evidence, bitForCircle, negativeUntil, observationsByMove, transitionsByMove: new Map(), visitTurnBits, visitTurnStride,
+    earliestArrivals: sprint ? earliestPublicArrivals(evidence) : undefined, searchThroughMove: evidence.moves.length }
 }
 
 const visitedBits = new Map([...circlesById.keys()].map(id => [id, 1n << BigInt(id)]))
@@ -106,21 +132,26 @@ const inferenceTransitions = (context: InferenceContext, moveIndex: number, from
   const move = context.evidence.moves[moveIndex - 1]
   if (move) {
     for (const path of publicMovementPaths(from, move)) {
-      if (path.some(id => (context.negativeUntil.get(id) ?? -1) >= moveIndex)) continue
+      const searchable = moveIndex <= context.searchThroughMove
+      if (searchable && path.some(id => (context.negativeUntil.get(id) ?? -1) >= moveIndex)) continue
       const position = path[path.length - 1]
       if (position === undefined) continue
       let positiveMask = 0n
       let visitedMask = 0n
+      let inefficiency = 0
       let clueVisitTurns = context.visitTurnBits ? 0n : undefined
       for (let step = 0; step < path.length; step++) {
         const id = path[step]!
-        positiveMask |= context.bitForCircle.get(id) ?? 0n
-        visitedMask |= visitedBit(id)
-        if (clueVisitTurns !== undefined) {
+        if (context.earliestArrivals) inefficiency += move.startSlot + step - context.earliestArrivals.get(id)!
+        if (searchable) {
+          positiveMask |= context.bitForCircle.get(id) ?? 0n
+          visitedMask |= visitedBit(id)
+        }
+        if (searchable && clueVisitTurns !== undefined) {
           clueVisitTurns |= (context.visitTurnBits!.get(id) ?? 0n) << BigInt(move.startSlot + step)
         }
       }
-      transitions.push({ position, positiveMask, visitedMask, clueVisitTurns })
+      transitions.push({ position, positiveMask, visitedMask, clueVisitTurns, inefficiency })
     }
   }
   origins.set(from, transitions)
@@ -150,7 +181,7 @@ const locationProjector = (nextStreetPositions?: Partial<Record<InvestigatorColo
   }
 }
 
-const remainingHypotheses = (context: InferenceContext, missedLocations = 0n): Hypothesis[] => {
+const remainingHypotheses = (context: InferenceContext, missedLocations = 0n, sprintCost?: number): Hypothesis[] => {
   const { evidence, bitForCircle, negativeUntil, observationsByMove } = context
 
   if ((negativeUntil.get(evidence.start) ?? -1) >= 0 || (visitedBit(evidence.start) & missedLocations) !== 0n) return []
@@ -163,6 +194,7 @@ const remainingHypotheses = (context: InferenceContext, missedLocations = 0n): H
   const startVisited = visitedBit(evidence.start)
   hypotheses.set(keyFor(evidence.start, startMask), {
     position: evidence.start,
+    inefficiency: 0,
     positiveMask: startMask,
     visitedUnion: startVisited,
     visitedIntersection: startVisited,
@@ -176,18 +208,22 @@ const remainingHypotheses = (context: InferenceContext, missedLocations = 0n): H
         if ((transition.visitedMask & missedLocations) !== 0n) continue
         const mask = hypothesis.positiveMask | transition.positiveMask
         const position = transition.position
+        const inefficiency = hypothesis.inefficiency + transition.inefficiency
         const visitedUnion = hypothesis.visitedUnion | transition.visitedMask
         const visitedIntersection = hypothesis.visitedIntersection | transition.visitedMask
         const clueVisitTurns = context.visitTurnBits
           ? (hypothesis.clueVisitTurns ?? 0n) | (transition.clueVisitTurns ?? 0n) : undefined
         const key = keyFor(position, mask)
         const existing = next.get(key)
-        if (existing) {
+        // Costs depend only on the public move slot and destination. A more
+        // expensive prefix with the same position/clue mask can never win later.
+        if (existing && existing.inefficiency < inefficiency) continue
+        if (existing && existing.inefficiency === inefficiency) {
           existing.visitedUnion |= visitedUnion
           existing.visitedIntersection &= visitedIntersection
           if (clueVisitTurns !== undefined) existing.clueVisitTurns = (existing.clueVisitTurns ?? 0n) | clueVisitTurns
         } else {
-          next.set(key, { position, positiveMask: mask, visitedUnion, visitedIntersection, clueVisitTurns })
+          next.set(key, { position, positiveMask: mask, visitedUnion, visitedIntersection, clueVisitTurns, inefficiency })
         }
       }
     }
@@ -206,22 +242,38 @@ const remainingHypotheses = (context: InferenceContext, missedLocations = 0n): H
     }
   }
 
-  return [...hypotheses.values()]
+  const remaining = [...hypotheses.values()]
+  if (!context.earliestArrivals) return remaining
+  // Do not prune globally during forward inference: a later clue may require
+  // a previously less efficient prefix. Hypothetical searches condition the
+  // current best explanations; actual new evidence recomputes their minimum.
+  const minimum = sprintCost ?? Math.min(...remaining.map(hypothesis => hypothesis.inefficiency))
+  return remaining.filter(hypothesis => hypothesis.inefficiency === minimum)
 }
 
-export const possibleJackLocations = (evidence: PublicRoundEvidence | null): Set<number> => {
+export const possibleJackLocations = (evidence: PublicRoundEvidence | null, sprint = false): Set<number> => {
   if (!evidence) return new Set()
-  const hypotheses = remainingHypotheses(buildInferenceContext(evidence))
+  const hypotheses = remainingHypotheses(buildInferenceContext(evidence, false, sprint))
   return new Set(hypotheses.map((hypothesis) => hypothesis.position))
 }
 
-const clueVisitTurnsCache = new WeakMap<PublicRoundEvidence, Map<number, number[]>>()
+const clueVisitTurnsCache = new WeakMap<PublicRoundEvidence, Map<string, Map<number, number[]>>>()
 
-export const possibleClueVisitTurns = (evidence: PublicRoundEvidence | null): Map<number, number[]> => {
+export const possibleClueVisitTurns = (
+  evidence: PublicRoundEvidence | null,
+  sprint = false,
+  forecast?: PublicMoveEvidence,
+): Map<number, number[]> => {
   if (!evidence || !evidence.observations.some(observation => observation.kind === 'clue' && observation.found)) return new Map()
-  const cached = clueVisitTurnsCache.get(evidence)
+  const next = sprint ? forecast : undefined
+  const key = `${sprint}:${next ? JSON.stringify(next) : 'current'}`
+  const cachedByMode = clueVisitTurnsCache.get(evidence) ?? new Map<string, Map<number, number[]>>()
+  const cached = cachedByMode.get(key)
   if (cached) return cached
-  const context = buildInferenceContext(evidence, true)
+  const context = buildInferenceContext(next ? { ...evidence, moves: [...evidence.moves, next] } : evidence, true, sprint)
+  // A forecast can change the preferred past trails, but cannot leave a clue
+  // that investigators have already found in the current turn.
+  context.searchThroughMove = evidence.moves.length
   // Histories sharing a position and satisfied-clue mask admit the same future
   // evidence, so their possible visit times can be unioned without losing constraints.
   const visits = remainingHypotheses(context).reduce((mask, hypothesis) => mask | (hypothesis.clueVisitTurns ?? 0n), 0n)
@@ -231,7 +283,8 @@ export const possibleClueVisitTurns = (evidence: PublicRoundEvidence | null): Ma
       .filter(slot => (visits & (bit << BigInt(slot))) !== 0n)
     if (turns.length) result.set(id, turns)
   }
-  clueVisitTurnsCache.set(evidence, result)
+  cachedByMode.set(key, result)
+  clueVisitTurnsCache.set(evidence, cachedByMode)
   return result
 }
 
@@ -257,19 +310,39 @@ export const possibleJackLocationsAfterMove = (
   type: JackMoveType,
   investigatorPositions: Record<InvestigatorColor, string>,
   currentMoveSlot: number,
+  sprint = false,
 ): Set<number> =>
-  possibleJackLocations(evidenceAfterMove(evidence, type, investigatorPositions, currentMoveSlot))
+  possibleJackLocations(evidenceAfterMove(evidence, type, investigatorPositions, currentMoveSlot), sprint)
+
+const searchInferenceContext = (
+  evidence: PublicRoundEvidence,
+  nextStreetPositions: Partial<Record<InvestigatorColor, string>> | undefined,
+  sprint: boolean,
+): InferenceContext => {
+  if (!sprint || !nextStreetPositions) return buildInferenceContext(evidence, false, sprint)
+  const slot = (evidence.moves.at(-1)?.endSlot ?? 0) + 1
+  // Score the future move together with the entire past. Its visits cannot
+  // produce clues in searches performed this turn.
+  const forecast: PublicRoundEvidence = { ...evidence, moves: [...evidence.moves, {
+    type: 'normal', startSlot: slot, endSlot: slot,
+    investigatorPositions: nextStreetPositions as Record<InvestigatorColor, string>,
+  }] }
+  const context = buildInferenceContext(forecast, false, true)
+  context.searchThroughMove = evidence.moves.length
+  return context
+}
 
 export const possibleJackSearchOutcomes = (
   evidence: PublicRoundEvidence | null,
   nextStreetPositions?: Partial<Record<InvestigatorColor, string>>,
+  sprint = false,
 ): Map<number, SearchOutcome> => {
   const outcomes = new Map<number, SearchOutcome>()
   if (!evidence) return outcomes
 
-  const context = buildInferenceContext(evidence)
+  const context = searchInferenceContext(evidence, nextStreetPositions, sprint)
   const hypotheses = remainingHypotheses(context)
-  const project = locationProjector(nextStreetPositions)
+  const project = locationProjector(sprint ? undefined : nextStreetPositions)
   for (const circleId of circlesById.keys()) {
     const bit = visitedBit(circleId)
     const ifYes = new Set<number>()
@@ -295,8 +368,9 @@ export const possibleJackSearchOutcomesAfterMove = (
   type: JackMoveType,
   investigatorPositions: Record<InvestigatorColor, string>,
   currentMoveSlot: number,
+  sprint = false,
 ): Map<number, SearchOutcome> =>
-  possibleJackSearchOutcomes(evidenceAfterMove(evidence, type, investigatorPositions, currentMoveSlot))
+  possibleJackSearchOutcomes(evidenceAfterMove(evidence, type, investigatorPositions, currentMoveSlot), undefined, sprint)
 
 const crossingEliminationCache = new WeakMap<PublicRoundEvidence, Map<string, Map<string, number>>>()
 
@@ -307,17 +381,19 @@ const crossingEliminationCache = new WeakMap<PublicRoundEvidence, Map<string, Ma
 export const worstCaseCrossingEliminations = (
   evidence: PublicRoundEvidence | null,
   nextStreetPositions?: Partial<Record<InvestigatorColor, string>>,
+  sprint = false,
 ): Map<string, number> => {
   if (!evidence) return new Map()
   // Investigator moves can change the forecast even when public evidence does
   // not change. Keep current and projected results in separate cache entries.
-  const cacheKey = nextStreetPositions ? `next:${Object.values(nextStreetPositions).sort().join(',')}` : 'current'
+  const cacheKey = `${sprint}:${nextStreetPositions ? `next:${Object.values(nextStreetPositions).sort().join(',')}` : 'current'}`
   const cachedByPerspective = crossingEliminationCache.get(evidence) ?? new Map<string, Map<string, number>>()
   const cached = cachedByPerspective.get(cacheKey)
   if (cached) return cached
-  const context = buildInferenceContext(evidence)
+  const context = searchInferenceContext(evidence, nextStreetPositions, sprint)
   const initial = remainingHypotheses(context)
-  const project = locationProjector(nextStreetPositions)
+  const project = locationProjector(sprint ? undefined : nextStreetPositions)
+  const sprintCost = sprint ? initial[0]?.inefficiency : undefined
   const total = project(initial.map(hypothesis => hypothesis.position)).size
   const hypothesesByMisses = new Map<string, Hypothesis[]>([['', initial]])
   const afterMisses = (misses: number[]) => {
@@ -325,7 +401,7 @@ export const worstCaseCrossingEliminations = (
     const known = hypothesesByMisses.get(key)
     if (known) return known
     const missedLocations = misses.reduce((mask, id) => mask | visitedBit(id), 0n)
-    const hypotheses = remainingHypotheses(context, missedLocations)
+    const hypotheses = remainingHypotheses(context, missedLocations, sprintCost)
     hypothesesByMisses.set(key, hypotheses)
     return hypotheses
   }

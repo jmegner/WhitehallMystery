@@ -46,10 +46,10 @@ test('replays whole side turns and rounds with analysis controls, persists its p
   const past = page.getByRole('checkbox', { name: 'past', exact: true })
   await expect(past).toBeChecked()
   await expect(past).toBeDisabled()
-  for (const name of ['coach', 'future', 'know', 'xings', 'alt']) {
+  for (const name of ['coach', 'future', 'maybes', 'sprint', 'xings', 'alt']) {
     await expect(page.getByRole('checkbox', { name, exact: true })).toBeEnabled()
   }
-  await page.getByRole('checkbox', { name: 'know', exact: true }).check()
+  await page.getByRole('checkbox', { name: 'maybes', exact: true }).check()
   await expect(page.locator('.game-board')).toHaveClass(/investigator-knowledge-preview/)
   await expect(page.locator('.investigator-knowledge-toggle strong')).toHaveText(String(possibleJackLocations(turns[0]!.state.publicRound).size))
   await controls.getByRole('button', { name: 'Next turn' }).click()

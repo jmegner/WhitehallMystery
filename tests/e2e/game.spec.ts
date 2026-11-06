@@ -345,7 +345,7 @@ test('Jack can preview investigator knowledge for the selected movement type', a
   await page.getByRole('button', { name: /reveal my view/i }).click()
   await page.getByLabel('Secret Discovery Locations').getByRole('button', { name: '33', exact: true }).click()
 
-  const investigatorKnowledge = page.getByLabel('know')
+  const investigatorKnowledge = page.getByLabel('maybes')
   await expect(investigatorKnowledge).toBeVisible()
   await expect(page.locator('label.coach-preview-toggle')).toHaveAttribute(
     'title',
@@ -426,7 +426,7 @@ test('Jack can preview investigator knowledge for the selected movement type', a
   expect(validChoiceGap as number).toBeGreaterThanOrEqual(1)
 
   await page.reload()
-  await expect(page.getByLabel('know')).toBeChecked()
+  await expect(page.getByLabel('maybes')).toBeChecked()
   await expect(page.locator('.possible-marker')).toHaveCount(coachCount)
 })
 
@@ -540,7 +540,7 @@ test('Jack can preview all shortest routes to a hovered future location', async 
   await page.getByRole('button', { name: 'Street', exact: true }).click()
   await target.hover()
 
-  await page.getByLabel('know').check()
+  await page.getByLabel('maybes').check()
   await target.hover()
   await expect(page.locator('.possible-outcome-count .outcome-count-turn')).toHaveCount(0)
   await expect(page.locator('.possible-outcome-count').first()).toHaveText(/^\d+\/\d+$/)

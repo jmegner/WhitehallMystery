@@ -15,12 +15,12 @@ const investigatorPositions = { yellow, blue: 'HP', red: 'HZ' }
 const street = (slot: number): PublicMoveEvidence => ({ type: 'normal', startSlot: slot, endSlot: slot, investigatorPositions })
 const clue = { kind: 'clue' as const, circleId: 13, found: true, afterMove: 1, investigator: 'yellow' as const }
 
-for (const checkbox of ['maybes', 'know'] as const) {
-  test(`${checkbox} replaces a confirmed clue result with a width-limited black visit-turn list`, async ({ page }) => {
+for (const side of ['investigators', 'jack'] as const) {
+  test(`${side} maybes replaces a confirmed clue result with a width-limited black visit-turn list`, async ({ page }) => {
     const observations: PublicObservation[] = [clue, ...[2, 4, 6, 8, 10, 12].map(afterMove => ({
       kind: 'arrest' as const, circleId: 13, hit: false as const, afterMove, investigator: 'yellow' as const,
     }))]
-    const state: GameState = { ...createInitialGame(), stage: checkbox === 'know' ? 'jackMove' : 'investigatorAction',
+    const state: GameState = { ...createInitialGame(), stage: side === 'jack' ? 'jackMove' : 'investigatorAction',
       inspectorActionMode: 'search', moveSlot: 13, currentJack: 13, investigatorPositions,
       discoveryLocations: [33, 46, 147, 159], reachedDiscoveries: [33], clueLocations: [13],
       roundTrail: [33, ...Array.from({ length: 13 }, (_, index) => index % 2 === 0 ? 13 : 33)],
@@ -33,7 +33,7 @@ for (const checkbox of ['maybes', 'know'] as const) {
       localStorage.setItem('whitehall-mystery.show-investigator-knowledge', 'true')
     }, state)
     await page.goto('/')
-    const toggle = page.getByLabel(checkbox)
+    const toggle = page.getByLabel('maybes')
     await toggle.check()
     const indicator = page.getByLabel('Possible visit turns at 13: 1,3,5,7,9,11,13', { exact: true })
     await expect(indicator).toHaveText('1..13')
@@ -44,13 +44,13 @@ for (const checkbox of ['maybes', 'know'] as const) {
     expect(await indicator.evaluate(element => (element as SVGTextElement).getComputedTextLength())).toBeLessThanOrEqual(MAX_CLUE_TURN_LABEL_WIDTH)
     await page.getByRole('checkbox', { name: 'alt', exact: true }).check()
     await expect(indicator).toHaveAttribute('data-indicator-angle', 'right')
-    if (checkbox === 'maybes') await page.getByRole('checkbox', { name: 'next', exact: true }).check()
+    if (side === 'investigators') await page.getByRole('checkbox', { name: 'next', exact: true }).check()
     else await page.getByRole('button', { name: 'Coach (2)', exact: true }).click()
     await expect(indicator).toHaveText('1..13')
     for (const width of [1000, 390]) {
       await page.setViewportSize({ width, height: 1000 })
       await expect(indicator).toBeVisible()
-      await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath(`${checkbox}-clue-turns-${width}.png`) })
+      await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath(`${side}-clue-turns-${width}.png`) })
     }
     await toggle.uncheck()
     await expect(indicator).toHaveCount(0)

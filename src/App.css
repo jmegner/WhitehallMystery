@@ -332,6 +332,7 @@ button:disabled {
 }
 
 .possibility-toggle,
+.sprint-toggle,
 .worst-crossings-toggle,
 .next-turn-toggle,
 .coach-preview-toggle,
@@ -351,6 +352,7 @@ button:disabled {
 }
 
 .possibility-toggle input,
+.sprint-toggle input,
 .worst-crossings-toggle input,
 .next-turn-toggle input,
 .coach-preview-toggle input,
@@ -1519,6 +1521,8 @@ button:disabled {
 
   .board-options {
     width: 100%;
+    /* Reserve the history row and two toggle rows to keep the map steady between sides. */
+    min-height: 5rem;
     justify-content: flex-start;
     flex-wrap: wrap;
   }
