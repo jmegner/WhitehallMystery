@@ -116,6 +116,9 @@ const ACTIVE_INVESTIGATOR_RING_RADIUS = 14
 const ACTIVE_INVESTIGATOR_GUIDE_RADIUS = 16
 const JACK_PIECE_RADIUS = 10
 const JACK_GUIDE_RADIUS = 12
+const ALT_TITLE = 'place clues to the right and distances above; hold Shift to temporarily invert alt'
+const NEXT_TITLE = 'show possibilities after Jack’s next Street move, including the effects of searches this turn; hold Ctrl to temporarily invert next'
+const SPRINT_TITLE = 'assume Jack reaches locations as early as possible; keep routes with the least total delay that fit public clues, allowing backtracking when required'
 const LOCATION_OUTLINES = {
   mapLocation: { radius: 18, strokeWidth: 0 },
   legal: { radius: 18.5, strokeWidth: 2 },
@@ -1708,6 +1711,21 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     return storage ? loadBooleanPreference(storage, ALT_ANGLE_STORAGE_KEY) : false
   })
   const shiftHeld = useShiftHeld()
+  function changeAlt(checked: boolean) {
+    setAlternateIndicatorAngle(checked)
+    const storage = browserStorage()
+    if (storage) saveBooleanPreference(storage, ALT_ANGLE_STORAGE_KEY, checked)
+  }
+  function changeNext(checked: boolean) {
+    setNextTurn(checked)
+    const storage = browserStorage()
+    if (storage) saveBooleanPreference(storage, NEXT_TURN_STORAGE_KEY, checked)
+  }
+  function changeSprint(checked: boolean) {
+    setSprint(checked)
+    const storage = browserStorage()
+    if (storage) saveBooleanPreference(storage, SPRINT_STORAGE_KEY, checked)
+  }
   const [showPastPath, setShowPastPath] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, PAST_PATH_STORAGE_KEY) : false
@@ -2151,17 +2169,12 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               </label>
               <label
                 className="alternate-angle-toggle"
-                title="place clues to the right and distances above; hold Shift to temporarily invert alt"
+                title={ALT_TITLE}
               >
                 <input
                   type="checkbox"
                   checked={alternateIndicatorAngle}
-                  onChange={(event) => {
-                    const checked = event.target.checked
-                    setAlternateIndicatorAngle(checked)
-                    const storage = browserStorage()
-                    if (storage) saveBooleanPreference(storage, ALT_ANGLE_STORAGE_KEY, checked)
-                  }}
+                  onChange={event => changeAlt(event.target.checked)}
                 />
                 alt
               </label>
@@ -2251,17 +2264,12 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               {isInspectorInteraction(state.stage) && state.publicRound && (
                 <label
                   className="next-turn-toggle"
-                  title="show possibilities after Jack’s next Street move, including the effects of searches this turn; hold Ctrl to temporarily invert next"
+                  title={NEXT_TITLE}
                 >
                   <input
                     type="checkbox"
                     checked={nextTurn}
-                    onChange={(event) => {
-                      const checked = event.target.checked
-                      setNextTurn(checked)
-                      const storage = browserStorage()
-                      if (storage) saveBooleanPreference(storage, NEXT_TURN_STORAGE_KEY, checked)
-                    }}
+                    onChange={event => changeNext(event.target.checked)}
                   />
                   next
                 </label>
@@ -2305,13 +2313,8 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               )}
               {(state.stage === 'jackMove' || isInspectorInteraction(state.stage)) && state.publicRound && (
                 <label className="sprint-toggle"
-                  title="assume Jack reaches locations as early as possible; keep routes with the least total delay that fit public clues, allowing backtracking when required">
-                  <input type="checkbox" checked={sprint} onChange={event => {
-                    const checked = event.target.checked
-                    setSprint(checked)
-                    const storage = browserStorage()
-                    if (storage) saveBooleanPreference(storage, SPRINT_STORAGE_KEY, checked)
-                  }} />
+                  title={SPRINT_TITLE}>
+                  <input type="checkbox" checked={sprint} onChange={event => changeSprint(event.target.checked)} />
                   sprint
                 </label>
               )}
@@ -2380,6 +2383,12 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               />
             </div>
             <FloatingMapControls panel={boardPanel} gameId={gameId} state={state} dispatch={dispatch} waiting={!!replayTurn || (!!remote?.waiting && !ai?.awaitingEnd)}
+              possibleLocationCount={showPossibilityMarkers ? possibleIds.size : undefined}
+              analysisToggles={showPossibilityMarkers && state.publicRound ? {
+                alt: { checked: alternateIndicatorAngle, title: ALT_TITLE, onChange: changeAlt },
+                next: isInspectorInteraction(state.stage) ? { checked: nextTurn, title: NEXT_TITLE, onChange: changeNext } : undefined,
+                sprint: { checked: sprint, title: SPRINT_TITLE, onChange: changeSprint },
+              } : undefined}
               side={remote?.role ?? playerViewForState(state) ?? 'investigators'}
               onTypicalDeployment={handleTypicalDeployment}
               canContinueFromMap={canContinueFromMap}

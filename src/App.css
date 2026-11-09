@@ -433,9 +433,24 @@ button:disabled {
   container-type: inline-size;
 }
 
-.floating-turn-summary {
+.floating-map-topbar {
   position: fixed;
   z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  width: max-content;
+  transform-origin: center top;
+}
+
+.floating-analysis-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.floating-turn-summary,
+.floating-analysis-controls button {
   padding: 3px 7px;
   border: 1px solid #bfa783;
   border-radius: 6px;
@@ -445,7 +460,32 @@ button:disabled {
   font: 600 13px/1.3 'Inter', sans-serif;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  transform-origin: center top;
+}
+
+.floating-analysis-controls button {
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 5px;
+  gap: 3px;
+  touch-action: manipulation;
+}
+
+.floating-possible-count {
+  color: #5d3487;
+}
+
+.floating-analysis-controls button[aria-pressed='true'] {
+  background: #5d3487;
+  border-color: #a68bc2;
+  color: #fff;
+}
+
+.floating-toggle-check {
+  visibility: hidden;
+}
+
+.floating-analysis-controls button[aria-pressed='true'] .floating-toggle-check {
+  visibility: visible;
 }
 
 .floating-control-cluster {

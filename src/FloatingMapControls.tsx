@@ -11,6 +11,12 @@ import { rememberBoardViewport, useSavedBoardViewport } from './useSavedBoardVie
 
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
 
+interface AnalysisToggle {
+  checked: boolean
+  title: string
+  onChange: (checked: boolean) => void
+}
+
 interface Props {
   panel: HTMLElement | null
   gameId: string
@@ -23,9 +29,11 @@ interface Props {
   endTurnLabel?: string
   canContinueFromMap: boolean
   onTypicalDeployment?: () => void
+  possibleLocationCount?: number
+  analysisToggles?: { alt: AnalysisToggle; next?: AnalysisToggle; sprint: AnalysisToggle }
 }
 
-export default function FloatingMapControls({ panel, gameId, state, side, dispatch, onUndo, canUndo, waiting, endTurnLabel, canContinueFromMap, onTypicalDeployment }: Props) {
+export default function FloatingMapControls({ panel, gameId, state, side, dispatch, onUndo, canUndo, waiting, endTurnLabel, canContinueFromMap, onTypicalDeployment, possibleLocationCount, analysisToggles }: Props) {
   const zoomRegion = boardZoomRegion(state)
   const viewport = useBoardPanelViewport(panel, !!zoomRegion)
   useSavedBoardViewport(panel, gameId)
@@ -103,10 +111,24 @@ export default function FloatingMapControls({ panel, gameId, state, side, dispat
   // Map-top controls never render a summary of their own.
   const summary = floatingTurnSummary(state, side)
   return <>{prompt}{createPortal(<>
-  <output className="floating-turn-summary" aria-label="Floating turn summary" title={summary.description}
-    style={{ left: viewport.left, top: viewport.top, transform: `translateX(-50%) scale(${1 / viewport.scale})` }}>
-    {summary.text}
-  </output>
+  <div className="floating-map-topbar"
+    style={{ left: viewport.left, top: viewport.top, maxWidth: viewport.width,
+      transform: `translateX(-50%) scale(${1 / viewport.scale})` }}>
+    <output className="floating-turn-summary" aria-label="Floating turn summary" title={summary.description}>
+      {summary.text}
+      {possibleLocationCount !== undefined && <>{' '}<span className="floating-possible-count" title="Possible Jack locations">{possibleLocationCount}</span></>}
+    </output>
+    {analysisToggles && <div className="floating-analysis-controls" role="group" aria-label="Floating analysis controls">
+      {(['alt', 'next', 'sprint'] as const).map(name => {
+        const toggle = analysisToggles[name]
+        return toggle && <button key={name} type="button" aria-pressed={toggle.checked}
+          title={toggle.title} onPointerDown={event => event.preventDefault()}
+          onClick={() => toggle.onChange(!toggle.checked)}>
+          <span className="floating-toggle-check" aria-hidden="true">✓</span>{name}
+        </button>
+      })}
+    </div>}
+  </div>
   <div className="floating-map-controls" data-investigator={investigator} role="group" aria-label="Floating map controls"
     style={{ left: viewport.left, top: viewport.bottom, width: viewport.width,
       transform: `translate(-50%, -100%) scale(${1 / viewport.scale})` }}>

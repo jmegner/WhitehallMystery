@@ -33,7 +33,7 @@ async function expectAtTop(page: Page) {
   await expect(controls(page)).toHaveCSS('position', 'fixed')
   await expect(controls(page).getByRole('button').first()).toBeVisible()
   await expect(summary(page)).toBeVisible()
-  await expect(summary(page)).toHaveCSS('position', 'fixed')
+  await expect(page.locator('.floating-map-topbar')).toHaveCSS('position', 'fixed')
   await expect.poll(() => summary(page).evaluate(element => {
     const rect = element.getBoundingClientRect()
     const viewport = window.visualViewport!
