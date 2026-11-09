@@ -29,6 +29,7 @@ import {
   shortestInvestigatorRoutePreview,
 } from './game/gameEngine'
 import {
+  evidenceAfterMove,
   movementLabel,
   possibleJackSearchOutcomes,
   possibleJackSearchOutcomesAfterMove,
@@ -1686,11 +1687,6 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, SPRINT_STORAGE_KEY) : false
   })
-  const worstCrossingEliminations = useWorstCrossingEliminations(
-    showWorst && isInspectorInteraction(state.stage) && !history.pendingReveal ? state.publicRound : null,
-    effectiveNextTurn ? state.investigatorPositions : undefined,
-    sprint,
-  )
   const [showCrossingIds, setShowCrossingIds] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, CROSSING_IDS_STORAGE_KEY) : false
@@ -1731,6 +1727,15 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     playerViewForState(currentHistoryState(history)) === 'investigators'
   const boardState = observingInvestigators ? currentHistoryState(history) : state
   const showCurrentInvestigatorTargets = observingInvestigators && showInvestigatorMaybes
+  const { yellow, blue, red } = state.investigatorPositions
+  const worstEvidence = state.stage === 'jackMove' && !replayTurn && !observingInvestigators && yellow && blue && red
+    ? evidenceAfterMove(state.publicRound, state.jackMoveSelection.type, { yellow, blue, red }, state.moveSlot)
+    : boardState.publicRound
+  const worstCrossingEliminations = useWorstCrossingEliminations(
+    showWorst && (state.stage === 'jackMove' || isInspectorInteraction(state.stage)) && !history.pendingReveal ? worstEvidence : null,
+    isInspectorInteraction(state.stage) && effectiveNextTurn ? state.investigatorPositions : undefined,
+    sprint,
+  )
   const [showInvestigatorTurnAnnouncement, setShowInvestigatorTurnAnnouncement] = useState(false)
   const [handoffHeight, setHandoffHeight] = useState<number>()
   const handoffCenter = useRef<{ x: number; y: number } | null>(null)
@@ -1978,7 +1983,6 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   } else if (showInvestigatorKnowledge && observingInvestigators) {
     possibleOutcomes = possibleJackSearchOutcomes(boardState.publicRound, undefined, sprint)
   } else if (showInvestigatorKnowledge && state.stage === 'jackMove') {
-    const { yellow, blue, red } = state.investigatorPositions
     if (replayTurn) {
       // This move is already recorded. Show the knowledge at its result,
       // rather than adding another hypothetical move as live planning does.
@@ -2001,7 +2005,6 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     (showPossible && isInspectorInteraction(state.stage)) ||
     (showInvestigatorKnowledge && state.stage === 'jackMove')
   let clueForecast: PublicMoveEvidence | undefined
-  const { yellow, blue, red } = state.investigatorPositions
   if (sprint && yellow && blue && red && ((isInspectorInteraction(state.stage) && effectiveNextTurn) ||
     (state.stage === 'jackMove' && !replayTurn && !observingInvestigators))) {
     const type = state.stage === 'jackMove' ? state.jackMoveSelection.type : 'normal'
@@ -2253,7 +2256,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                   next
                 </label>
               )}
-              {isInspectorInteraction(state.stage) && state.publicRound && (
+              {(state.stage === 'jackMove' || isInspectorInteraction(state.stage)) && state.publicRound && (
                 <label
                   className="worst-crossings-toggle"
                   title="show the guaranteed number of possible locations eliminated by searching adjacent locations in the best order, stopping at a clue"

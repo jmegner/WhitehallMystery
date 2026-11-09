@@ -15,6 +15,9 @@ usable while the numbers are computed. Changing the public evidence or the
 next-turn perspective hides old scores until the new results arrive; returning
 to an already calculated perspective restores its cached scores immediately.
 The calculations still use exact public-evidence deduction.
+Jack has the same **worst** checkbox, sharing its saved preference with the
+investigator view. Its counts follow the selected public move type, like Jack's
+maybes preview; AI-turn review and replay use the evidence at the recorded step.
 
 Finished games offer **Start replay**. Step through the results of each side’s
 turn or jump between rounds, with Jack and his trail always visible. The usual

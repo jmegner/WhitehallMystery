@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { createInitialGame } from '../../src/game/gameEngine'
 import { aiHistoryReducer } from '../../src/game/aiSession'
 import { createGameHistory, currentHistoryState, gameHistoryReducer, type GameHistory } from '../../src/game/history'
-import { possibleJackSearchOutcomes, possibleJackSearchOutcomesAfterMove, publicMovementPaths } from '../../src/game/inference'
+import { possibleJackSearchOutcomes, possibleJackSearchOutcomesAfterMove, publicMovementPaths, worstCaseCrossingEliminations } from '../../src/game/inference'
 import { adjacentCirclesForCrossing, circles, reachableCrossings } from '../../src/game/mapData'
 import { normalizeRemoteHistory } from '../../src/game/remoteHistory'
 import type { GameAction, PublicMoveEvidence } from '../../src/game/types'
@@ -60,6 +60,14 @@ async function expectKnowledge(page: Page, history: GameHistory, sprint: boolean
     circles.filter(circle => ids.has(circle.id)).map(circle => `${circle.x},${circle.y}`).sort())
   await expect(page.locator('.investigator-knowledge-toggle strong')).toHaveText(String(ids.size))
   await expect(page.locator('.jack-marker')).toHaveCount(1)
+  const round = state.publicRound!
+  const worstEvidence = state.stage === 'jackMove' ? { ...round, moves: [...round.moves, {
+    type: state.jackMoveSelection.type, startSlot: state.moveSlot + 1,
+    endSlot: state.moveSlot + (state.jackMoveSelection.type === 'coach' ? 2 : 1),
+    investigatorPositions: state.investigatorPositions as PublicMoveEvidence['investigatorPositions'],
+  }] } : round
+  await expect.poll(() => page.locator('.crossing-worst-count').allTextContents()).toEqual(
+    [...worstCaseCrossingEliminations(worstEvidence, undefined, sprint).values()].filter(count => count > 0).map(String))
 }
 
 for (const sprint of [false, true]) {
@@ -76,6 +84,7 @@ for (const sprint of [false, true]) {
       localStorage.setItem('whitehall-mystery.show-investigator-knowledge', 'true')
       localStorage.setItem('whitehall-mystery.show-possible-locations', 'false')
       localStorage.setItem('whitehall-mystery.show-next-turn', 'true')
+      localStorage.setItem('whitehall-mystery.show-worst-crossings', 'true')
       localStorage.setItem('whitehall-mystery.sprint', String(sprint))
     }, { history, sprint })
     await page.goto('/')

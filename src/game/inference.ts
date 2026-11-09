@@ -288,13 +288,19 @@ export const possibleClueVisitTurns = (
   return result
 }
 
-const evidenceAfterMove = (
+const forecastEvidenceCache = new WeakMap<PublicRoundEvidence, Map<string, PublicRoundEvidence>>()
+
+export const evidenceAfterMove = (
   evidence: PublicRoundEvidence | null,
   type: JackMoveType,
   investigatorPositions: Record<InvestigatorColor, string>,
   currentMoveSlot: number,
 ): PublicRoundEvidence | null => {
   if (!evidence) return null
+  const key = JSON.stringify([type, currentMoveSlot, investigatorPositions.yellow, investigatorPositions.blue, investigatorPositions.red])
+  const forecasts = forecastEvidenceCache.get(evidence) ?? new Map<string, PublicRoundEvidence>()
+  const cached = forecasts.get(key)
+  if (cached) return cached
   const cost = type === 'coach' ? 2 : 1
   const move: PublicMoveEvidence = {
     type,
@@ -302,7 +308,12 @@ const evidenceAfterMove = (
     endSlot: currentMoveSlot + cost,
     investigatorPositions,
   }
-  return { ...evidence, moves: [...evidence.moves, move] }
+  // Keep the forecast stable across renders so async analysis can finish and
+  // reuse its results. Only public move information belongs in this cache.
+  const forecast = { ...evidence, moves: [...evidence.moves, move] }
+  forecasts.set(key, forecast)
+  forecastEvidenceCache.set(evidence, forecasts)
+  return forecast
 }
 
 export const possibleJackLocationsAfterMove = (
