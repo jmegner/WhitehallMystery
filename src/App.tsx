@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { planInvestigatorDeployment } from './game/aiDeployment'
 import { useBoardHover } from './useBoardHover'
 import { useWorstCrossingEliminations } from './useWorstCrossingEliminations'
@@ -41,6 +41,7 @@ import PublicHuntLog from './PublicHuntLog'
 import FloatingMapControls from './FloatingMapControls'
 import ZoomedJackHandoff from './ZoomedJackHandoff'
 import { useZoomedViewport } from './useZoomedViewport'
+import { centerNativeViewport } from './boardZoom'
 import ReplayControls from './ReplayControls'
 import { gameReplayTurns, loadReplayPosition, saveReplayPosition, type ReplayTurn } from './game/replay'
 import { indicatorTextAttributes } from './indicatorLayout'
@@ -1232,10 +1233,11 @@ interface HistoryControlsProps {
   onRedoAll: () => void
   onRand: () => void
   onRandSide: () => void
+  onTypicalDeployment?: () => void
   mailControls?: { canUndo: boolean; canRequestUndo?: boolean; canRedo: boolean; waiting: boolean }
 }
 
-function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand, onRandSide, mailControls }: HistoryControlsProps) {
+function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand, onRandSide, onTypicalDeployment, mailControls }: HistoryControlsProps) {
   const mode = mailControls ? mailControls.canUndo || mailControls.canRequestUndo ? 'undo' : 'disabled' : undoMode(history)
   return (
     <div className="history-controls" aria-label="Action history controls">
@@ -1257,6 +1259,8 @@ function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand
       <button type="button" disabled={mailControls?.waiting} onClick={onRandSide}>
         Rand Side
       </button>
+      {onTypicalDeployment && <button type="button"
+        title="Place all three investigators at the AI’s usual starting crossings" onClick={onTypicalDeployment}>Typical</button>}
     </div>
   )
 }
@@ -1721,15 +1725,36 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, INVESTIGATOR_KNOW_STORAGE_KEY) : false
   })
-  // Jack keeps his private board while the future overlay follows the actual
-  // investigator phase, rather than predicting another full investigator turn.
-  const observingInvestigators = !replayTurn && online?.role === 'jack' &&
+  // Jack keeps his private board while overlays follow the investigator phase
+  // at the current history cursor, including undo/redo through an AI turn.
+  const observingInvestigators = !replayTurn && (online?.role ?? ai?.role) === 'jack' &&
     playerViewForState(currentHistoryState(history)) === 'investigators'
   const boardState = observingInvestigators ? currentHistoryState(history) : state
   const showCurrentInvestigatorTargets = observingInvestigators && showInvestigatorMaybes
   const [showInvestigatorTurnAnnouncement, setShowInvestigatorTurnAnnouncement] = useState(false)
   const [handoffHeight, setHandoffHeight] = useState<number>()
+  const handoffCenter = useRef<{ x: number; y: number } | null>(null)
   const showingHandoff = !replayTurn && (!!history.pendingReveal || isHandoff(state.stage))
+  useLayoutEffect(() => {
+    if (showingHandoff || !boardPanel?.isConnected || !handoffCenter.current) return
+    // Restore after the new board and native pointer-focus scrolling settle.
+    const frame = requestAnimationFrame(() => {
+      const center = handoffCenter.current
+      handoffCenter.current = null
+      if (center) void centerNativeViewport(center)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [boardPanel, showingHandoff])
+  useLayoutEffect(() => {
+    if (handoffHeight === undefined) return
+    const viewport = window.visualViewport
+    const release = () => {
+      if (!viewport || viewport.scale <= 1) setHandoffHeight(undefined)
+    }
+    release()
+    viewport?.addEventListener('resize', release)
+    return () => viewport?.removeEventListener('resize', release)
+  }, [handoffHeight])
   const canContinueFromMap = !replayTurn && !online && !remote?.waiting && isInvestigatorReview(state)
   const [investigatorAuto, setInvestigatorAuto] = useState(() => {
     const storage = browserStorage()
@@ -1796,6 +1821,11 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
       const viewport = window.visualViewport
       setHandoffHeight(viewport && viewport.scale > 1 && viewport.width <= 768
         ? document.documentElement.scrollHeight : undefined)
+    }
+    if (showingHandoff && !next.pendingReveal && !isHandoff(currentHistoryState(next).stage)) {
+      const viewport = window.visualViewport
+      handoffCenter.current = viewport && viewport.scale > 1 && viewport.width <= 768
+        ? { x: viewport.pageLeft + viewport.width / 2, y: viewport.pageTop + viewport.height / 2 } : null
     }
     if (ai) {
       ai.onChange(next)
@@ -2032,6 +2062,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   return (
     <div
       className="app-shell"
+      style={{ minHeight: handoffHeight, overflowAnchor: handoffHeight === undefined ? undefined : 'none' }}
       onClick={() => {
         if (showInvestigatorTurnAnnouncement) setShowInvestigatorTurnAnnouncement(false)
       }}
@@ -2086,6 +2117,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 onRedoAll={handleRedoAll}
                 onRand={handleRand}
                 onRandSide={handleRandSide}
+                onTypicalDeployment={handleTypicalDeployment}
               />}
               {finished && !replayTurn && <button type="button" className="start-replay-button" title="Replay this finished game one side’s turn at a time" onClick={() => changeReplay(0)}>Start replay</button>}
               <label className="crossing-toggle" title="show crossing ids">

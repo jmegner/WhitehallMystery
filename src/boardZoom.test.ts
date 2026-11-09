@@ -85,7 +85,7 @@ describe('map zoom framing', () => {
     const bounds = { left: 0, right: 100, top: 0, bottom: 100 }
     const frame = boardZoomFrame(bounds, { width: 390, height: 600 }, { x: 50, y: 50 })
     expect(frame.center).toEqual({ x: 50, y: 50 })
-    expect(frame.scale).toBeCloseTo(3.58)
+    expect(frame.scale).toBeCloseTo(3.836)
   })
 
   test('keeps a wide asymmetric region visible when exact centering would crop its far side', () => {
@@ -109,6 +109,6 @@ describe('map zoom framing', () => {
     const frame = boardZoomFrame(bounds, size)
     expect(frame.scale).toBeLessThan(1)
     expect((bounds.top - frame.center.y) * frame.scale + size.height / 2).toBeCloseTo(ZOOM_GUTTERS.top)
-    expect((bounds.bottom - frame.center.y) * frame.scale + size.height / 2).toBeCloseTo(size.height - size.height * 0.3)
+    expect((bounds.bottom - frame.center.y) * frame.scale + size.height / 2).toBeCloseTo(size.height - Math.min(ZOOM_GUTTERS.bottom, size.height * 0.06))
   })
 })

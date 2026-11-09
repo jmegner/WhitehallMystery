@@ -446,16 +446,6 @@ button:disabled {
   transform-origin: center top;
 }
 
-.map-top-controls .floating-turn-summary {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 2px);
-  padding: 0.1em 0.4em;
-  border-radius: 0.35em;
-  font-size: 0.9em;
-  transform: translateX(-50%);
-}
-
 .floating-control-cluster {
   display: flex;
   flex-wrap: nowrap;

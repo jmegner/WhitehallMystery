@@ -9,7 +9,7 @@ export interface BoardZoomRegion {
   center?: Point
 }
 export interface ZoomBounds { left: number; top: number; right: number; bottom: number }
-export const ZOOM_GUTTERS = { side: 16, top: 48, bottom: 120 }
+export const ZOOM_GUTTERS = { side: 3.2, top: 9.6, bottom: 24 }
 
 export function boardZoomRegion(state: GameState): BoardZoomRegion | null {
   const locations = new Set<number>()
@@ -56,7 +56,7 @@ const clamp = (value: number, low: number, high: number) => low <= high ? Math.m
 
 export function boardZoomFrame(bounds: ZoomBounds, size: { width: number; height: number }, anchor?: Point, actualScale?: number) {
   const { side, top } = ZOOM_GUTTERS
-  const bottom = Math.min(ZOOM_GUTTERS.bottom, size.height * 0.3)
+  const bottom = Math.min(ZOOM_GUTTERS.bottom, size.height * 0.06)
   const middle = { x: (bounds.left + bounds.right) / 2, y: (bounds.top + bounds.bottom) / 2 }
   const fit = Math.min(5, (size.width - side * 2) / Math.max(1, bounds.right - bounds.left),
     (size.height - top - bottom) / Math.max(1, bounds.bottom - bounds.top))
@@ -85,10 +85,10 @@ const setNativeScale = (meta: HTMLMetaElement, scale: number) => {
   meta.content = [...settings, `initial-scale=${scale}`].join(', ')
 }
 
-async function centerNativeViewport(center: Point) {
+export async function centerNativeViewport(center: Point) {
   const target = document.createElement('span')
   target.setAttribute('aria-hidden', 'true')
-  Object.assign(target.style, { position: 'absolute', left: `${center.x}px`, top: `${center.y}px`,
+  Object.assign(target.style, { position: 'absolute', left: `${center.x - 0.5}px`, top: `${center.y - 0.5}px`,
     width: '1px', height: '1px', opacity: '0', pointerEvents: 'none' })
   document.body.append(target)
   try {

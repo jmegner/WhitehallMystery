@@ -16,3 +16,5 @@ When manually testing the web app in a browser...
 - Use a fresh, previously unused dev-server port for each QA session instead of reusing port 4173. Close the QA tab and stop the server afterward; do not click "New game" merely to clean up test state, because that can surface reset confirmations and reuse persisted state from the shared origin.
 
 Even though the original board game supports multiple players for the investigators, we always treat the investigator side as a single player, making this a 2 player game.
+
+Also, try to test UI features and changes in Android Chrome and Android Firefox.

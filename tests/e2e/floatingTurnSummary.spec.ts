@@ -30,6 +30,8 @@ async function saved(page: Page) {
   return currentHistoryState(history)
 }
 async function expectAtTop(page: Page) {
+  await expect(controls(page)).toHaveCSS('position', 'fixed')
+  await expect(controls(page).getByRole('button').first()).toBeVisible()
   await expect(summary(page)).toBeVisible()
   await expect(summary(page)).toHaveCSS('position', 'fixed')
   await expect.poll(() => summary(page).evaluate(element => {
@@ -110,22 +112,29 @@ test.describe('zoomed floating turn summaries', () => {
   })
 })
 
-test('summary follows controls between desktop, map-top and viewport-floating layouts', async ({ page }) => {
+test('summary only accompanies viewport-floating buttons through resizing and scrolling', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1600 })
   await restore(page, jackState())
   await expect(controls(page)).toHaveCount(0)
   await expect(summary(page)).toHaveCount(0)
   await page.setViewportSize({ width: 974, height: 1600 })
   await expect(controls(page)).toHaveCSS('position', 'absolute')
-  await expect(summary(page)).toBeVisible()
-  await expect(summary(page)).toHaveCSS('position', 'absolute')
-  await expect(summary(page)).toHaveText('R1 M0 012 D2')
-  await reviewScreenshot(page, { path: test.info().outputPath('map-top-summary.png') })
+  await expect(summary(page)).toHaveCount(0)
+  await reviewScreenshot(page, { path: test.info().outputPath('map-top-without-summary.png') })
   await page.setViewportSize({ width: 974, height: 600 })
   await page.locator('.board-frame').evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }))
   await expectAtTop(page)
+  await expect(summary(page)).toHaveText('R1 M0 012 D2')
   await expect(summary(page)).toHaveCount(1)
   await reviewScreenshot(page, { path: test.info().outputPath('desktop-floating-summary.png') })
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await expect(controls(page)).toHaveCSS('position', 'absolute')
+  await expect(summary(page)).toHaveCount(0)
+  await page.locator('.board-frame').evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }))
+  await expectAtTop(page)
+  await page.setViewportSize({ width: 974, height: 1600 })
+  await expect(controls(page)).toHaveCSS('position', 'absolute')
+  await expect(summary(page)).toHaveCount(0)
   await page.setViewportSize({ width: 1440, height: 1600 })
   await expect(controls(page)).toHaveCount(0)
   await expect(summary(page)).toHaveCount(0)

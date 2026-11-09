@@ -123,6 +123,35 @@ async function mapPosition(page: Page) {
 test.describe('native mobile handoff taps', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   for (const stage of ['investigatorSetupResult', 'investigatorTurnResult'] as const) {
+    test(`${stage} preserves a deep viewport when Jack's returning page is shorter`, async ({ page, context }) => {
+      await seedGame(page, resultState(stage))
+      await page.goto('/')
+      await page.evaluate(() => document.fonts.ready)
+      // Model a tall, expanded investigator panel that will be removed by the
+      // privacy screen. Jack's replacement panel needs less document height.
+      await page.locator('.control-panel').evaluate(element => {
+        const spacer = document.createElement('div')
+        spacer.style.height = '1200px'
+        element.append(spacer)
+      })
+      const cdp = await context.newCDPSession(page)
+      await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 })
+      await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight))
+      const original = await mapPosition(page)
+      await page.locator('.game-board').dispatchEvent('click')
+      await expectViewportHandoff(page)
+      expect(await page.evaluate(() => window.visualViewport!.pageTop)).toBeCloseTo(original.pageTop, 0)
+      await nativeTap(page, cdp, dialog(page).getByRole('button', { name: 'I am Jack, reveal my view', exact: true }))
+      await expect(dialog(page)).toHaveCount(0)
+      await expect.poll(async () => (await mapPosition(page)).pageTop).toBeCloseTo(original.pageTop, 0)
+      const position = await mapPosition(page)
+      for (const key of ['left', 'top', 'pageLeft', 'scale'] as const) expect(position[key], key).toBeCloseTo(original[key], 0)
+      await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 })
+      await expect.poll(() => page.locator('.app-shell').evaluate(element => (element as HTMLElement).style.minHeight)).toBe('')
+      await cdp.detach()
+    })
+  }
+  for (const stage of ['investigatorSetupResult', 'investigatorTurnResult'] as const) {
     for (const scale of [2, 3]) {
       test(`${stage} at ${scale}x reveals on one tap and retains the map position`, async ({ page, context }) => {
         const state = resultState(stage)

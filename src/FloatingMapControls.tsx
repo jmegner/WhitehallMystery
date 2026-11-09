@@ -91,21 +91,23 @@ export default function FloatingMapControls({ panel, gameId, state, side, dispat
 
   const prompt = canContinueFromMap && !floatingResults
     ? <div className="map-continue-prompt">Results shown · Click anywhere on the map to continue</div> : null
-  const summary = floatingTurnSummary(state, side)
-  const summaryText = <output className="floating-turn-summary" aria-label="Floating turn summary" title={summary.description}
-    style={viewport ? { left: viewport.left, top: viewport.top, transform: `translateX(-50%) scale(${1 / viewport.scale})` } : undefined}>
-    {summary.text}
-  </output>
   // The CSS breakpoint matches the control panel's single-column layout. This
   // fallback stays anchored to the map; viewport-filling board panels use the portal.
   if (!viewport) return <>{prompt}{(controls || rightControls) && <div className="floating-map-controls map-top-controls" data-investigator={investigator}
     role="group" aria-label="Floating map controls">
-    {summaryText}
     {controls}
     {rightControls}
   </div>}</>
   if (!controls && !rightControls && !viewport.hasActivePiece && !viewport.touchOverview) return prompt
-  return <>{prompt}{createPortal(<>{summaryText}<div className="floating-map-controls" data-investigator={investigator} role="group" aria-label="Floating map controls"
+  // The summary and viewport-floating buttons share this single render branch.
+  // Map-top controls never render a summary of their own.
+  const summary = floatingTurnSummary(state, side)
+  return <>{prompt}{createPortal(<>
+  <output className="floating-turn-summary" aria-label="Floating turn summary" title={summary.description}
+    style={{ left: viewport.left, top: viewport.top, transform: `translateX(-50%) scale(${1 / viewport.scale})` }}>
+    {summary.text}
+  </output>
+  <div className="floating-map-controls" data-investigator={investigator} role="group" aria-label="Floating map controls"
     style={{ left: viewport.left, top: viewport.bottom, width: viewport.width,
       transform: `translate(-50%, -100%) scale(${1 / viewport.scale})` }}>
     {viewport.touchOverview && zoomRegion ? <div className="floating-control-cluster floating-controls-left"><button type="button" className="secondary-button"
