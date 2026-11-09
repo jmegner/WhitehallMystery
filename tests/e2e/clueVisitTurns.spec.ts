@@ -35,8 +35,8 @@ for (const side of ['investigators', 'jack'] as const) {
     await page.goto('/')
     const toggle = page.getByLabel('maybes')
     await toggle.check()
-    const indicator = page.getByLabel('Possible visit turns at 13: 1,3,5,7,9,11,13', { exact: true })
-    await expect(indicator).toHaveText('1..13')
+    const indicator = page.getByLabel('Possible visit turns at 13: M1,3,5,7,9,11,13', { exact: true })
+    await expect(indicator).toHaveText('M1..13')
     await expect(indicator).toHaveCSS('fill', 'rgb(0, 0, 0)')
     await expect(page.locator('[aria-label^="Search outcome at 13:"]')).toHaveCount(0)
     await expect(page.locator('.outcome-count-no').first()).toHaveCSS('fill', 'rgb(36, 92, 138)')
@@ -46,7 +46,7 @@ for (const side of ['investigators', 'jack'] as const) {
     await expect(indicator).toHaveAttribute('data-indicator-angle', 'right')
     if (side === 'investigators') await page.getByRole('checkbox', { name: 'next', exact: true }).check()
     else await page.getByRole('button', { name: 'Coach (2)', exact: true }).click()
-    await expect(indicator).toHaveText('1..13')
+    await expect(indicator).toHaveText('M1..13')
     for (const width of [1000, 390]) {
       await page.setViewportSize({ width, height: 1000 })
       await expect(indicator).toBeVisible()
@@ -57,8 +57,39 @@ for (const side of ['investigators', 'jack'] as const) {
     await page.reload()
     await expect(toggle).not.toBeChecked()
     await toggle.check()
-    await expect(indicator).toHaveText('1..13')
+    await expect(indicator).toHaveText('M1..13')
     await expect(indicator).toHaveAttribute('data-indicator-angle', 'right')
+  })
+}
+
+for (const side of ['investigators', 'jack'] as const) {
+  test(`${side} shows inferred visits without a yes-clue and keeps forecast visits out of the list`, async ({ page }) => {
+    const observations: PublicObservation[] = publicMovementPaths(33, street(1)).flat()
+      .filter(id => id !== 13).map(circleId => ({ kind: 'clue', circleId, found: false,
+        afterMove: 1, investigator: 'yellow' }))
+    const state: GameState = { ...createInitialGame(), stage: side === 'jack' ? 'jackMove' : 'investigatorAction',
+      inspectorActionMode: 'search', moveSlot: 3, currentJack: 13, investigatorPositions,
+      discoveryLocations: [33, 46, 147, 159], reachedDiscoveries: [33], roundTrail: [33, 13, 33, 13],
+      publicRound: { start: 33, moves: [street(1), street(2), street(3)], observations },
+    }
+    await page.addInitScript(state => {
+      if (localStorage.getItem('whitehall-mystery.game.v1')) return
+      localStorage.setItem('whitehall-mystery.game.v1', JSON.stringify({ version: 1, state }))
+      localStorage.setItem('whitehall-mystery.show-possible-locations', 'true')
+      localStorage.setItem('whitehall-mystery.show-investigator-knowledge', 'true')
+    }, state)
+    await page.goto('/')
+    const indicator = page.getByLabel('Possible visit turns at 13: M1,3', { exact: true })
+    await expect(indicator).toHaveText('M1,3')
+    await expect(page.locator('[aria-label^="Search outcome at 13:"]')).toHaveCount(0)
+    await expect(page.locator('.clue-visit-turns')).toHaveCount(2)
+    if (side === 'investigators') await page.getByRole('checkbox', { name: 'next', exact: true }).check()
+    else await page.getByRole('button', { name: 'Coach (2)', exact: true }).click()
+    await expect(indicator).toHaveText('M1,3')
+    await page.reload()
+    await expect(indicator).toHaveText('M1,3')
+    await page.getByLabel('maybes').uncheck()
+    await expect(indicator).toHaveCount(0)
   })
 }
 

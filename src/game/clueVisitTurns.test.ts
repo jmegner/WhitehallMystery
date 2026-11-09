@@ -18,10 +18,10 @@ function enumerateVisitTurns(evidence: PublicRoundEvidence) {
         : trail.some(visit => visit.id === observation.circleId) === observation.found))
   }
   const result = new Map<number, number[]>()
-  for (const observation of evidence.observations) {
-    if (observation.kind !== 'clue' || !observation.found) continue
-    const turns = [...new Set(trails.flatMap(trail => trail.filter(visit => visit.id === observation.circleId).map(visit => visit.slot)))].sort((a, b) => a - b)
-    if (turns.length) result.set(observation.circleId, turns)
+  for (const id of new Set(trails[0]?.map(visit => visit.id))) {
+    if (!trails.every(trail => trail.some(visit => visit.id === id))) continue
+    const turns = [...new Set(trails.flatMap(trail => trail.filter(visit => visit.id === id).map(visit => visit.slot)))].sort((a, b) => a - b)
+    if (turns.length) result.set(id, turns)
   }
   return result
 }
@@ -36,6 +36,7 @@ test.each<PublicRoundEvidence>([
   { start: 33, moves: [{ ...street(1), type: 'alley' }, street(2)], observations: [positive(13, 2)] },
   { start: 154, moves: [{ ...street(1), type: 'boat' }, street(2)], observations: [positive(154, 2)] },
   { start: 33, moves: [street(1), street(2)], observations: [positive(33, 1)] },
+  { start: 33, moves: [street(1), street(2), street(3)], observations: [] },
 ])('visit times match complete trails after all public evidence: %#', evidence => {
   const expected = enumerateVisitTurns(evidence)
   expect(expected.size).toBeGreaterThan(0)
@@ -51,8 +52,19 @@ test('Coach intermediate visits use the first numbered slot and its destination 
   expect(possibleClueVisitTurns(evidence).get(route[1]!)).toEqual([2])
 })
 
-test('no visit-time indicators are inferred without a confirmed clue or with impossible evidence', () => {
+test('negative clues alone can force an unsearched location and exclude merely possible visits', () => {
+  const neighbors = publicMovementPaths(33, street(1)).flat()
+  const evidence: PublicRoundEvidence = { start: 33, moves: [street(1), street(2), street(3)],
+    observations: neighbors.filter(id => id !== 13).map(circleId => ({
+      kind: 'clue', circleId, found: false, afterMove: 1, investigator: 'yellow',
+    })) }
+  expect(possibleClueVisitTurns(evidence)).toEqual(enumerateVisitTurns(evidence))
+  expect(possibleClueVisitTurns(evidence).get(13)).toEqual([1, 3])
+})
+
+test('the public start has move zero even without clues; missing or impossible evidence has no indicators', () => {
   expect(possibleClueVisitTurns(null)).toEqual(new Map())
-  expect(possibleClueVisitTurns({ start: 33, moves: [street(1)], observations: [] })).toEqual(new Map())
+  expect(possibleClueVisitTurns({ start: 33, moves: [], observations: [] })).toEqual(new Map([[33, [0]]]))
+  expect(possibleClueVisitTurns({ start: 33, moves: [street(1)], observations: [] })).toEqual(new Map([[33, [0]]]))
   expect(possibleClueVisitTurns({ start: 33, moves: [street(1)], observations: [positive(159, 1)] })).toEqual(new Map())
 })

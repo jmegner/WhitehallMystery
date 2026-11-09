@@ -5,7 +5,7 @@ export const MAX_CLUE_TURN_LABEL_WIDTH = 44
 const GLYPH_WIDTHS: Record<string, number> = {
   '0': 7.2, '1': 5, '2': 6.8, '3': 7, '4': 7.2,
   '5': 6.9, '6': 7.1, '7': 6.4, '8': 7.2, '9': 7.1,
-  ',': 3, '-': 4.5, '.': 3,
+  ',': 3, '-': 4.5, '.': 3, 'M': 10,
 }
 
 export const estimatedClueTurnLabelWidth = (text: string): number =>
@@ -20,8 +20,8 @@ export function clueTurnLabel(turns: number[], maximumWidth = MAX_CLUE_TURN_LABE
     while (ordered[index + 1] === end + 1) end = ordered[++index]!
     ranges.push(start === end ? String(start) : `${start}-${end}`)
   }
-  const fullText = ranges.join(',')
+  const fullText = ordered.length ? `M${ranges.join(',')}` : ''
   const text = ordered.length && estimatedClueTurnLabelWidth(fullText) > maximumWidth
-    ? `${ordered[0]}..${ordered.at(-1)}` : fullText
+    ? `M${ordered[0]}..${ordered.at(-1)}` : fullText
   return { text, fullText }
 }

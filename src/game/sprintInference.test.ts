@@ -58,6 +58,8 @@ test.each(cases)('sprint locations, search outcomes and clue turns match the bes
     expect(outcome.ifNo, `no at ${id}`).toEqual(locations(trails.filter(trail => trail.every(visit => visit.id !== id))))
   }
   const visitTurns = possibleClueVisitTurns(evidence, true)
+  expect(new Set(visitTurns.keys())).toEqual(new Set([...searched].filter(id =>
+    trails.every(trail => trail.some(visit => visit.id === id)))))
   for (const observation of evidence.observations) {
     if (observation.kind !== 'clue' || !observation.found) continue
     expect(visitTurns.get(observation.circleId)).toEqual([...new Set(trails.flatMap(trail =>
@@ -105,6 +107,13 @@ test.each(cases.slice(0, 5))('sprint forecasts score the next move without turni
     expect(outcome.ifNo).toEqual(locations(trails.filter(trail => !searchable(trail, id))))
   }
   const visits = possibleClueVisitTurns(evidence, true, forecast)
+  const certainPastVisits = new Set(trails[0]!.filter(visit => visit.move <= evidence.moves.length)
+    .map(visit => visit.id).filter(id => trails.every(trail => searchable(trail, id))))
+  expect(new Set(visits.keys())).toEqual(certainPastVisits)
+  for (const id of certainPastVisits) {
+    expect(visits.get(id)).toEqual([...new Set(trails.flatMap(trail => trail.filter(visit =>
+      visit.move <= evidence.moves.length && visit.id === id).map(visit => visit.slot)))].sort((a, b) => a - b))
+  }
   for (const observation of evidence.observations) {
     if (observation.kind !== 'clue' || !observation.found) continue
     expect(visits.get(observation.circleId)).toEqual([...new Set(trails.flatMap(trail => trail.filter(visit =>

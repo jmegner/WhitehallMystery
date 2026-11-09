@@ -84,7 +84,7 @@ const earliestPublicArrivals = (evidence: PublicRoundEvidence): Map<number, numb
   return earliest
 }
 
-export const buildInferenceContext = (evidence: PublicRoundEvidence, trackVisitTurns = false, sprint = false): InferenceContext => {
+export const buildInferenceContext = (evidence: PublicRoundEvidence, trackVisitTurns = false, sprint = false, visitIds?: number[]): InferenceContext => {
   const positiveIds = [
     ...new Set(
       evidence.observations
@@ -107,10 +107,10 @@ export const buildInferenceContext = (evidence: PublicRoundEvidence, trackVisitT
     observationsByMove.set(observation.afterMove, observations)
   }
 
-  // Pack one row of numbered move slots per confirmed location, including slot 0.
+  // Pack one row of numbered move slots per tracked location, including slot 0.
   const visitTurnStride = trackVisitTurns ? Math.max(0, ...evidence.moves.map(move => move.endSlot)) + 1 : 0
   const visitTurnBits = trackVisitTurns
-    ? new Map(positiveIds.map((id, index) => [id, 1n << BigInt(index * visitTurnStride)])) : undefined
+    ? new Map((visitIds ?? positiveIds).map((id, index) => [id, 1n << BigInt(index * visitTurnStride)])) : undefined
   return { evidence, bitForCircle, negativeUntil, observationsByMove, transitionsByMove: new Map(), visitTurnBits, visitTurnStride,
     earliestArrivals: sprint ? earliestPublicArrivals(evidence) : undefined, searchThroughMove: evidence.moves.length }
 }
@@ -264,15 +264,24 @@ export const possibleClueVisitTurns = (
   sprint = false,
   forecast?: PublicMoveEvidence,
 ): Map<number, number[]> => {
-  if (!evidence || !evidence.observations.some(observation => observation.kind === 'clue' && observation.found)) return new Map()
+  if (!evidence) return new Map()
   const next = sprint ? forecast : undefined
   const key = `${sprint}:${next ? JSON.stringify(next) : 'current'}`
   const cachedByMode = clueVisitTurnsCache.get(evidence) ?? new Map<string, Map<number, number[]>>()
   const cached = cachedByMode.get(key)
   if (cached) return cached
-  const context = buildInferenceContext(next ? { ...evidence, moves: [...evidence.moves, next] } : evidence, true, sprint)
+  const evaluatedEvidence = next ? { ...evidence, moves: [...evidence.moves, next] } : evidence
+  const certaintyContext = buildInferenceContext(evaluatedEvidence, false, sprint)
   // A forecast can change the preferred past trails, but cannot leave a clue
   // that investigators have already found in the current turn.
+  certaintyContext.searchThroughMove = evidence.moves.length
+  const hypotheses = remainingHypotheses(certaintyContext)
+  const certainVisits = hypotheses.reduce((mask, hypothesis) => mask & hypothesis.visitedIntersection,
+    hypotheses[0]?.visitedIntersection ?? 0n)
+  const visitIds = [...circlesById.keys()].filter(id => (certainVisits & visitedBit(id)) !== 0n)
+  // Track times only for locations every surviving trail visits, whether or
+  // not they have been searched. Certainty does not require a shared visit time.
+  const context = buildInferenceContext(evaluatedEvidence, true, sprint, visitIds)
   context.searchThroughMove = evidence.moves.length
   // Histories sharing a position and satisfied-clue mask admit the same future
   // evidence, so their possible visit times can be unioned without losing constraints.

@@ -126,5 +126,5 @@ test('a real clue can require backtracking and sprint keeps the least inefficien
   await page.mouse.move(0, 0)
   await expectMarkers(page, efficient)
   await expect(page.getByRole('checkbox', { name: 'sprint', exact: true })).toBeChecked()
-  await expect(page.locator(`.clue-visit-turns[aria-label^="Possible visit turns at ${second}:"]`)).toHaveText('3')
+  await expect(page.locator(`.clue-visit-turns[aria-label^="Possible visit turns at ${second}:"]`)).toHaveText('M3')
 })
