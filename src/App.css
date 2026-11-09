@@ -7,6 +7,8 @@
   --blue: #245f81;
   --action-green: #2ee66b;
   --coach-reachable-gap: #149cff;
+  --alley-need-blue: #00bfff;
+  --alley-need-gray: #d0d0d0;
   --panel-shadow: 0 20px 60px rgb(0 0 0 / 28%);
 }
 
@@ -797,6 +799,30 @@ button:disabled {
   stroke-width: 3;
 }
 
+.possible-marker.alley-could-marker {
+  fill: rgb(0 191 255 / 2%);
+  stroke: var(--alley-need-blue);
+}
+
+.alley-definite-blue-marker,
+.alley-definite-gray-marker {
+  fill: none;
+  stroke-width: 3;
+}
+
+.alley-definite-blue-marker {
+  stroke: var(--alley-need-blue);
+  stroke-dasharray: 3 3;
+}
+
+.alley-definite-gray-marker {
+  stroke: var(--alley-need-gray);
+  opacity: 1;
+  stroke-opacity: 1;
+  /* A gray base fills every gap between the blue dashes, with no pink. */
+  stroke-dasharray: none;
+}
+
 .possible-outcome-marker {
   fill: none;
   stroke-width: 2.5;
@@ -1025,6 +1051,22 @@ button:disabled {
 .legend-dot.possible {
   background: rgb(99 46 145 / 28%);
   border-color: #7a3caf;
+}
+
+.legend-dot.alley-could {
+  border-color: var(--alley-need-blue);
+  border-style: dashed;
+}
+
+.legend-alley {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.legend-alley .alley-definite-blue-marker {
+  /* Four broad blue/gray pairs stay distinct at the small legend size. */
+  stroke-dasharray: 1 1;
 }
 
 .legend-dot.new-possible {

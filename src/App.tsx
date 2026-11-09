@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { planInvestigatorDeployment } from './game/aiDeployment'
 import { useBoardHover } from './useBoardHover'
 import { useWorstCrossingEliminations } from './useWorstCrossingEliminations'
+import { possibleAlleyNeeds, type AlleyNeed } from './game/alleyInference'
 import type { CSSProperties } from 'react'
 import './App.css'
 import { normalizeMailHistory, mailHistoryReducer, mailBoardState } from './game/byMail'
@@ -252,6 +253,7 @@ interface BoardProps {
   legalCrossingIds: Set<string>
   possibleIds: Set<number>
   possibleOutcomes: Map<number, SearchOutcome>
+  alleyNeeds: ReadonlyMap<number, AlleyNeed>
   clueVisitTurns: Map<number, number[]>
   worstCrossingEliminations: Map<string, number>
   showPossible: boolean
@@ -311,6 +313,7 @@ function GameBoard({
   legalCrossingIds,
   possibleIds,
   possibleOutcomes,
+  alleyNeeds,
   clueVisitTurns,
   worstCrossingEliminations,
   showPossible,
@@ -640,9 +643,10 @@ function GameBoard({
           const circle = circlesById.get(id)
           const outcome = possibleOutcomes.get(id)
           const radius = possibleLocationRadius(id)
+          const alleyNeed = alleyNeeds.get(id)
           return circle ? (
             <g key={`possible-${id}`}>
-              {outcome?.positiveMeansJackIsThereNow && (
+              {alleyNeed !== 'definite' && outcome?.positiveMeansJackIsThereNow && (
                 <circle
                   className="possible-certainty-marker"
                   cx={circle.x}
@@ -650,7 +654,11 @@ function GameBoard({
                   r={radius}
                 />
               )}
-              <circle className="possible-marker" cx={circle.x} cy={circle.y} r={radius} />
+              {alleyNeed === 'definite' && <circle className="alley-definite-gray-marker" cx={circle.x} cy={circle.y} r={radius} />}
+              <circle className={`possible-marker${alleyNeed === 'could' ? ' alley-could-marker' : alleyNeed === 'definite' ? ' alley-definite-blue-marker' : ''}`}
+                data-alley-need={alleyNeed} data-location-id={id}
+                aria-label={alleyNeed ? `Location ${id}: ${alleyNeed === 'could' ? 'could need Alley' : 'definitely needs Alley'}` : undefined}
+                cx={circle.x} cy={circle.y} r={radius} />
             </g>
           ) : null
         })}
@@ -2004,6 +2012,8 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const showPossibilityMarkers =
     (showPossible && isInspectorInteraction(state.stage)) ||
     (showInvestigatorKnowledge && state.stage === 'jackMove')
+  const alleyNeeds = possibleAlleyNeeds(showPossibilityMarkers && !(isInspectorInteraction(state.stage) && effectiveNextTurn)
+    ? worstEvidence : null, sprint)
   let clueForecast: PublicMoveEvidence | undefined
   if (sprint && yellow && blue && red && ((isInspectorInteraction(state.stage) && effectiveNextTurn) ||
     (state.stage === 'jackMove' && !replayTurn && !observingInvestigators))) {
@@ -2347,6 +2357,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 legalCrossingIds={legalCrossingIds}
                 possibleIds={possibleIds}
                 possibleOutcomes={possibleOutcomes}
+                alleyNeeds={alleyNeeds}
                 clueVisitTurns={clueVisitTurns}
                 worstCrossingEliminations={worstCrossingEliminations}
                 showPossible={showPossibilityMarkers}
@@ -2396,6 +2407,17 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
             <span>
               <i className="legend-dot new-possible" /> New possible Jack location
             </span>
+            {alleyNeeds.size > 0 && <>
+              <span title="At least one possible pre-move origin can reach this location by Alley but not by a legal Street move">
+                <i className="legend-dot alley-could" /> Could need Alley
+              </span>
+              <span title="No possible pre-move origin can reach this location by a legal Street move">
+                <svg className="legend-alley" viewBox="0 0 20 20" aria-hidden="true">
+                  <circle className="alley-definite-gray-marker" cx="10" cy="10" r="7" />
+                  <circle className="alley-definite-blue-marker" cx="10" cy="10" r="7" pathLength="8" />
+                </svg> Definitely needs Alley
+              </span>
+            </>}
             <span>
               <i className="legend-dot legal" /> Legal target
             </span>

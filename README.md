@@ -19,6 +19,15 @@ Jack has the same **worst** checkbox, sharing its saved preference with the
 investigator view. Its counts follow the selected public move type, like Jack's
 maybes preview; AI-turn review and replay use the evidence at the recorded step.
 
+After an Alley move, maybes outlines use bright blue for locations that could
+need Alley from at least one possible pre-move origin. Alternating blue/gray
+dashes mean no pre-move origin could reach that location by a legal Street move.
+The comparison uses investigator blockers when Jack moved. Could-need outlines
+preserve the existing pink new-location marking; definite outlines use only blue
+and gray, with no pink. These annotations also appear in Jack's
+Alley preview; they do not carry into the next-Street projection. Sprint filters
+shown endpoints without treating its preferred prior routes as certain.
+
 Finished games offer **Start replay**. Step through the results of each side’s
 turn or jump between rounds, with Jack and his trail always visible. The usual
 information checkboxes are available for the side being viewed. Muted, opaque
