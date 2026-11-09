@@ -1,0 +1,30 @@
+.build-footer {
+  /* Keep source details readable over the map's floating touch controls. */
+  position: relative;
+  z-index: 31;
+  background: #171a1c;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 18px;
+  width: min(1318px, 100%);
+  margin-inline: auto;
+  padding: 16px 18px;
+  color: #c4b8a9;
+  font-size: 0.72rem;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.build-footer a {
+  color: #e4c58f;
+  text-underline-offset: 3px;
+}
+
+.build-footer a:hover {
+  color: #fff0cf;
+}
+
+.build-footer time {
+  white-space: nowrap;
+}

@@ -2,6 +2,14 @@ Web implementation of Whitehall Mystery with emphasis on figuring out possibilit
 
 See [MULTIPLAYER.md](MULTIPLAYER.md) for local and Cloudflare online-multiplayer setup.
 
+The footer shows the source commit (linked to GitHub), its committer timestamp,
+and the build timestamp, displayed in RFC 3339 format in the viewer's local timezone
+with a numeric UTC offset. Vite captures the underlying timestamps in UTC once per
+build on both GitHub Pages and Cloudflare Pages; existing build commands need no extra setup.
+The commit comes from `CF_PAGES_COMMIT_SHA`, `GITHUB_SHA`, or local Git, in that
+order. Source archives without Git metadata display unavailable commit details.
+In local development, the build timestamp is the dev server's startup time.
+
 Worst crossing scores are calculated in a browser Web Worker so the map stays
 usable while the numbers are computed. Changing the public evidence or the
 next-turn perspective hides old scores until the new results arrive; returning

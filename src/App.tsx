@@ -1819,8 +1819,11 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
       // Removing the board must not shorten the document and clamp the mobile
       // viewport's scroll position before the privacy screen appears.
       const viewport = window.visualViewport
+      // Preserve this workspace's height; the footer and remote-game panels
+      // keep their own space outside it across the handoff.
+      const height = boardPanel?.closest('.app-shell')?.getBoundingClientRect().height ?? document.documentElement.scrollHeight
       setHandoffHeight(viewport && viewport.scale > 1 && viewport.width <= 768
-        ? document.documentElement.scrollHeight : undefined)
+        ? height : undefined)
     }
     if (showingHandoff && !next.pendingReveal && !isHandoff(currentHistoryState(next).stage)) {
       const viewport = window.visualViewport

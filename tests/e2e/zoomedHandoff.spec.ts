@@ -173,7 +173,14 @@ test.describe('native mobile handoff taps', () => {
           await page.waitForTimeout(150)
           await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
         }
+        // The footer and controls extend below the board. Start the handoff
+        // with the map in view rather than panning entirely past its bottom.
+        await page.locator('.game-board').evaluate(element => {
+          const viewport = window.visualViewport!
+          window.scrollBy(0, element.getBoundingClientRect().bottom - viewport.offsetTop - 24 / viewport.scale)
+        })
         const original = await mapPosition(page)
+        const originalHeight = await page.evaluate(() => document.documentElement.scrollHeight)
         expect(original.pageTop).toBeGreaterThan(844 - 844 / scale + 10)
 
         const enterHandoff = async () => {
@@ -207,6 +214,7 @@ test.describe('native mobile handoff taps', () => {
           const handoff = await history(page)
           await nativeTap(page, cdp, dialog(page).getByRole('button', { name: 'Undo', exact: true }), attempt > 0)
           await expectOriginalMap()
+          expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(originalHeight)
           expect(currentHistoryState(await history(page))).toEqual(state)
           expect((await history(page)).cursor).toBe(handoff.cursor - 1)
         }
