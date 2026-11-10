@@ -9,6 +9,9 @@ const locations = regions.flat()
 const data = {
   source: 'https://whitehallmystery.com/main.js?v=7',
   easyUpperBound: Number(source.match(/easyUpperBound:\s*([\d.]+)/)[1]),
+  mediumLowerBound: Number(source.match(/mediumLowerBound:\s*([\d.]+)/)[1]),
+  mediumUpperBound: Number(source.match(/mediumUpperBound:\s*([\d.]+)/)[1]),
+  hardLowerBound: Number(source.match(/hardLowerBound:\s*([\d.]+)/)[1]),
   regions,
   // Only white discovery locations participate in difficulty calculations.
   costs: locations.map(from => locations.map(to => costs[from.id][to.id])),

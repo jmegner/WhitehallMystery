@@ -692,7 +692,7 @@ test.describe('controls stay available whenever zoomed', () => {
   }
 })
 
-test('floating Submit respects WaitEnd and hides during the AI turn', async ({ page }) => {
+test('Jack floating Submit ignores a saved WaitEnd preference and hides during the AI turn', async ({ page }) => {
   const state = jackState()
   state.jackMoveSelection.path = [legalJackDestinations(state)[0]!]
   await restore(page, state, { mode: 'versus-ai', role: 'jack', waitEnd: true })
@@ -701,10 +701,8 @@ test('floating Submit respects WaitEnd and hides during the AI turn', async ({ p
   await fillViewport(page)
   await expect(page.getByRole('status', { name: 'Floating turn summary' })).toHaveText('R1 M1 222 D5')
   await floating(page).getByRole('button', { name: 'Submit', exact: true }).click()
-  await expect(floating(page).getByRole('button', { name: 'End turn', exact: true })).toBeVisible()
-  await expect(page.getByRole('status', { name: 'Floating turn summary' })).toHaveText(/^R1 M2 222 D\d+$/)
-  await expect(floating(page).getByRole('button', { name: /^Cycle move type:/ })).toHaveCount(0)
-  await floating(page).getByRole('button', { name: 'End turn', exact: true }).click()
+  await expect(page.getByLabel('WaitEnd', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'End turn', exact: true })).toHaveCount(0)
   await expect(floating(page)).toHaveCount(0)
   await expect(page.getByRole('status', { name: 'Floating turn summary' })).toHaveCount(0)
   // The worker is held, so any stale controls here would act on the AI's turn.

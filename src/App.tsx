@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { planInvestigatorDeployment } from './game/aiDeployment'
+import { availableDiscoveryLevels, chooseDiscoveryCompletion, DISCOVERY_LEVELS, type DiscoveryLevel } from './game/aiDiscoveries'
 import { useBoardHover } from './useBoardHover'
 import { useWorstCrossingEliminations } from './useWorstCrossingEliminations'
 import { possibleAlleyNeeds, type AlleyNeed } from './game/alleyInference'
@@ -1245,12 +1246,15 @@ interface HistoryControlsProps {
   onRedoAll: () => void
   onRand: () => void
   onRandSide: () => void
+  onRandDiscoveries?: (level: DiscoveryLevel) => void
   onTypicalDeployment?: () => void
   mailControls?: { canUndo: boolean; canRequestUndo?: boolean; canRedo: boolean; waiting: boolean }
 }
 
-function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand, onRandSide, onTypicalDeployment, mailControls }: HistoryControlsProps) {
+function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand, onRandSide, onRandDiscoveries, onTypicalDeployment, mailControls }: HistoryControlsProps) {
   const mode = mailControls ? mailControls.canUndo || mailControls.canRequestUndo ? 'undo' : 'disabled' : undoMode(history)
+  const selected = currentHistoryState(history).discoveryLocations
+  const available = onRandDiscoveries ? availableDiscoveryLevels(selected) : new Set<DiscoveryLevel>()
   return (
     <div className="history-controls" aria-label="Action history controls">
       <button className="side-history-button" type="button" disabled={mailControls ? !mailControls.canUndo : !canBigUndo(history)} onClick={onBigUndo}>
@@ -1271,6 +1275,12 @@ function HistoryControls({ history, onUndo, onBigUndo, onRedo, onRedoAll, onRand
       <button type="button" disabled={mailControls?.waiting} onClick={onRandSide}>
         Rand Side
       </button>
+      {onRandDiscoveries && DISCOVERY_LEVELS.map(level => <button key={level} type="button"
+        disabled={mailControls?.waiting || !available.has(level)}
+        title={selected.length === 4 ? 'All four discovery locations are already selected'
+          : !available.has(level) ? `No ${level === 'Med' ? 'Medium' : level} set is possible with the selected discovery locations`
+            : `Fill unchosen discovery locations to make a ${level === 'Med' ? 'Medium' : level} set for Jack, as rated by whitehallmystery.com; keep selected locations`}
+        onClick={() => onRandDiscoveries(level)}>Rand {level}</button>)}
       {onTypicalDeployment && <button type="button"
         title="Place all three investigators at the AI’s usual starting crossings" onClick={onTypicalDeployment}>Typical</button>}
     </div>
@@ -1895,6 +1905,13 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
       applyHistoryCommands(INVESTIGATOR_ORDER.map(color => ({ type: 'apply' as const,
         action: { type: 'placeInvestigator' as const, crossingId: positions[color]! } })), investigatorAuto)
     } : undefined
+  const handleRandDiscoveries = !replayTurn && !remote?.waiting && state.stage === 'jackDiscoverySetup' &&
+    (!remote || remote.role === 'jack') ? (level: DiscoveryLevel) => {
+      const completed = chooseDiscoveryCompletion(level, state.discoveryLocations)
+      if (completed) applyHistoryCommands(completed.filter(id => !state.discoveryLocations.includes(id)).map(circleId => ({
+        type: 'apply' as const, action: { type: 'toggleDiscovery' as const, circleId },
+      })))
+    } : undefined
   const handleUndoRoute = () => {
     applyHistoryCommands(state.jackMoveSelection.path.map(() => ({ type: 'undo' as const })))
   }
@@ -2151,6 +2168,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 onRedoAll={handleRedoAll}
                 onRand={handleRand}
                 onRandSide={handleRandSide}
+                onRandDiscoveries={handleRandDiscoveries}
                 onTypicalDeployment={handleTypicalDeployment}
               />}
               {finished && !replayTurn && <button type="button" className="start-replay-button" title="Replay this finished game one side’s turn at a time" onClick={() => changeReplay(0)}>Start replay</button>}
@@ -2450,7 +2468,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               Round {state.round} · Move {state.moveSlot}
             </span>
             <div className="control-panel-toggles">
-              {!replayTurn && ai && <label className="wait-end-toggle" title="Confirm the end of your turn before the AI acts">
+              {!replayTurn && ai?.role === 'investigators' && <label className="wait-end-toggle" title="Confirm the end of your turn before the AI acts">
                 <input type="checkbox" checked={ai.waitEnd} onChange={event => ai.onWaitEndChange(event.target.checked)} />
                 WaitEnd
               </label>}

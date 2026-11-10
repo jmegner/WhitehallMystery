@@ -857,7 +857,7 @@ test('Rand Side completes each side without showing that side its results', asyn
   const randSide = page.getByRole('button', { name: 'Rand Side', exact: true })
 
   const historyControls = page.getByLabel('Action history controls')
-  await expect(historyControls.locator(':scope > *').last()).toHaveText('Rand Side')
+  await expect(historyControls.locator(':scope > *').last()).toHaveText('Rand Hard')
   const undoSide = page.getByRole('button', { name: 'Undo Side', exact: true })
   const undo = page.getByRole('button', { name: 'Undo', exact: true })
   expect(Number.parseFloat(await undoSide.evaluate((button) => getComputedStyle(button).fontSize)))

@@ -11,9 +11,10 @@ export default function AiGame({ id, history, role, library, onNewGame, onResume
 }) {
   const [failure, setFailure] = useState<{ history: GameHistory; message: string } | null>(null)
   const [retry, setRetry] = useState(0)
-  const [waitEnd, setWaitEnd] = useState(() => {
+  const [waitEndPreference, setWaitEnd] = useState(() => {
     try { return loadBooleanPreference(localStorage, AI_WAIT_END_STORAGE_KEY) } catch { return false }
   })
+  const waitEnd = role === 'investigators' && waitEndPreference
   const awaitingEnd = needsAiEndConfirmation(history, role)
   const waiting = needsAiTurn(history, role)
   const paused = waiting && history.cursor < history.entries.length - 1
