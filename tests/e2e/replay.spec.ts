@@ -132,10 +132,11 @@ test('investigator replay uses ghosts and starting-color outlines around occupie
   await expectWorstClearsStarts()
   await expect(page.locator('.jack-marker')).toHaveCount(1)
   await expect(page.locator('.past-path-step')).toHaveCount(2)
-  await expect(page.getByRole('button', { name: 'Next turn' })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Previous turn' })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Next round' })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Previous round' })).toBeDisabled()
+  const replayControls = page.getByRole('region', { name: 'Replay controls' })
+  await expect(replayControls.getByRole('button', { name: 'Next turn' })).toBeDisabled()
+  await expect(replayControls.getByRole('button', { name: 'Previous turn' })).toBeDisabled()
+  await expect(replayControls.getByRole('button', { name: 'Next round' })).toBeDisabled()
+  await expect(replayControls.getByRole('button', { name: 'Previous round' })).toBeDisabled()
   await expect(page.locator('[aria-label$=", selectable"]')).toHaveCount(0)
   await ending.click({ force: true })
   await ending.click({ button: 'middle', force: true })
@@ -164,4 +165,146 @@ test('starts replay directly from a finished By Mail sharing screen without chan
   const after = await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), key)
   expect(after.session).toEqual(saved.mode === 'by-mail' && saved.session)
   expect(after.view.activeSharing).toBe(false)
+})
+
+test.describe('floating replay controls', () => {
+  test.use({ viewport: { width: 390, height: 600 }, hasTouch: true })
+
+  test.beforeEach(async ({ page, browserName }) => {
+    if (browserName === 'firefox') await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 5 })
+    })
+  })
+
+  async function expectBottomNavigation(page: Page) {
+    const navigation = page.getByRole('group', { name: 'Floating replay controls', exact: true })
+    await expect.poll(() => navigation.evaluate(element => {
+      const viewport = window.visualViewport!
+      const bounds = element.getBoundingClientRect()
+      return !!element.closest('.floating-map-controls') &&
+        Math.abs((viewport.offsetTop + viewport.height - bounds.bottom) * viewport.scale - 12) < 2 &&
+        bounds.left >= viewport.offsetLeft && bounds.right <= viewport.offsetLeft + viewport.width &&
+        [...element.querySelectorAll('button')].every(button => {
+          const rect = button.getBoundingClientRect()
+          return rect.width * viewport.scale >= 43.9 && rect.height * viewport.scale >= 43.9
+        })
+    })).toBe(true)
+    await expect(page.locator('.floating-map-topbar .floating-replay-controls')).toHaveCount(0)
+    await expect.poll(() => page.locator('.floating-map-topbar').evaluate(bar => {
+      const viewport = window.visualViewport!
+      const rect = bar.getBoundingClientRect()
+      return Math.abs((rect.top - viewport.offsetTop) * viewport.scale - 12) < 2 &&
+        rect.left >= viewport.offsetLeft && rect.right <= viewport.offsetLeft + viewport.width
+    })).toBe(true)
+  }
+
+  for (const mode of ['same-device', 'versus-ai', 'by-mail'] as const) {
+    test(`${mode} floats the summary, analysis toggles, and arrow navigation without changing history`, async ({ page }) => {
+      const history = finishedReplayHistory()
+      const turns = gameReplayTurns(history)
+      await restore(page, history, mode)
+      await page.goto('/')
+      await page.getByRole('button', { name: 'Start replay', exact: true }).click()
+      const navigation = page.getByRole('group', { name: 'Floating replay controls', exact: true })
+      const summary = page.getByRole('status', { name: 'Floating turn summary', exact: true })
+      const controls = page.getByRole('region', { name: 'Replay controls' })
+      await expect(navigation).toBeVisible()
+      await expectBottomNavigation(page)
+      await expect(summary).toContainText('Replay R1 M2')
+      await expect(summary).toHaveText(/ D\d+$/) // Recorded Jack side, even when playing as investigators.
+      await expect(navigation.getByRole('button')).toHaveCount(4)
+      for (const name of ['Previous round', 'Previous turn', 'Next turn', 'Next round']) {
+        const button = navigation.getByRole('button', { name, exact: true })
+        await expect(button).toHaveAttribute('title', /./)
+        await expect(button).toHaveText('')
+        await expect(button.locator('svg path')).toHaveCount(name.includes('round') ? 2 : 1)
+      }
+      await expect(navigation.getByRole('button', { name: 'Previous turn', exact: true })).toBeDisabled()
+      await expect(navigation.getByRole('button', { name: 'Previous round', exact: true })).toBeDisabled()
+      await expect(page.getByRole('button', { name: /^(Undo|Redo|Pass|Search|Arrest|Submit|End Turn)$/ })).toHaveCount(0)
+      await page.locator('.investigator-knowledge-toggle input').check()
+      const analysis = page.getByRole('group', { name: 'Floating analysis controls', exact: true })
+      await expect(analysis).toBeVisible()
+      await analysis.getByRole('button', { name: 'sprint', exact: true }).click()
+      await expect(analysis.getByRole('button', { name: 'sprint', exact: true })).toHaveCSS('background-color', 'rgb(46, 113, 69)')
+      await navigation.getByRole('button', { name: 'Next turn', exact: true }).click()
+      await expect(controls.getByRole('status')).toContainText('Investigators · 2/')
+      await expect(summary).toHaveText(/^Replay R1 M2 C 22\d$/)
+      await page.locator('.possibility-toggle input').check()
+      await expect(analysis.getByRole('button', { name: 'next', exact: true })).toBeVisible()
+      await expectBottomNavigation(page)
+      await expect(page.getByRole('button', { name: /^(Undo|Redo|Pass|Search|Arrest|Submit|End Turn)$/ })).toHaveCount(0)
+      await navigation.getByRole('button', { name: 'Next round', exact: true }).click()
+      await expect(controls.getByRole('status')).toContainText('Round 2')
+      await navigation.getByRole('button', { name: 'Previous round', exact: true }).click()
+      await expect(controls.getByRole('status')).toContainText(`Jack · 1/${turns.length}`)
+      await navigation.getByRole('button', { name: 'Next round', exact: true }).click()
+      await page.reload()
+      await expect(controls.getByRole('status')).toContainText('Round 2')
+      await expect(summary).toContainText('Replay R2')
+      await expect(analysis.getByRole('button', { name: 'sprint', exact: true })).toHaveAttribute('aria-pressed', 'true')
+      await navigation.getByRole('button', { name: 'Previous turn', exact: true }).click()
+      await expect(controls.getByRole('status')).toContainText('Round 1')
+      await expect(controls.getByRole('status')).toContainText('Investigators')
+      await navigation.getByRole('button', { name: 'Next round', exact: true }).click()
+      await navigation.getByRole('button', { name: 'Next round', exact: true }).click()
+      await expect(navigation.getByRole('button', { name: 'Next round', exact: true })).toBeDisabled()
+      const lastRound = turns.findIndex(turn => turn.state.round === 3)
+      for (let index = lastRound; index < turns.length - 1; index++) {
+        await navigation.getByRole('button', { name: 'Next turn', exact: true }).click()
+      }
+      await expect(navigation.getByRole('button', { name: 'Next turn', exact: true })).toBeDisabled()
+      await expectBottomNavigation(page)
+      expect(await page.evaluate(key => {
+        const saved = JSON.parse(localStorage.getItem(key)!)
+        return saved.history ?? saved.session.history
+      }, key)).toEqual(history)
+      await reviewScreenshot(page, { path: test.info().outputPath(`${mode}-floating-replay.png`) })
+    })
+  }
+
+  test('replay navigation stays at the bottom through native zoom and pan', async ({ page, context, browserName }) => {
+    test.skip(browserName !== 'chromium', 'Native pinch zoom uses Chromium’s touch protocol')
+    await restore(page, finishedReplayHistory())
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Start replay', exact: true }).click()
+    const navigation = page.getByRole('group', { name: 'Floating replay controls', exact: true })
+    const cdp = await context.newCDPSession(page)
+    for (const scale of [2, 3]) {
+      await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: scale })
+      await cdp.send('Input.synthesizeScrollGesture', { x: 60, y: 100, xDistance: -70, yDistance: -150, gestureSourceType: 'touch' })
+      await page.setViewportSize({ width: 320, height: 600 })
+      await expect(navigation).toBeVisible()
+      await expectBottomNavigation(page)
+      const button = navigation.getByRole('button', { name: 'Next turn', exact: true })
+      const point = await button.evaluate(element => {
+        const rect = element.getBoundingClientRect()
+        return { x: rect.left + rect.width / 2 - window.visualViewport!.offsetLeft,
+          y: rect.top + rect.height / 2 - window.visualViewport!.offsetTop }
+      })
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] })
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await expect(page.getByRole('region', { name: 'Replay controls' }).getByRole('status')).toContainText(`${scale}/`)
+      await reviewScreenshot(page, { path: test.info().outputPath(`floating-replay-${scale}x.png`) })
+    }
+    await cdp.detach()
+  })
+})
+
+test.describe('desktop floating replay conditions', () => {
+  test.use({ hasTouch: false, isMobile: false })
+
+  test('replay uses the usual desktop floating conditions', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1600 })
+    await restore(page, finishedReplayHistory())
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Start replay', exact: true }).click()
+    const navigation = page.getByRole('group', { name: 'Floating replay controls', exact: true })
+    await expect(navigation).toHaveCount(0)
+    await page.setViewportSize({ width: 974, height: 600 })
+    await page.locator('.board-frame').evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }))
+    await expect(navigation).toBeVisible()
+    await page.setViewportSize({ width: 1440, height: 1600 })
+    await expect(navigation).toHaveCount(0)
+  })
 })

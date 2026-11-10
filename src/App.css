@@ -476,17 +476,26 @@ button:disabled {
 }
 
 .floating-analysis-controls button[aria-pressed='true'] {
-  background: #5d3487;
-  border-color: #a68bc2;
+  background: #2e7145;
+  border-color: #75a580;
   color: #fff;
 }
 
-.floating-toggle-check {
-  visibility: hidden;
+.replay-arrow {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
 }
 
-.floating-analysis-controls button[aria-pressed='true'] .floating-toggle-check {
-  visibility: visible;
+.floating-replay-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.floating-replay-controls .replay-arrow {
+  width: 22px;
+  height: 22px;
 }
 
 .floating-control-cluster {

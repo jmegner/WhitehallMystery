@@ -102,6 +102,32 @@ test('AI Jack keeps his last Round 1 Coach when a safe Street advance suffices',
   expect(currentHistoryState(await savedHistory(page))).toEqual(after)
 })
 
+for (const { from, goal, reached, type } of [
+  { from: 102, goal: 71, reached: [117, 129, 5], type: 'alley' as const },
+  { from: 80, goal: 130, reached: [1, 5, 117], type: 'boat' as const },
+]) {
+  test(`AI Jack uses his last ${type} to keep the final discovery reachable by move 15`, async ({ page }) => {
+    const history = createGameHistory({ ...createInitialGame(), stage: 'jackMove', round: 3, moveSlot: 13,
+      currentJack: from, discoveryLocations: [...reached, goal], reachedDiscoveries: reached,
+      roundTrail: [reached.at(-1)!, from], investigatorPositions: { yellow: 'FP', blue: 'HP', red: 'HZ' },
+      specialRemaining: { coach: 0, alley: 0, boat: 0, [type]: 1 },
+      publicRound: { start: reached.at(-1)!, moves: [], observations: [] },
+    })
+    await restoreGame(page, history, 'investigators')
+    await page.goto('/')
+    await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move', exact: true })).toBeVisible({ timeout: 15000 })
+    const after = currentHistoryState(await savedHistory(page))
+    expect(after.moveSlot).toBe(14)
+    expect(after.specialRemaining[type]).toBe(0)
+    expect(after.publicRound!.moves.at(-1)?.type).toBe(type)
+    expect(legalNormalDestinations(after)).toContain(goal)
+    expect(after.result).toBeNull()
+    await page.reload()
+    await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move', exact: true })).toBeVisible()
+    expect(currentHistoryState(await savedHistory(page))).toEqual(after)
+  })
+}
+
 test('Jack has no WaitEnd checkbox and submits directly even with a saved investigator WaitEnd preference', async ({ page }) => {
   let workers = 0
   page.on('worker', () => { workers += 1 })

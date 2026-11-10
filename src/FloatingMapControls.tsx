@@ -8,6 +8,7 @@ import { floatingTurnSummary } from './floatingTurnSummary'
 import type { PlayerView } from './game/history'
 import { boardZoomRegion, zoomToBoardRegion } from './boardZoom'
 import { rememberBoardViewport, useSavedBoardViewport } from './useSavedBoardViewport'
+import ReplayNavigation, { type ReplayNavigationProps } from './ReplayNavigation'
 
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
 
@@ -31,28 +32,30 @@ interface Props {
   onTypicalDeployment?: () => void
   possibleLocationCount?: number
   analysisToggles?: { alt: AnalysisToggle; next?: AnalysisToggle; sprint: AnalysisToggle }
+  replay?: ReplayNavigationProps
 }
 
-export default function FloatingMapControls({ panel, gameId, state, side, dispatch, onUndo, canUndo, waiting, endTurnLabel, canContinueFromMap, onTypicalDeployment, possibleLocationCount, analysisToggles }: Props) {
+export default function FloatingMapControls({ panel, gameId, state, side, dispatch, onUndo, canUndo, waiting, endTurnLabel, canContinueFromMap, onTypicalDeployment, possibleLocationCount, analysisToggles, replay }: Props) {
   const zoomRegion = boardZoomRegion(state)
   const viewport = useBoardPanelViewport(panel, !!zoomRegion)
   useSavedBoardViewport(panel, gameId)
   if (waiting) return null
-  const investigator = state.stage === 'investigatorMove' || state.stage === 'investigatorAction'
+  const stage = replay ? undefined : state.stage
+  const investigator = stage === 'investigatorMove' || stage === 'investigatorAction'
     ? activeInvestigatorColor(state) : undefined
   let controls
   let rightControls
-  const floatingResults = canContinueFromMap && viewport && viewport.scale > 1
-  if (floatingResults || endTurnLabel) {
+  const floatingResults = !replay && canContinueFromMap && viewport && viewport.scale > 1
+  if (!replay && (floatingResults || endTurnLabel)) {
     controls = <button type="button" className="primary-button"
       title="Finish reviewing the results and continue to the next turn"
       onClick={() => dispatch({ type: 'continueHandoff' })}>{floatingResults ? 'End Turn' : endTurnLabel}</button>
-  } else if (state.stage === 'jackDiscoverySetup') {
+  } else if (stage === 'jackDiscoverySetup') {
     controls = <button type="button" className="primary-button" disabled={state.discoveryLocations.length !== 4}
       title={state.discoveryLocations.length === 4 ? 'Confirm the four selected discovery locations'
         : `Choose one white location in each quadrant before submitting (${state.discoveryLocations.length}/4 selected)`}
       onClick={() => dispatch({ type: 'confirmDiscoveries' })}>Submit disc. locations</button>
-  } else if (state.stage === 'jackMove') {
+  } else if (stage === 'jackMove') {
     if (state.jackMoveSelection.type === 'coach' && state.jackMoveSelection.path.length > 0) {
       rightControls = <button type="button" className="secondary-button" disabled={!canUndo}
         title={`Undo the ${state.jackMoveSelection.path.length === 1 ? 'first' : 'second'} Coach location choice`} onClick={onUndo}>Undo</button>
@@ -72,13 +75,13 @@ export default function FloatingMapControls({ panel, gameId, state, side, dispat
       <button type="button" className="primary-button" disabled={!jackMoveReadyToConfirm(state)}
         title="Confirm the selected move" onClick={() => dispatch({ type: 'confirmJackMove' })}>Submit</button>
     </>
-  } else if (state.stage === 'investigatorSetup' && onTypicalDeployment) {
+  } else if (stage === 'investigatorSetup' && onTypicalDeployment) {
     controls = <button type="button" className="primary-button"
       title="Place all three investigators at the AI’s usual starting crossings" onClick={onTypicalDeployment}>Typical</button>
-  } else if (state.stage === 'investigatorMove' && (investigator === 'blue' || investigator === 'red')) {
+  } else if (stage === 'investigatorMove' && (investigator === 'blue' || investigator === 'red')) {
     controls = <button type="button" className="secondary-button" disabled={!canUndo}
       title="Undo the previous investigator’s move" onClick={onUndo}>Undo</button>
-  } else if (state.stage === 'investigatorAction') {
+  } else if (stage === 'investigatorAction') {
     const mode = state.inspectorActionMode === 'arrest' ? 'Arrest' : 'Search'
     controls = state.checkedThisAction.length === 0 ? <button type="button" className={mode === 'Arrest' ? 'danger-button' : 'secondary-button'}
         aria-label={`Toggle search/arrest: ${mode}`}
@@ -106,7 +109,7 @@ export default function FloatingMapControls({ panel, gameId, state, side, dispat
     {controls}
     {rightControls}
   </div>}</>
-  if (!controls && !rightControls && !viewport.hasActivePiece && !viewport.touchOverview) return prompt
+  if (!replay && !controls && !rightControls && !viewport.hasActivePiece && !viewport.touchOverview) return prompt
   // The summary and viewport-floating buttons share this single render branch.
   // Map-top controls never render a summary of their own.
   const summary = floatingTurnSummary(state, side)
@@ -115,7 +118,7 @@ export default function FloatingMapControls({ panel, gameId, state, side, dispat
     style={{ left: viewport.left, top: viewport.top, maxWidth: viewport.width,
       transform: `translateX(-50%) scale(${1 / viewport.scale})` }}>
     <output className="floating-turn-summary" aria-label="Floating turn summary" title={summary.description}>
-      {summary.text}
+      {replay && 'Replay '}{summary.text}
       {possibleLocationCount !== undefined && <>{' '}<span className="floating-possible-count" title="Possible Jack locations">{possibleLocationCount}</span></>}
     </output>
     {analysisToggles && <div className="floating-analysis-controls" role="group" aria-label="Floating analysis controls">
@@ -124,7 +127,7 @@ export default function FloatingMapControls({ panel, gameId, state, side, dispat
         return toggle && <button key={name} type="button" aria-pressed={toggle.checked}
           title={toggle.title} onPointerDown={event => event.preventDefault()}
           onClick={() => toggle.onChange(!toggle.checked)}>
-          <span className="floating-toggle-check" aria-hidden="true">✓</span>{name}
+          {name}
         </button>
       })}
     </div>}
@@ -147,6 +150,10 @@ export default function FloatingMapControls({ panel, gameId, state, side, dispat
       Focus{investigator ? ` ${investigator[0].toUpperCase()}` : ''}
     </button></div>}
     {controls && <div className="floating-control-cluster floating-controls-center">{controls}</div>}
+    {replay && <div className="floating-control-cluster floating-controls-center floating-replay-controls"
+      role="group" aria-label="Floating replay controls">
+      <ReplayNavigation {...replay} compact />
+    </div>}
     {rightControls && <div className="floating-control-cluster floating-controls-right">{rightControls}</div>}
   </div></>, document.body)}</>
 }

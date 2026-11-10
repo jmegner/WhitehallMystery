@@ -35,6 +35,7 @@ function bestJackMoves(state: GameState): JackPlan[] {
     for (const id of accessible) threats.set(id, (threats.get(id) ?? 0) + 1)
   }
   const candidates: JackPlan[] = []
+  const timelyCandidates: JackPlan[] = []
   const consider = (type: JackMoveType, path: number[]) => {
     const destination = path.at(-1)!
     const cost = type === 'coach' ? 2 : 1
@@ -58,7 +59,9 @@ function bestJackMoves(state: GameState): JackPlan[] {
       - visits * 8 - jackSpecialCost(type, state.round, type === 'normal' ? 0 : state.specialRemaining[type])
       - (distance === 0 ? 0 : jackPacePenalty(distance, remaining))
       - (required > remaining ? 1000 + (required - remaining) * 100 : 0)
-    candidates.push({ type, path, score })
+    const plan = { type, path, score }
+    candidates.push(plan)
+    if (required <= remaining) timelyCandidates.push(plan)
   }
   for (const type of ['normal', 'alley', 'boat', 'coach'] as const) {
     const planning = { ...state, jackMoveSelection: { type, path: [] } }
@@ -70,7 +73,10 @@ function bestJackMoves(state: GameState): JackPlan[] {
   let bestScore = -Infinity
   const rated: JackPlan[] = []
   const penalties = new Map<string, number>()
-  for (const candidate of candidates.sort((a, b) => b.score - a.score)) {
+  // A safe-looking retreat must never outrank a route that can still finish.
+  // Keep a legal fallback for positions that are already beyond rescue.
+  const eligible = timelyCandidates.length ? timelyCandidates : candidates
+  for (const candidate of eligible.sort((a, b) => b.score - a.score)) {
     // Lookahead only subtracts risk, so lower base scores cannot overtake this
     // bound. Avoid expensive forecasts for moves already clearly inferior.
     if (candidate.score < bestScore - JACK_TIE_MARGIN) break

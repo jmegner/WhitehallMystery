@@ -912,7 +912,7 @@ function GameBoard({
           const occupied = occupiedCrossingIds.has(id)
           // Clear replay starts completely; live ending pieces keep their slight overlap.
           const offset = replayStartCrossingIds.has(id)
-            ? INVESTIGATOR_PIECE_RADIUS + (occupied ? 5 : 0) + height / 2 + 4
+            ? INVESTIGATOR_PIECE_RADIUS + (occupied ? 5 : 0) + height / 2 + 8
             : occupied ? INVESTIGATOR_PIECE_RADIUS + height / 2 - 2 : 0
           return (
             <g
@@ -2400,14 +2400,15 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 }}
               />
             </div>
-            <FloatingMapControls panel={boardPanel} gameId={gameId} state={state} dispatch={dispatch} waiting={!!replayTurn || (!!remote?.waiting && !ai?.awaitingEnd)}
+            <FloatingMapControls panel={boardPanel} gameId={gameId} state={state} dispatch={dispatch} waiting={!replayTurn && !!remote?.waiting && !ai?.awaitingEnd}
+              replay={replayTurn && replayIndex !== null ? { turns: replayTurns, index: replayIndex, onChange: changeReplay } : undefined}
               possibleLocationCount={showPossibilityMarkers ? possibleIds.size : undefined}
               analysisToggles={showPossibilityMarkers && state.publicRound ? {
                 alt: { checked: alternateIndicatorAngle, title: ALT_TITLE, onChange: changeAlt },
                 next: isInspectorInteraction(state.stage) ? { checked: nextTurn, title: NEXT_TITLE, onChange: changeNext } : undefined,
                 sprint: { checked: sprint, title: SPRINT_TITLE, onChange: changeSprint },
               } : undefined}
-              side={remote?.role ?? playerViewForState(state) ?? 'investigators'}
+              side={replayTurn?.side ?? remote?.role ?? playerViewForState(state) ?? 'investigators'}
               onTypicalDeployment={handleTypicalDeployment}
               canContinueFromMap={canContinueFromMap}
               onUndo={handleUndo} canUndo={remote ? online?.requestUndo ? online.requestUndo.canRequest
