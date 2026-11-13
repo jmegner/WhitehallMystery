@@ -1749,6 +1749,20 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const completedPaths = gameOverJackPaths(history)
   const selectedPastRound = pastPathRound === 'all' || completedPaths.some(path => String(path.round) === pastPathRound)
     ? pastPathRound : 'all'
+  const pastRoundControl = state.stage === 'gameOver' ? (
+    <label className="past-round-select">
+      round
+      <select title="Choose which round of Jack’s past path to show" value={selectedPastRound} onChange={event => {
+        const round = event.target.value as PastPathRound
+        setPastPathRound(round)
+        try { browserStorage()?.setItem(PAST_PATH_ROUND_STORAGE_KEY, round) } catch { /* Display preferences are optional. */ }
+      }}>
+        {[1, 2, 3].map(round => <option key={round} value={round}
+          disabled={!completedPaths.some(path => path.round === round)}>{round}</option>)}
+        <option value="all">all</option>
+      </select>
+    </label>
+  ) : undefined
   const [showInvestigatorMaybes, setShowInvestigatorMaybes] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, INVESTIGATOR_MAYBES_STORAGE_KEY) : false
@@ -1757,6 +1771,26 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, INVESTIGATOR_KNOW_STORAGE_KEY) : false
   })
+  const jackMaybes = state.stage === 'jackMove' ? {
+    checked: showInvestigatorKnowledge,
+    title: replayTurn ? "show what investigators know at the end of this turn"
+      : "show what investigators know for your possible locations (more precisely, locations that are worth searching/arresting)",
+    onChange: (checked: boolean) => {
+      setShowInvestigatorKnowledge(checked)
+      const storage = browserStorage()
+      if (storage) saveBooleanPreference(storage, INVESTIGATOR_KNOW_STORAGE_KEY, checked)
+    },
+  } : undefined
+  const investigatorMaybes = isInspectorInteraction(state.stage) && state.publicRound ? {
+    checked: showPossible,
+    title: "show what places are useful to search/arrest because Jack may be/was there; does not show places that he could have been but can't be now and searching would not help narrow down where he is",
+    onChange: (checked: boolean) => {
+      setShowPossible(checked)
+      const storage = browserStorage()
+      if (storage) saveBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY, checked)
+    },
+  } : undefined
+  const maybes = jackMaybes ?? investigatorMaybes
   // Jack keeps his private board while overlays follow the investigator phase
   // at the current history cursor, including undo/redo through an AI turn.
   const observingInvestigators = !replayTurn && (online?.role ?? ai?.role) === 'jack' &&
@@ -2112,7 +2146,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
 
   return (
     <div
-      className="app-shell"
+      className={`app-shell${replayTurn ? ' replay-shell' : ''}`}
       style={{ minHeight: handoffHeight, overflowAnchor: handoffHeight === undefined ? undefined : 'none' }}
       onClick={() => {
         if (showInvestigatorTurnAnnouncement) setShowInvestigatorTurnAnnouncement(false)
@@ -2212,20 +2246,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                   past
                 </label>
               )}
-              {state.stage === 'gameOver' && (
-                <label className="past-round-select">
-                  round
-                  <select value={selectedPastRound} onChange={event => {
-                    const round = event.target.value as PastPathRound
-                    setPastPathRound(round)
-                    try { browserStorage()?.setItem(PAST_PATH_ROUND_STORAGE_KEY, round) } catch { /* Display preferences are optional. */ }
-                  }}>
-                    {[1, 2, 3].map(round => <option key={round} value={round}
-                      disabled={!completedPaths.some(path => path.round === round)}>{round}</option>)}
-                    <option value="all">all</option>
-                  </select>
-                </label>
-              )}
+              {pastRoundControl}
               {state.stage === 'jackMove' && (
                 <label className="coach-preview-toggle" title="show possible coach moves when street move is selected">
                   <input
@@ -2260,23 +2281,18 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                   future
                 </label>
               )}
-              {state.stage === 'jackMove' && (
+              {jackMaybes && (
                 <label
                   className="investigator-knowledge-toggle"
-                  title={replayTurn ? "show what investigators know at the end of this turn" : "show what investigators know for your possible locations (more precisely, locations that are worth searching/arresting)"}
+                  title={jackMaybes.title}
                 >
                   <input
                     type="checkbox"
-                    checked={showInvestigatorKnowledge}
-                    onChange={(event) => {
-                      const checked = event.target.checked
-                      setShowInvestigatorKnowledge(checked)
-                      const storage = browserStorage()
-                      if (storage) saveBooleanPreference(storage, INVESTIGATOR_KNOW_STORAGE_KEY, checked)
-                    }}
+                    checked={jackMaybes.checked}
+                    onChange={event => jackMaybes.onChange(event.target.checked)}
                   />
                   maybes
-                  {showInvestigatorKnowledge && <strong>{possibleIds.size}</strong>}
+                  {jackMaybes.checked && <strong>{possibleIds.size}</strong>}
                 </label>
               )}
               {isInspectorInteraction(state.stage) && state.publicRound && (
@@ -2310,23 +2326,18 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                   worst
                 </label>
               )}
-              {isInspectorInteraction(state.stage) && state.publicRound && (
+              {investigatorMaybes && (
                 <label
                   className="possibility-toggle"
-                  title="show what places are useful to search/arrest because Jack may be/was there; does not show places that he could have been but can't be now and searching would not help narrow down where he is"
+                  title={investigatorMaybes.title}
                 >
                   <input
                     type="checkbox"
-                    checked={showPossible}
-                    onChange={(event) => {
-                      const checked = event.target.checked
-                      setShowPossible(checked)
-                      const storage = browserStorage()
-                      if (storage) saveBooleanPreference(storage, POSSIBLE_LOCATIONS_STORAGE_KEY, checked)
-                    }}
+                    checked={investigatorMaybes.checked}
+                    onChange={event => investigatorMaybes.onChange(event.target.checked)}
                   />
                   maybes
-                  {showPossible && <strong>{possibleIds.size}</strong>}
+                  {investigatorMaybes.checked && <strong>{possibleIds.size}</strong>}
                 </label>
               )}
               {(state.stage === 'jackMove' || isInspectorInteraction(state.stage)) && state.publicRound && (
@@ -2356,7 +2367,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
           <div className="board-stage">
             <div
               className={
-                waitingForJack ? 'board-frame active-jack' : isInspectorInteraction(boardState.stage)
+                waitingForJack ? 'board-frame active-jack' : !replayTurn && isInspectorInteraction(boardState.stage)
                   ? `board-frame active-investigator-${activeInvestigatorColor(boardState)}`
                   : 'board-frame'
               }
@@ -2400,13 +2411,17 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 }}
               />
             </div>
-            <FloatingMapControls panel={boardPanel} gameId={gameId} state={state} dispatch={dispatch} waiting={!replayTurn && !!remote?.waiting && !ai?.awaitingEnd}
+            <FloatingMapControls panel={boardPanel} gameId={gameId} state={state} dispatch={dispatch} waiting={!replayTurn && !finished && !!remote?.waiting && !ai?.awaitingEnd}
+              pastRoundControl={pastRoundControl}
               replay={replayTurn && replayIndex !== null ? { turns: replayTurns, index: replayIndex, onChange: changeReplay } : undefined}
               possibleLocationCount={showPossibilityMarkers ? possibleIds.size : undefined}
-              analysisToggles={showPossibilityMarkers && state.publicRound ? {
-                alt: { checked: alternateIndicatorAngle, title: ALT_TITLE, onChange: changeAlt },
-                next: isInspectorInteraction(state.stage) ? { checked: nextTurn, title: NEXT_TITLE, onChange: changeNext } : undefined,
-                sprint: { checked: sprint, title: SPRINT_TITLE, onChange: changeSprint },
+              analysisToggles={maybes ? {
+                maybes,
+                ...(showPossibilityMarkers && state.publicRound && {
+                  alt: { checked: alternateIndicatorAngle, title: ALT_TITLE, onChange: changeAlt },
+                  next: investigatorMaybes ? { checked: nextTurn, title: NEXT_TITLE, onChange: changeNext } : undefined,
+                  sprint: { checked: sprint, title: SPRINT_TITLE, onChange: changeSprint },
+                }),
               } : undefined}
               side={replayTurn?.side ?? remote?.role ?? playerViewForState(state) ?? 'investigators'}
               onTypicalDeployment={handleTypicalDeployment}

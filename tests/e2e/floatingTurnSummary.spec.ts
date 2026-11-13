@@ -34,11 +34,12 @@ async function expectAtTop(page: Page) {
   await expect(controls(page).getByRole('button').first()).toBeVisible()
   await expect(summary(page)).toBeVisible()
   await expect(page.locator('.floating-map-topbar')).toHaveCSS('position', 'fixed')
-  await expect.poll(() => summary(page).evaluate(element => {
-    const rect = element.getBoundingClientRect()
+  await expect.poll(() => page.locator('.floating-map-topbar').evaluate(bar => {
+    const bounds = bar.getBoundingClientRect()
+    const rect = bar.querySelector('output')!.getBoundingClientRect()
     const viewport = window.visualViewport!
     return Math.abs((rect.top - viewport.offsetTop) * viewport.scale - 12) < 2 &&
-      Math.abs((rect.left + rect.width / 2 - viewport.offsetLeft - viewport.width / 2) * viewport.scale) < 2 &&
+      Math.abs((bounds.left + bounds.width / 2 - viewport.offsetLeft - viewport.width / 2) * viewport.scale) < 2 &&
       rect.left >= viewport.offsetLeft && rect.right <= viewport.offsetLeft + viewport.width &&
       rect.height * viewport.scale < 32 && rect.height * viewport.scale >= 20
   })).toBe(true)

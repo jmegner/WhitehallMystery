@@ -20,6 +20,11 @@
     linear-gradient(145deg, #121517, #242321);
 }
 
+/* The browser can anchor to a marker or legend item that moves between replay turns. */
+.replay-shell {
+  overflow-anchor: none;
+}
+
 .app-header,
 .move-track,
 .game-layout {
@@ -439,6 +444,7 @@ button:disabled {
   z-index: 30;
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
   justify-content: center;
   gap: 4px;
   width: max-content;
@@ -447,11 +453,14 @@ button:disabled {
 
 .floating-analysis-controls {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 4px;
 }
 
 .floating-turn-summary,
-.floating-analysis-controls button {
+.floating-analysis-controls button,
+.floating-map-topbar .past-round-select {
   padding: 3px 7px;
   border: 1px solid #bfa783;
   border-radius: 6px;
@@ -468,6 +477,11 @@ button:disabled {
   align-items: center;
   padding-inline: 5px;
   gap: 3px;
+  touch-action: manipulation;
+}
+
+.floating-map-topbar .past-round-select select {
+  padding-block: 0;
   touch-action: manipulation;
 }
 
@@ -535,22 +549,26 @@ button:disabled {
   white-space: nowrap;
 }
 
-.floating-map-controls[data-investigator='yellow'] {
+.floating-map-controls[data-investigator='yellow'],
+.floating-map-controls button[data-focus-investigator='yellow'] {
   --control-tint: #fff8bf;
   --control-border: #c1aa52;
 }
 
-.floating-map-controls[data-investigator='blue'] {
+.floating-map-controls[data-investigator='blue'],
+.floating-map-controls button[data-focus-investigator='blue'] {
   --control-tint: #e3edf7;
   --control-border: #829eb9;
 }
 
-.floating-map-controls[data-investigator='red'] {
+.floating-map-controls[data-investigator='red'],
+.floating-map-controls button[data-focus-investigator='red'] {
   --control-tint: #f6e3e1;
   --control-border: #c29490;
 }
 
-.floating-map-controls[data-investigator] button {
+.floating-map-controls[data-investigator] button,
+.floating-map-controls button[data-focus-investigator] {
   background: var(--control-tint);
   border-color: var(--control-border);
   color: var(--ink);

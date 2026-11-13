@@ -41,7 +41,7 @@ test('game-over past displays selected rounds and all rounds, preserving prefere
   await restore(page, history)
   await page.goto('/')
   await expect(page.locator('[data-active-playing-piece]')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /^Focus(?: [YBR])?$/, exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^Focus [JYBR]$/, exact: true })).toHaveCount(0)
   const past = page.getByRole('checkbox', { name: 'past', exact: true })
   const round = page.getByRole('combobox', { name: 'round', exact: true })
   await expect(past).not.toBeChecked()
@@ -83,6 +83,36 @@ test('game-over past displays selected rounds and all rounds, preserving prefere
   await expect(page.locator('.past-path-line')).toHaveCount(8)
   expect(dialogs).toEqual([])
   expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).history, key)).toEqual(history)
+})
+
+test('the floating round dropdown mirrors the toolbar while the finished board fills the viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 320 })
+  await restore(page, finishedHistory())
+  await page.goto('/')
+  const toolbarRound = page.locator('.board-toolbar').getByRole('combobox', { name: 'round', exact: true })
+  const topbar = page.locator('.floating-map-topbar')
+  const floatingRound = topbar.getByRole('combobox', { name: 'round', exact: true })
+  const centerBoard = () => page.locator('.board-frame').evaluate(board =>
+    board.scrollIntoView({ block: 'center', behavior: 'instant' }))
+
+  await expect(floatingRound).toHaveCount(0)
+  await page.getByRole('checkbox', { name: 'past', exact: true }).check()
+  await toolbarRound.selectOption('2')
+  await centerBoard()
+  await expect(topbar).toHaveCSS('position', 'fixed')
+  await expect(floatingRound).toBeInViewport()
+  await expect(floatingRound).toHaveValue('2')
+  await floatingRound.selectOption('1')
+  await expect(toolbarRound).toHaveValue('1')
+  await expect(page.locator('.past-path-line')).toHaveCount(4)
+  await expect(page.locator('.past-path-line[data-round="1"]')).toHaveCount(4)
+
+  await page.reload()
+  await centerBoard()
+  await expect(floatingRound).toHaveValue('1')
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await expect(floatingRound).toHaveCount(0)
+  await expect(toolbarRound).toHaveValue('1')
 })
 
 test('an early finish or older single-snapshot save only offers rounds with recorded paths', async ({ page }) => {

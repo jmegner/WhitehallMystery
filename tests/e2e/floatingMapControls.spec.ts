@@ -552,7 +552,7 @@ test('starting a search hides the toggle while keeping Pass available', async ({
   await page.goto('/')
   await fillViewport(page)
   await expectFloatingPositions(page)
-  const focusBefore = await page.getByRole('button', { name: /^Focus(?: [YBR])?$/, exact: true }).boundingBox()
+  const focusBefore = await focusButton(page).boundingBox()
   const passBefore = await floating(page).getByRole('button', { name: 'Pass', exact: true }).boundingBox()
   const miss = legalInspectorActionCircles(state).find(id => !state.roundTrail.includes(id))!
   await page.getByLabel(`Location ${miss}, selectable`, { exact: true }).click()
@@ -560,7 +560,7 @@ test('starting a search hides the toggle while keeping Pass available', async ({
   expect((await saved(page)).checkedThisAction).toEqual([miss])
   await expect(floating(page).getByRole('button', { name: /^Toggle search\/arrest:/ })).toHaveCount(0)
   await expectFloatingPositions(page)
-  expect(await page.getByRole('button', { name: /^Focus(?: [YBR])?$/, exact: true }).boundingBox()).toEqual(focusBefore)
+  expect(await focusButton(page).boundingBox()).toEqual(focusBefore)
   expect(await floating(page).getByRole('button', { name: 'Pass', exact: true }).boundingBox()).toEqual(passBefore)
   await floating(page).getByRole('button', { name: 'Pass', exact: true }).click()
   expect((await saved(page)).activeInvestigator).toBe(1)
@@ -709,7 +709,7 @@ test('Jack floating Submit ignores a saved WaitEnd preference and hides during t
   expect((await saved(page)).stage).toBe('investigatorMove')
 })
 
-const focusButton = (page: Page) => page.getByRole('button', { name: /^Focus(?: [YBR])?$/, exact: true })
+const focusButton = (page: Page) => page.getByRole('button', { name: /^Focus [JYBR]$/, exact: true })
 const activePiece = (page: Page) => page.locator('[data-active-playing-piece]')
 test('Pass centers the next investigator, including Yellow after Red', async ({ page }) => {
   await restore(page, investigatorState())
@@ -814,7 +814,7 @@ for (const stage of ['jackMove', 'investigatorMove', 'investigatorAction'] as co
     await page.goto('/')
     await fillViewport(page)
     await expect(activePiece(page)).toBeInViewport()
-    await expect(focusButton(page)).toBeVisible()
+    await expect(focusButton(page)).toHaveText(stage === 'jackMove' ? 'Focus J' : 'Focus Y')
     await expect(floating(page)).toHaveCSS('position', 'fixed')
     const before = await saved(page)
     await focusButton(page).click()

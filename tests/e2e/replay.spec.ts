@@ -229,6 +229,7 @@ test.describe('floating replay controls', () => {
       await expect(analysis.getByRole('button', { name: 'sprint', exact: true })).toHaveCSS('background-color', 'rgb(46, 113, 69)')
       await navigation.getByRole('button', { name: 'Next turn', exact: true }).click()
       await expect(controls.getByRole('status')).toContainText('Investigators · 2/')
+      await expectBottomNavigation(page)
       await expect(summary).toHaveText(/^Replay R1 M2 C 22\d$/)
       await page.locator('.possibility-toggle input').check()
       await expect(analysis.getByRole('button', { name: 'next', exact: true })).toBeVisible()
@@ -236,8 +237,10 @@ test.describe('floating replay controls', () => {
       await expect(page.getByRole('button', { name: /^(Undo|Redo|Pass|Search|Arrest|Submit|End Turn)$/ })).toHaveCount(0)
       await navigation.getByRole('button', { name: 'Next round', exact: true }).click()
       await expect(controls.getByRole('status')).toContainText('Round 2')
+      await expectBottomNavigation(page)
       await navigation.getByRole('button', { name: 'Previous round', exact: true }).click()
       await expect(controls.getByRole('status')).toContainText(`Jack · 1/${turns.length}`)
+      await expectBottomNavigation(page)
       await navigation.getByRole('button', { name: 'Next round', exact: true }).click()
       await page.reload()
       await expect(controls.getByRole('status')).toContainText('Round 2')
@@ -265,26 +268,42 @@ test.describe('floating replay controls', () => {
 
   test('replay navigation stays at the bottom through native zoom and pan', async ({ page, context, browserName }) => {
     test.skip(browserName !== 'chromium', 'Native pinch zoom uses Chromium’s touch protocol')
-    await restore(page, finishedReplayHistory())
+    const history = finishedReplayHistory()
+    const firstTurnOfRoundTwo = gameReplayTurns(history).findIndex(turn => turn.state.round === 2) + 1
+    await page.setViewportSize({ width: 320, height: 600 })
+    await restore(page, history)
     await page.goto('/')
     await page.getByRole('button', { name: 'Start replay', exact: true }).click()
     const navigation = page.getByRole('group', { name: 'Floating replay controls', exact: true })
+    const status = page.getByRole('region', { name: 'Replay controls' }).getByRole('status')
+    const view = () => page.locator('.game-board').evaluate(board => {
+      const viewport = window.visualViewport!
+      const rect = board.getBoundingClientRect()
+      return { scale: viewport.scale, pageLeft: viewport.pageLeft, pageTop: viewport.pageTop,
+        mapLeft: rect.left - viewport.offsetLeft, mapTop: rect.top - viewport.offsetTop, mapWidth: rect.width }
+    })
     const cdp = await context.newCDPSession(page)
     for (const scale of [2, 3]) {
       await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: scale })
-      await cdp.send('Input.synthesizeScrollGesture', { x: 60, y: 100, xDistance: -70, yDistance: -150, gestureSourceType: 'touch' })
-      await page.setViewportSize({ width: 320, height: 600 })
-      await expect(navigation).toBeVisible()
+      await page.locator('.jack-marker circle').first().evaluate(piece =>
+        piece.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }))
       await expectBottomNavigation(page)
-      const button = navigation.getByRole('button', { name: 'Next turn', exact: true })
-      const point = await button.evaluate(element => {
-        const rect = element.getBoundingClientRect()
-        return { x: rect.left + rect.width / 2 - window.visualViewport!.offsetLeft,
-          y: rect.top + rect.height / 2 - window.visualViewport!.offsetTop }
-      })
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] })
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
-      await expect(page.getByRole('region', { name: 'Replay controls' }).getByRole('status')).toContainText(`${scale}/`)
+      const before = await view()
+      expect(before.scale).toBe(scale)
+      for (const [name, index] of [['Next turn', 2], ['Previous turn', 1],
+        ['Next round', firstTurnOfRoundTwo], ['Previous round', 1]] as const) {
+        const button = navigation.getByRole('button', { name, exact: true })
+        const point = await button.evaluate(element => {
+          const rect = element.getBoundingClientRect()
+          return { x: rect.left + rect.width / 2 - window.visualViewport!.offsetLeft,
+            y: rect.top + rect.height / 2 - window.visualViewport!.offsetTop }
+        })
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] })
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+        await expect(status).toHaveText(new RegExp(` · ${index}/\\d+$`))
+        await expectBottomNavigation(page)
+        expect(await view()).toEqual(before)
+      }
       await reviewScreenshot(page, { path: test.info().outputPath(`floating-replay-${scale}x.png`) })
     }
     await cdp.detach()

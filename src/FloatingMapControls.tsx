@@ -1,7 +1,9 @@
+import type { ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import { activeInvestigatorColor, jackMoveReadyToConfirm, legalJackDestinations } from './game/gameEngine'
 import { movementLabel } from './game/inference'
-import type { GameAction, GameState, JackMoveType } from './game/types'
+import { isInvestigatorReview } from './game/remoteHistory'
+import { INVESTIGATOR_ORDER, type GameAction, type GameState, type JackMoveType } from './game/types'
 import { useBoardPanelViewport } from './useBoardPanelViewport'
 import { focusBoardPiece } from './focusBoardPiece'
 import { floatingTurnSummary } from './floatingTurnSummary'
@@ -11,6 +13,7 @@ import { rememberBoardViewport, useSavedBoardViewport } from './useSavedBoardVie
 import ReplayNavigation, { type ReplayNavigationProps } from './ReplayNavigation'
 
 const MOVE_TYPES: JackMoveType[] = ['normal', 'coach', 'alley', 'boat']
+const ANALYSIS_TOGGLE_NAMES = ['maybes', 'alt', 'next', 'sprint'] as const
 
 interface AnalysisToggle {
   checked: boolean
@@ -31,13 +34,14 @@ interface Props {
   canContinueFromMap: boolean
   onTypicalDeployment?: () => void
   possibleLocationCount?: number
-  analysisToggles?: { alt: AnalysisToggle; next?: AnalysisToggle; sprint: AnalysisToggle }
+  analysisToggles?: Partial<Record<(typeof ANALYSIS_TOGGLE_NAMES)[number], AnalysisToggle>>
+  pastRoundControl?: ReactElement
   replay?: ReplayNavigationProps
 }
 
-export default function FloatingMapControls({ panel, gameId, state, side, dispatch, onUndo, canUndo, waiting, endTurnLabel, canContinueFromMap, onTypicalDeployment, possibleLocationCount, analysisToggles, replay }: Props) {
+export default function FloatingMapControls({ panel, gameId, state, side, dispatch, onUndo, canUndo, waiting, endTurnLabel, canContinueFromMap, onTypicalDeployment, possibleLocationCount, analysisToggles, pastRoundControl, replay }: Props) {
   const zoomRegion = boardZoomRegion(state)
-  const viewport = useBoardPanelViewport(panel, !!zoomRegion)
+  const viewport = useBoardPanelViewport(panel, !!replay || !!zoomRegion)
   useSavedBoardViewport(panel, gameId)
   if (waiting) return null
   const stage = replay ? undefined : state.stage
@@ -47,9 +51,18 @@ export default function FloatingMapControls({ panel, gameId, state, side, dispat
   let rightControls
   const floatingResults = !replay && canContinueFromMap && viewport && viewport.scale > 1
   if (!replay && (floatingResults || endTurnLabel)) {
-    controls = <button type="button" className="primary-button"
-      title="Finish reviewing the results and continue to the next turn"
-      onClick={() => dispatch({ type: 'continueHandoff' })}>{floatingResults ? 'End Turn' : endTurnLabel}</button>
+    controls = <>
+      {isInvestigatorReview(state) && INVESTIGATOR_ORDER.map(color => <button key={color} type="button"
+        className="secondary-button" data-focus-investigator={color} disabled={!state.investigatorPositions[color]}
+        aria-label={`Focus ${color} investigator`} title={`Center the map on the ${color} investigator`}
+        onClick={() => {
+          const piece = panel?.querySelector<SVGCircleElement>(`.investigator-piece.${color} circle:not(.active-investigator-ring)`)
+          if (panel && piece) focusBoardPiece(panel, piece)
+        }}>{color[0]?.toUpperCase()}</button>)}
+      <button type="button" className="primary-button"
+        title="Finish reviewing the results and continue to the next turn"
+        onClick={() => dispatch({ type: 'continueHandoff' })}>{floatingResults ? 'End Turn' : endTurnLabel}</button>
+    </>
   } else if (stage === 'jackDiscoverySetup') {
     controls = <button type="button" className="primary-button" disabled={state.discoveryLocations.length !== 4}
       title={state.discoveryLocations.length === 4 ? 'Confirm the four selected discovery locations'
@@ -109,20 +122,19 @@ export default function FloatingMapControls({ panel, gameId, state, side, dispat
     {controls}
     {rightControls}
   </div>}</>
-  if (!replay && !controls && !rightControls && !viewport.hasActivePiece && !viewport.touchOverview) return prompt
-  // The summary and viewport-floating buttons share this single render branch.
-  // Map-top controls never render a summary of their own.
-  const summary = floatingTurnSummary(state, side)
+  const hasBottomControls = replay || controls || rightControls || viewport.hasActivePiece || viewport.touchOverview
+  if (!pastRoundControl && !hasBottomControls) return prompt
+  const summary = hasBottomControls ? floatingTurnSummary(state, side) : undefined
   return <>{prompt}{createPortal(<>
   <div className="floating-map-topbar"
     style={{ left: viewport.left, top: viewport.top, maxWidth: viewport.width,
       transform: `translateX(-50%) scale(${1 / viewport.scale})` }}>
-    <output className="floating-turn-summary" aria-label="Floating turn summary" title={summary.description}>
+    {summary && <output className="floating-turn-summary" aria-label="Floating turn summary" title={summary.description}>
       {replay && 'Replay '}{summary.text}
       {possibleLocationCount !== undefined && <>{' '}<span className="floating-possible-count" title="Possible Jack locations">{possibleLocationCount}</span></>}
-    </output>
+    </output>}
     {analysisToggles && <div className="floating-analysis-controls" role="group" aria-label="Floating analysis controls">
-      {(['alt', 'next', 'sprint'] as const).map(name => {
+      {ANALYSIS_TOGGLE_NAMES.map(name => {
         const toggle = analysisToggles[name]
         return toggle && <button key={name} type="button" aria-pressed={toggle.checked}
           title={toggle.title} onPointerDown={event => event.preventDefault()}
@@ -131,8 +143,9 @@ export default function FloatingMapControls({ panel, gameId, state, side, dispat
         </button>
       })}
     </div>}
+    {pastRoundControl}
   </div>
-  <div className="floating-map-controls" data-investigator={investigator} role="group" aria-label="Floating map controls"
+  {hasBottomControls && <div className="floating-map-controls" data-investigator={investigator} role="group" aria-label="Floating map controls"
     style={{ left: viewport.left, top: viewport.bottom, width: viewport.width,
       transform: `translate(-50%, -100%) scale(${1 / viewport.scale})` }}>
     {viewport.touchOverview && zoomRegion ? <div className="floating-control-cluster floating-controls-left"><button type="button" className="secondary-button"
@@ -147,7 +160,7 @@ export default function FloatingMapControls({ panel, gameId, state, side, dispat
         const piece = panel?.querySelector<SVGElement>('[data-active-playing-piece] circle')
         if (panel && piece) focusBoardPiece(panel, piece)
       }}>
-      Focus{investigator ? ` ${investigator[0].toUpperCase()}` : ''}
+      Focus {investigator ? investigator[0].toUpperCase() : 'J'}
     </button></div>}
     {controls && <div className="floating-control-cluster floating-controls-center">{controls}</div>}
     {replay && <div className="floating-control-cluster floating-controls-center floating-replay-controls"
@@ -155,5 +168,5 @@ export default function FloatingMapControls({ panel, gameId, state, side, dispat
       <ReplayNavigation {...replay} compact />
     </div>}
     {rightControls && <div className="floating-control-cluster floating-controls-right">{rightControls}</div>}
-  </div></>, document.body)}</>
+  </div>}</>, document.body)}</>
 }

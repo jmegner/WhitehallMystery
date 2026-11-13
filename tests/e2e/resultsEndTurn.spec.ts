@@ -6,6 +6,7 @@ import { reviewScreenshot } from './reviewScreenshot'
 
 const id = 'results-end-turn'
 const endTurn = (page: Page) => page.getByRole('button', { name: 'End Turn', exact: true })
+const investigatorFocus = (page: Page, color: string) => page.getByRole('button', { name: `Focus ${color} investigator`, exact: true })
 async function saved(page: Page): Promise<GameHistory> {
   return page.evaluate(id => JSON.parse(localStorage.getItem(`whitehall-mystery.saved-game.v1.${id}`)!).history, id)
 }
@@ -44,9 +45,9 @@ async function expectFloatingEndTurn(page: Page) {
     const rect = element.getBoundingClientRect()
     const cluster = element.closest('.floating-control-cluster')!.getBoundingClientRect()
     const viewport = window.visualViewport!
-    return Math.abs((rect.left + rect.width / 2 - viewport.offsetLeft - viewport.width / 2) * viewport.scale) < 2 &&
+    return Math.abs((cluster.left + cluster.width / 2 - viewport.offsetLeft - viewport.width / 2) * viewport.scale) < 2 &&
       Math.abs((cluster.bottom - viewport.offsetTop - viewport.height) * viewport.scale + 12) < 2 &&
-      rect.height * viewport.scale >= 43 && rect.left >= viewport.offsetLeft && rect.right <= viewport.offsetLeft + viewport.width
+      rect.height * viewport.scale >= 43 && cluster.left >= viewport.offsetLeft && cluster.right <= viewport.offsetLeft + viewport.width
   })).toBe(true)
 }
 async function tap(page: Page, cdp: CDPSession, target: Locator) {
@@ -123,6 +124,39 @@ test.describe('zoomed results continuation', () => {
       })
     }
   }
+
+  test('Y, B, and R bring their pieces into view without ending the investigator review', async ({ page, context }) => {
+    await page.setViewportSize({ width: 320, height: 600 })
+    await restore(page, 'investigatorTurnResult')
+    const initial = await saved(page)
+    await expect(investigatorFocus(page, 'yellow')).toHaveCount(0)
+    const cdp = await context.newCDPSession(page)
+    await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 3 })
+    await expectFloatingEndTurn(page)
+
+    for (const [color, letter] of [['yellow', 'Y'], ['blue', 'B'], ['red', 'R']]) {
+      const button = investigatorFocus(page, color)
+      await expect(button).toHaveText(letter)
+      await expect(button).toHaveAttribute('title', `Center the map on the ${color} investigator`)
+      await page.locator('.board-legend').evaluate(element => element.scrollIntoView({ block: 'start', behavior: 'instant' }))
+      await expect.poll(async () => (await mapOverlap(page)).height).toBe(0)
+      await expectFloatingEndTurn(page)
+      await tap(page, cdp, button)
+      await expect.poll(() => page.locator(`.investigator-piece.${color}`).evaluate(piece => {
+        const rect = piece.getBoundingClientRect()
+        const viewport = window.visualViewport!
+        const x = rect.left + rect.width / 2 - viewport.offsetLeft
+        const y = rect.top + rect.height / 2 - viewport.offsetTop
+        return viewport.scale === 3 && x > 0 && x < viewport.width && y > 0 && y < viewport.height
+      })).toBe(true)
+      await expectFloatingEndTurn(page)
+      expect(await saved(page)).toEqual(initial)
+    }
+    await tap(page, cdp, endTurn(page))
+    await expect(page.getByRole('dialog', { name: 'Pass the device to Jack', exact: true })).toBeVisible()
+    await expect(investigatorFocus(page, 'red')).toHaveCount(0)
+    await cdp.detach()
+  })
 
   test('End Turn also floats when only a narrow side of the map is visible', async ({ page, context }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
