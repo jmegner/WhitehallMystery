@@ -1,7 +1,8 @@
 import { leaveOnlineGame, OnlineSessionHttpError } from '../online/onlineSession'
-import { savedGameMode, type SavedGame, type SavedGameLibrary } from './savedGames'
+import { savedGameMode, savedGameSummary, type SavedGame, type SavedGameLibrary } from './savedGames'
 
 export function confirmLeaveGame(game: SavedGame, newGame = false): boolean {
+  if (savedGameSummary(game)?.stage === 'gameOver') return true
   const detail = game.mode === 'online' ? 'Your partner will be notified and your credential revoked. A new invitation will be needed to return.' :
     game.mode === 'by-mail' ? 'This browser’s saved progress and draft will be removed. Keep game text if you may want to rejoin.' : 'This browser’s saved progress and undo history will be removed.'
   return window.confirm(`Leave this ${savedGameMode(game)} game${newGame ? ' and choose a new game' : ''}? ${detail}`)

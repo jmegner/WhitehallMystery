@@ -182,6 +182,17 @@ test('Jack can preview investigator reach while choosing discovery locations', a
 
   expect(await page.locator('.investigator-maybe-crossing').count()).toBeGreaterThan(6)
   expect(await page.locator('.investigator-maybe-circle').count()).toBeGreaterThan(0)
+  const futureRadii = await page.locator('.investigator-maybe-circle').evaluateAll(rings => {
+    const choices = new Set([...document.querySelectorAll('.legal-circle')]
+      .map(ring => `${ring.getAttribute('cx')},${ring.getAttribute('cy')}`))
+    return rings.map(ring => ({
+      hasChoice: choices.has(`${ring.getAttribute('cx')},${ring.getAttribute('cy')}`),
+      radius: Number(ring.getAttribute('r')),
+    }))
+  })
+  expect(futureRadii).toContainEqual({ hasChoice: false, radius: 17.5 })
+  expect(futureRadii).toContainEqual({ hasChoice: true, radius: 19.5 })
+  expect(futureRadii.every(({ hasChoice, radius }) => radius === (hasChoice ? 19.5 : 17.5))).toBe(true)
   await expect(page.locator('.investigator-maybe-crossing').first()).toHaveCSS('stroke', 'rgb(255, 122, 0)')
   const possibleStarts = page.locator('.investigator-maybe-crossing.possible-investigator-start')
   await expect(possibleStarts).toHaveCount(6)
@@ -193,12 +204,13 @@ test('Jack can preview investigator reach while choosing discovery locations', a
 
   const hoveredCrossings = page.locator('.hovered-investigator-maybe-crossing.yellow')
   const hoveredCircles = page.locator('.hovered-investigator-maybe-circle.yellow')
+  await expect(hoveredCrossings.first()).toBeVisible()
   expect(await hoveredCrossings.count()).toBeGreaterThan(0)
   expect(await hoveredCrossings.count()).toBeLessThan(allCrossingCount)
   expect(await hoveredCircles.count()).toBeGreaterThan(0)
   await expect(hoveredCrossings.first()).toHaveCSS('stroke', 'rgb(255, 255, 0)')
   await expect(hoveredCrossings.first()).toHaveAttribute('width', '24')
-  await expect(hoveredCircles.first()).toHaveAttribute('r', '26')
+  await expect(hoveredCircles.first()).toHaveAttribute('r', /^(19|21)\.5$/)
 })
 
 test('Jack can preview unrestricted Street distances while choosing discovery and starting locations', async ({ page }) => {
@@ -311,7 +323,7 @@ test('Jack-view future checkbox shows investigator reach and searchable location
   await expect(crossingMaybe).toHaveAttribute('width', '15')
   await expect(crossingMaybe).toHaveAttribute('height', '15')
   await expect(crossingMaybe.evaluate((element) => element.tagName.toLowerCase())).resolves.toBe('rect')
-  await expect(page.locator('.investigator-maybe-circle').first()).toHaveAttribute('r', '21')
+  await expect(page.locator('.investigator-maybe-circle').first()).toHaveAttribute('r', '17.5')
 
   await page.getByText('future', { exact: true }).click()
   await page.mouse.move(0, 0)
@@ -323,7 +335,7 @@ test('Jack-view future checkbox shows investigator reach and searchable location
   const coloredCrossingMaybe = page.locator('.hovered-investigator-maybe-crossing').first()
   const coloredCircleMaybe = page.locator('.hovered-investigator-maybe-circle').first()
   expect(await page.locator('.hovered-investigator-maybe-circle').count()).toBeGreaterThan(0)
-  await expect(coloredCircleMaybe).toHaveAttribute('r', '26')
+  await expect(coloredCircleMaybe).toHaveAttribute('r', '19.5')
   await expect(coloredCrossingMaybe).toHaveAttribute('width', '24')
   await expect(coloredCrossingMaybe).toHaveAttribute('height', '24')
   await expect(coloredCrossingMaybe).toHaveClass(new RegExp(`\\b${investigatorColor}\\b`))
@@ -402,28 +414,26 @@ test('Jack can preview investigator knowledge for the selected movement type', a
     return null
   })
   expect(overlappingIndicatorGap).not.toBeNull()
-  expect(overlappingIndicatorGap as number).toBeGreaterThanOrEqual(1)
+  expect(overlappingIndicatorGap).toBe(0)
   await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath('possibilities-inside-future.png') })
-  const validChoiceGap = await page.locator('.investigator-maybe-circle').evaluateAll((futureMarkers) => {
+  const validChoiceStack = await page.locator('.investigator-maybe-circle').evaluateAll((futureMarkers) => {
     const choiceMarkers = [
       ...document.querySelectorAll<SVGCircleElement>('.legal-circle, .coach-reachable-circle'),
     ]
+    const possibleMarkers = [...document.querySelectorAll<SVGCircleElement>('.possible-marker')]
     for (const future of futureMarkers) {
       if (!(future instanceof SVGCircleElement)) continue
-      const choice = choiceMarkers.find(
-        (candidate) =>
-          candidate.getAttribute('cx') === future.getAttribute('cx') &&
-          candidate.getAttribute('cy') === future.getAttribute('cy'),
-      )
-      if (!choice) continue
-      const futureInnerEdge = Number(future.getAttribute('r')) - Number.parseFloat(getComputedStyle(future).strokeWidth) / 2
-      const choiceOuterEdge = Number(choice.getAttribute('r')) + Number.parseFloat(getComputedStyle(choice).strokeWidth) / 2
-      return futureInnerEdge - choiceOuterEdge
+      const sameLocation = (ring: SVGCircleElement) =>
+        ring.cx.baseVal.value === future.cx.baseVal.value && ring.cy.baseVal.value === future.cy.baseVal.value
+      const choices = choiceMarkers.filter(sameLocation)
+      if (!choices.length) continue
+      return { radius: future.r.baseVal.value, choiceCount: choices.length, hasPossible: possibleMarkers.some(sameLocation) }
     }
     return null
   })
-  expect(validChoiceGap).not.toBeNull()
-  expect(validChoiceGap as number).toBeGreaterThanOrEqual(1)
+  expect(validChoiceStack).not.toBeNull()
+  const { radius, choiceCount, hasPossible } = validChoiceStack!
+  expect(radius).toBe(17.5 + choiceCount * 2 + (hasPossible ? 3 : 0))
 
   await page.reload()
   await expect(page.getByLabel('maybes')).toBeChecked()
@@ -460,7 +470,7 @@ test('keeps unrevealed Discovery outlines outside inv future outlines', async ({
     return null
   })
   expect(privateDiscoveryGap).not.toBeNull()
-  expect(privateDiscoveryGap as number).toBeGreaterThanOrEqual(1)
+  expect(privateDiscoveryGap).toBe(0)
 })
 
 test('Jack can preview all shortest routes to a hovered future location', async ({ page }) => {
@@ -524,7 +534,7 @@ test('Jack can preview all shortest routes to a hovered future location', async 
   const routeLocationRadii = await routeLocationOutlines.evaluateAll((outlines) =>
     outlines.map((outline) => Number(outline.getAttribute('r'))),
   )
-  expect(Math.min(...routeLocationRadii)).toBe(20.25)
+  expect(Math.min(...routeLocationRadii)).toBe(17.5)
   expect(new Set(routeLocationRadii).size).toBeGreaterThan(1)
   await expect(routeLocationOutlines.first()).toHaveCSS('stroke', 'rgb(4, 98, 199)')
   await expect(page.locator('.route-preview-line').first()).toHaveCSS('stroke', 'rgb(4, 98, 199)')
@@ -1021,7 +1031,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
   const firstDestination = Number(await destinations.getByRole('button').first().innerText())
   await destinations.getByRole('button').first().click()
   const selectedOutline = page.locator('.selected-circle')
-  await expect(selectedOutline).toHaveAttribute('r', '18.5')
+  await expect(selectedOutline).toHaveAttribute('r', '17.5')
   await expect(selectedOutline).toHaveCSS('stroke-width', '2px')
   await expect(selectedOutline).toHaveCSS('stroke', 'rgb(255, 3, 167)')
   const plannedSegment = page.locator('.private-route')
@@ -1036,7 +1046,7 @@ test('plays a complete hot-seat turn without exposing Jack during handoffs', asy
       Number(destination.getAttribute('cy')) - Number(line.getAttribute('y2')),
     )
   }, firstDestination)
-  expect(routeEndClearance).toBeGreaterThanOrEqual(18.4)
+  expect(routeEndClearance).toBeCloseTo(17.5)
   await page.getByLabel(`Location ${firstDestination}, selectable`).click({ button: 'middle' })
 
   await expect(page.getByRole('heading', { name: 'Yellow Investigator: Move' })).toBeVisible()
@@ -1443,7 +1453,7 @@ test('draws a clue ring outside a valid-choice ring at the same location', async
 
   const clue = page.locator('.clue-marker.encircling-legal')
   await expect(clue).toHaveCount(1)
-  await expect(clue).toHaveAttribute('r', '23')
+  await expect(clue).toHaveAttribute('r', '20')
   await expect(clue).toHaveCSS('stroke', 'rgb(225, 173, 0)')
 
   const ringGeometry = await clue.evaluate((clueElement) => {
@@ -1459,7 +1469,7 @@ test('draws a clue ring outside a valid-choice ring at the same location', async
       legalStroke: getComputedStyle(legal).stroke,
     }
   })
-  expect(ringGeometry).toEqual({ clueRadius: 23, legalRadius: 18.5, legalStroke: 'rgb(46, 230, 107)' })
+  expect(ringGeometry).toEqual({ clueRadius: 20, legalRadius: 17.5, legalStroke: 'rgb(46, 230, 107)' })
 })
 
 test('previews positive and negative search outcomes for Jack maybes', async ({ page }) => {
@@ -1509,8 +1519,8 @@ test('previews positive and negative search outcomes for Jack maybes', async ({ 
     }
   })
   expect(certaintyPresentation).toEqual({
-    pinkRadius: '20.5',
-    purpleRadius: '20.5',
+    pinkRadius: '17.5',
+    purpleRadius: '17.5',
     purpleStroke: 'rgb(122, 60, 175)',
     purpleDashes: '3px, 3px',
   })
@@ -1542,5 +1552,5 @@ test('previews positive and negative search outcomes for Jack maybes', async ({ 
     noStroke: 'rgb(18, 63, 104)',
     yesStroke: 'rgb(255, 3, 167)',
   })
-  expect(dualOutcomeRings.gap).toBeGreaterThanOrEqual(1)
+  expect(dualOutcomeRings.gap).toBe(0)
 })

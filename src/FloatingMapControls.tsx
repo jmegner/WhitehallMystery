@@ -41,7 +41,7 @@ interface Props {
 
 export default function FloatingMapControls({ panel, gameId, state, side, dispatch, onUndo, canUndo, waiting, endTurnLabel, canContinueFromMap, onTypicalDeployment, possibleLocationCount, analysisToggles, pastRoundControl, replay }: Props) {
   const zoomRegion = boardZoomRegion(state)
-  const viewport = useBoardPanelViewport(panel, !!replay || !!zoomRegion)
+  const viewport = useBoardPanelViewport(panel, !!replay || !!zoomRegion || !!pastRoundControl)
   useSavedBoardViewport(panel, gameId)
   if (waiting) return null
   const stage = replay ? undefined : state.stage
@@ -122,7 +122,8 @@ export default function FloatingMapControls({ panel, gameId, state, side, dispat
     {controls}
     {rightControls}
   </div>}</>
-  const hasBottomControls = replay || controls || rightControls || viewport.hasActivePiece || viewport.touchOverview
+  const touchZoomRegion = viewport.touchOverview ? zoomRegion : null
+  const hasBottomControls = replay || controls || rightControls || viewport.hasActivePiece || touchZoomRegion
   if (!pastRoundControl && !hasBottomControls) return prompt
   const summary = hasBottomControls ? floatingTurnSummary(state, side) : undefined
   return <>{prompt}{createPortal(<>
@@ -148,11 +149,11 @@ export default function FloatingMapControls({ panel, gameId, state, side, dispat
   {hasBottomControls && <div className="floating-map-controls" data-investigator={investigator} role="group" aria-label="Floating map controls"
     style={{ left: viewport.left, top: viewport.bottom, width: viewport.width,
       transform: `translate(-50%, -100%) scale(${1 / viewport.scale})` }}>
-    {viewport.touchOverview && zoomRegion ? <div className="floating-control-cluster floating-controls-left"><button type="button" className="secondary-button"
+    {touchZoomRegion ? <div className="floating-control-cluster floating-controls-left"><button type="button" className="secondary-button"
       title="Zoom to the map area relevant to the current phase"
       onPointerDown={event => event.preventDefault()}
       onClick={() => {
-        if (panel) void zoomToBoardRegion(panel, zoomRegion).then(() => rememberBoardViewport(gameId))
+        if (panel) void zoomToBoardRegion(panel, touchZoomRegion).then(() => rememberBoardViewport(gameId))
       }}>Zoom</button></div>
     : viewport.hasActivePiece && <div className="floating-control-cluster floating-controls-left"><button type="button" className="secondary-button"
       title="Center on the active piece while keeping the floating controls visible"

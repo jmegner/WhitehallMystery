@@ -13,7 +13,7 @@ interface BoardPanelViewport {
 
 // Browser zoom changes the layout viewport; pinch zoom changes the visual
 // viewport. Follow both, including panning, without changing the map's layout.
-export function useBoardPanelViewport(panel: HTMLElement | null, allowTouchZoom = false): BoardPanelViewport | null {
+export function useBoardPanelViewport(panel: HTMLElement | null, allowTouchOverview = false): BoardPanelViewport | null {
   const [position, setPosition] = useState<BoardPanelViewport | null>(null)
   useLayoutEffect(() => {
     if (!panel) return
@@ -36,7 +36,7 @@ export function useBoardPanelViewport(panel: HTMLElement | null, allowTouchZoom 
       const hasActivePiece = !!piece && piece.width > 0 && piece.height > 0
       // Pinch zoom keeps controls reachable even after panning off the map.
       const zoomed = scale > 1
-      const touchOverview = allowTouchZoom && navigator.maxTouchPoints > 0 && !zoomed
+      const touchOverview = allowTouchOverview && navigator.maxTouchPoints > 0 && !zoomed
       // Include the move track, toolbar, map and legend, so controls stay
       // available while the track is visible. Allow subpixel edge rounding.
       const shouldFloat = zoomed || touchOverview || (visibleWidth >= width * MINIMUM_BOARD_VIEWPORT_WIDTH && visibleHeight >= height - 1)
@@ -71,6 +71,6 @@ export function useBoardPanelViewport(panel: HTMLElement | null, allowTouchZoom 
       window.visualViewport?.removeEventListener('scroll', schedule)
       window.visualViewport?.removeEventListener('resize', schedule)
     }
-  }, [panel, allowTouchZoom])
+  }, [panel, allowTouchOverview])
   return position
 }

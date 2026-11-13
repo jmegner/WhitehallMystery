@@ -21,26 +21,28 @@ async function openHunt(page: Page) {
   return state
 }
 
-async function expectSeparateLocationOutlines(page: Page) {
-  const gaps = await page.locator('.game-board').evaluate(board => {
+async function expectTightlyStackedLocationOutlines(page: Page) {
+  const { firstRadii, gaps } = await page.locator('.game-board').evaluate(board => {
     const groups = new Map<string, Array<{ radius: number; width: number; kind: string }>>()
-    // Certainty and Coach gap strokes intentionally form a single multicolor
-    // indicator. Measure each distinct ring once.
+    // Measure each multicolor ring once, using its top stroke.
     for (const ring of board.querySelectorAll<SVGCircleElement>(
-      '.legal-circle, .clue-marker, .discovery-marker, .private-discovery-marker, .possible-marker, .possible-outcome-marker, .investigator-maybe-circle, .hovered-investigator-maybe-circle, .route-preview-location, .investigator-route-preview-location',
+      '.legal-circle, .selected-circle, .coach-reachable-circle, .clue-marker, .discovery-marker, .private-discovery-marker, .possible-marker, .possible-outcome-marker, .investigator-maybe-circle, .hovered-investigator-maybe-circle, .route-preview-location',
     )) {
       const key = `${ring.getAttribute('cx')},${ring.getAttribute('cy')}`
       const group = groups.get(key) ?? []
       group.push({ radius: ring.r.baseVal.value, width: Number.parseFloat(getComputedStyle(ring).strokeWidth), kind: ring.getAttribute('class')! })
       groups.set(key, group)
     }
-    return [...groups.values()].flatMap(group => group.sort((a, b) => a.radius - b.radius).slice(1).map((outer, index) => {
+    const stacks = [...groups.values()].map(group => group.sort((a, b) => a.radius - b.radius))
+    const gaps = stacks.flatMap(group => group.slice(1).map((outer, index) => {
       const inner = group[index]!
       return { inner: inner.kind, outer: outer.kind, gap: outer.radius - outer.width / 2 - inner.radius - inner.width / 2 }
     }))
+    return { firstRadii: [...new Set(stacks.map(group => group[0]!.radius))], gaps }
   })
   expect(gaps.length).toBeGreaterThan(0)
-  expect(gaps.filter(({ gap }) => gap < 1)).toEqual([])
+  expect(firstRadii).toEqual([17.5])
+  expect(gaps.filter(({ gap }) => gap !== 0)).toEqual([])
   return gaps
 }
 
@@ -49,14 +51,14 @@ for (const mode of ['search', 'arrest'] as const) {
     await openHunt(page)
     if (mode === 'arrest') await page.getByRole('button', { name: 'Execute arrest', exact: true }).click()
     await page.mouse.move(0, 0)
-    const gaps = await expectSeparateLocationOutlines(page)
+    const gaps = await expectTightlyStackedLocationOutlines(page)
     expect(gaps.some(({ inner, outer }) => inner === 'legal-circle' && outer === 'possible-marker')).toBe(true)
     await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath(`${mode}-location-outlines.png`) })
     await page.locator('.investigator-piece.yellow').hover()
-    await expectSeparateLocationOutlines(page)
+    await expectTightlyStackedLocationOutlines(page)
     await page.locator('.inference-hover-target').first().hover()
     await expect(page.locator('.possible-marker')).toHaveCount(0)
-    await expectSeparateLocationOutlines(page)
+    await expectTightlyStackedLocationOutlines(page)
   })
 }
 
@@ -74,7 +76,7 @@ test('clue and reached discovery outlines stay clear of valid choices and possib
   }, state)
   await page.goto('/')
   await page.mouse.move(0, 0)
-  const gaps = await expectSeparateLocationOutlines(page)
+  const gaps = await expectTightlyStackedLocationOutlines(page)
   expect(gaps.some(({ inner, outer }) => inner === 'legal-circle' && outer.startsWith('clue-marker'))).toBe(true)
   expect(gaps.some(({ inner, outer }) => inner.startsWith('clue-marker') && outer === 'discovery-marker')).toBe(true)
   await reviewScreenshot(page.locator('.game-board'), { path: test.info().outputPath('clue-discovery-outlines.png') })

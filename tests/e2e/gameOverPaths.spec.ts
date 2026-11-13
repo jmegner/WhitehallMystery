@@ -115,6 +115,48 @@ test('the floating round dropdown mirrors the toolbar while the finished board f
   await expect(toolbarRound).toHaveValue('1')
 })
 
+test.describe('finished game on touch devices', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
+
+  test('floats the round selector in the unzoomed overview', async ({ page, browserName }) => {
+    if (browserName === 'firefox') await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 5 })
+    })
+    await restore(page, finishedHistory())
+    await page.goto('/')
+    const floatingRound = page.locator('.floating-map-topbar').getByRole('combobox', { name: 'round', exact: true })
+    const toolbarRound = page.locator('.board-toolbar').getByRole('combobox', { name: 'round', exact: true })
+    await expect(floatingRound).toBeInViewport()
+    await expect(page.getByRole('group', { name: 'Floating map controls' })).toHaveCount(0)
+    await expect(page.getByRole('status', { name: 'Floating turn summary' })).toHaveCount(0)
+    expect(await page.evaluate(() => window.visualViewport?.scale)).toBe(1)
+    await floatingRound.selectOption('2')
+    await expect(toolbarRound).toHaveValue('2')
+    await page.getByRole('checkbox', { name: 'past', exact: true }).check()
+    await expect(page.locator('.past-path-line')).toHaveCount(2)
+    await expect(page.locator('.past-path-line[data-round="2"]')).toHaveCount(2)
+  })
+})
+
+for (const leaveFrom of ['board', 'saved games'] as const) {
+  test(`leaves a completed game from the ${leaveFrom} without confirmation`, async ({ page }) => {
+    await restore(page, finishedHistory())
+    await page.goto('/')
+    const dialogs: string[] = []
+    page.on('dialog', async dialog => { dialogs.push(dialog.message()); await dialog.dismiss() })
+    if (leaveFrom === 'board') {
+      await page.getByRole('button', { name: 'Leave+New Game', exact: true }).click()
+      await expect(page.getByRole('heading', { name: 'New game', exact: true })).toBeVisible()
+    } else {
+      await page.getByRole('button', { name: 'Resume game', exact: true }).click()
+      await page.getByRole('button', { name: 'Leave', exact: true }).click()
+      await expect(page.getByText('No saved games.', { exact: false })).toBeVisible()
+    }
+    expect(await page.evaluate(key => localStorage.getItem(key), key)).toBeNull()
+    expect(dialogs).toEqual([])
+  })
+}
+
 test('an early finish or older single-snapshot save only offers rounds with recorded paths', async ({ page }) => {
   const state = { ...finishedHistory().entries.at(-1)!.state, round: 1 }
   await restore(page, { entries: [{ state, action: null, counted: false }], cursor: 0, pendingReveal: null })

@@ -120,43 +120,27 @@ const JACK_GUIDE_RADIUS = 12
 const ALT_TITLE = 'place clues to the right and distances above; hold Shift to temporarily invert alt'
 const NEXT_TITLE = 'show possibilities after Jack’s next Street move, including the effects of searches this turn; hold Ctrl to temporarily invert next'
 const SPRINT_TITLE = 'assume Jack reaches locations as early as possible; keep routes with the least total delay that fit public clues, allowing backtracking when required'
-const LOCATION_OUTLINES = {
-  mapLocation: { radius: 18, strokeWidth: 0 },
-  legal: { radius: 18.5, strokeWidth: 2 },
-  clue: { radius: 18, strokeWidth: 3 },
-  clueOutsideLegal: { radius: 23, strokeWidth: 3 },
-  discovery: { radius: 19, strokeWidth: 4 },
-  possible: { radius: 19.5, strokeWidth: 3 },
-  outcomeSingle: { radius: 23, strokeWidth: 3 },
-  outcomeInner: { radius: 20.5, strokeWidth: 3 },
-  outcomeOuter: { radius: 26, strokeWidth: 3 },
-  investigatorMaybe: { radius: 21, strokeWidth: 2 },
-  hoveredInvestigatorMaybe: { radius: 26, strokeWidth: 2 },
-  routePreview: { strokeWidth: 2.5 },
+const FIRST_LOCATION_OUTLINE_RADIUS = 17.5
+const LOCATION_OUTLINE_WIDTHS = {
+  choice: 2,
+  coach: 2,
+  clue: 3,
+  discovery: 4,
+  possible: 3,
+  future: 2,
+  hoveredFuture: 2,
+  outcomeNo: 2.5,
+  outcomeYes: 3,
+  privateDiscovery: 4,
+  routePreview: 2.5,
 } as const
-const LOCATION_OUTLINE_GAP = 1
-const enclosingOutlineRadius = (
-  outlines: Array<{ radius: number; strokeWidth: number }>,
-  enclosingStrokeWidth: number,
-) =>
-  Math.max(...outlines.map(({ radius, strokeWidth }) => radius + strokeWidth / 2)) +
-  LOCATION_OUTLINE_GAP +
-  enclosingStrokeWidth / 2
-const enclosingLocationOutlineRadius = (outlines: Array<{ radius: number; strokeWidth: number }>) =>
-  enclosingOutlineRadius(outlines, LOCATION_OUTLINES.routePreview.strokeWidth)
-const nextLocationOutlineRadius = (
-  outlines: Array<{ radius: number; strokeWidth: number }>,
-  outline: { radius: number; strokeWidth: number },
-) => Math.max(outline.radius, enclosingOutlineRadius(outlines, outline.strokeWidth))
+type LocationOutline = keyof typeof LOCATION_OUTLINE_WIDTHS
 const CROSSING_OUTLINES = {
   mapCrossing: { radius: 12, strokeWidth: 0 },
   legal: { radius: 12.5, strokeWidth: 2 },
   routePreview: { strokeWidth: 2.5 },
 } as const
-const ROUTE_CIRCLE_RADIUS = LOCATION_OUTLINES.legal.radius
-const COACH_REACHABLE_CIRCLE_RADIUS = LOCATION_OUTLINES.legal.radius
-const CLUE_CIRCLE_RADIUS = LOCATION_OUTLINES.clue.radius
-const OVERLAPPING_CLUE_CIRCLE_RADIUS = LOCATION_OUTLINES.clueOutsideLegal.radius
+const ROUTE_CIRCLE_RADIUS = 18.5
 const INVESTIGATOR_MAYBE_CROSSING_SIZE = 15
 
 const HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE = 24
@@ -177,16 +161,16 @@ const investigatorPieceStyle = (color: InvestigatorColor) => {
   } as CSSProperties
 }
 
-const trimmedRouteSegments = (points: { x: number; y: number }[]) =>
+const trimmedRouteSegments = (points: { x: number; y: number }[], radius = ROUTE_CIRCLE_RADIUS) =>
   points.slice(0, -1).flatMap((from, index) => {
     const to = points[index + 1]
     if (!to) return []
     const dx = to.x - from.x
     const dy = to.y - from.y
     const length = Math.hypot(dx, dy)
-    if (length <= ROUTE_CIRCLE_RADIUS * 2) return []
-    const xInset = (dx / length) * ROUTE_CIRCLE_RADIUS
-    const yInset = (dy / length) * ROUTE_CIRCLE_RADIUS
+    if (length <= radius * 2) return []
+    const xInset = (dx / length) * radius
+    const yInset = (dy / length) * radius
     return [{ x1: from.x + xInset, y1: from.y + yInset, x2: to.x - xInset, y2: to.y - yInset }]
   })
 
@@ -401,7 +385,7 @@ function GameBoard({
           .map((id) => circlesById.get(id))
           .filter((circle) => circle !== undefined)
       : []
-  const plannedRouteSegments = trimmedRouteSegments(route)
+  const plannedRouteSegments = trimmedRouteSegments(route, FIRST_LOCATION_OUTLINE_RADIUS)
   const activeInvestigator = !replayTurn && !suppressTurnIndicators && isInspectorInteraction(state.stage)
     ? crossingsById.get(state.investigatorPositions[activeInvestigatorColor(state)] ?? '')
     : undefined
@@ -474,94 +458,37 @@ function GameBoard({
   }
   const legalLocationOutlined = (id: number) =>
     legalCircleIds.has(id) || coachReachableCircleIds.has(id) || selectedJackDestinations.has(id)
-  const clueLocationRadius = (id: number) =>
-    legalLocationOutlined(id) ? OVERLAPPING_CLUE_CIRCLE_RADIUS : CLUE_CIRCLE_RADIUS
-  const publicDiscoveryRadius = (id: number) => {
-    const outlines: Array<{ radius: number; strokeWidth: number }> = []
-    if (legalLocationOutlined(id)) outlines.push(LOCATION_OUTLINES.legal)
-    if (state.clueLocations.includes(id)) outlines.push({ ...LOCATION_OUTLINES.clue, radius: clueLocationRadius(id) })
-    return outlines.length ? nextLocationOutlineRadius(outlines, LOCATION_OUTLINES.discovery) : LOCATION_OUTLINES.discovery.radius
-  }
-  const innerLocationOutlines = (id: number) => {
-    const outlines: Array<{ radius: number; strokeWidth: number }> = [LOCATION_OUTLINES.mapLocation]
-    if (legalLocationOutlined(id)) outlines.push(LOCATION_OUTLINES.legal)
-    if (state.clueLocations.includes(id)) {
-      outlines.push({ ...LOCATION_OUTLINES.clue, radius: clueLocationRadius(id) })
+  const showPossibleMarkers = showPossible && !hoveredOutcome
+  const reachedDiscoveries = new Set(state.reachedDiscoveries)
+  const locationOutlines = new Map<number, Partial<Record<LocationOutline, number>>>()
+  for (const { id } of circles) {
+    const radii: Partial<Record<LocationOutline, number>> = {}
+    let outerEdge: number | undefined
+    const add = (outline: LocationOutline, visible: boolean | undefined) => {
+      if (!visible) return
+      const halfWidth = LOCATION_OUTLINE_WIDTHS[outline] / 2
+      const radius = outerEdge === undefined ? FIRST_LOCATION_OUTLINE_RADIUS : outerEdge + halfWidth
+      radii[outline] = radius
+      outerEdge = radius + halfWidth
     }
-    if (state.reachedDiscoveries.includes(id)) outlines.push({ ...LOCATION_OUTLINES.discovery, radius: publicDiscoveryRadius(id) })
-    return outlines
+    // Each visible ring starts at the previous stroke's outer edge.
+    add('choice', legalCircleIds.has(id) || selectedJackDestinations.has(id))
+    add('coach', coachReachableCircleIds.has(id))
+    add('clue', state.clueLocations.includes(id))
+    add('discovery', reachedDiscoveries.has(id))
+    add('possible', showPossibleMarkers && possibleIds.has(id))
+    add('future', investigatorMaybeCircles.has(id))
+    add('hoveredFuture', hoveredInvestigatorMaybeCircles.has(id))
+    add('outcomeNo', hoveredOutcome?.ifNo.has(id))
+    add('outcomeYes', hoveredOutcome?.ifYes.has(id))
+    add('privateDiscovery', privateSelections.has(id) && !reachedDiscoveries.has(id))
+    add('routePreview', routePreview.turnLabels.has(id))
+    locationOutlines.set(id, radii)
   }
-  // Each ring clears the full stroke of the rings inside it, including when
-  // legal choices, clues, discoveries, and possibility indicators coincide.
-  const possibleLocationRadius = (id: number) =>
-    nextLocationOutlineRadius(innerLocationOutlines(id), LOCATION_OUTLINES.possible)
-  const possibleLocationOutlines = (id: number) =>
-    showPossible && !hoveredOutcome && possibleIds.has(id)
-      ? [{ ...LOCATION_OUTLINES.possible, radius: possibleLocationRadius(id) }] : []
-  const investigatorMaybeRadius = (id: number) =>
-    nextLocationOutlineRadius([...innerLocationOutlines(id), ...possibleLocationOutlines(id)], LOCATION_OUTLINES.investigatorMaybe)
-  const investigatorMaybeLocationOutlines = (id: number) =>
-    investigatorMaybeCircles.has(id)
-      ? [{ ...LOCATION_OUTLINES.investigatorMaybe, radius: investigatorMaybeRadius(id) }]
-      : []
-  const hoveredInvestigatorMaybeRadius = (id: number) =>
-    nextLocationOutlineRadius(
-      [...innerLocationOutlines(id), ...possibleLocationOutlines(id), ...investigatorMaybeLocationOutlines(id)],
-      LOCATION_OUTLINES.hoveredInvestigatorMaybe,
-    )
-  const baseLocationOutlines = (id: number) => {
-    const outlines = [...innerLocationOutlines(id), ...investigatorMaybeLocationOutlines(id)]
-    if (hoveredInvestigatorMaybeCircles.has(id)) {
-      outlines.push({ ...LOCATION_OUTLINES.hoveredInvestigatorMaybe, radius: hoveredInvestigatorMaybeRadius(id) })
-    }
-    return outlines
+  const investigatorRouteCrossingRadius = (id: string) => {
+    const inner = legalCrossingIds.has(id) ? CROSSING_OUTLINES.legal : CROSSING_OUTLINES.mapCrossing
+    return inner.radius + inner.strokeWidth / 2 + 1 + CROSSING_OUTLINES.routePreview.strokeWidth / 2
   }
-  const outcomeMarkerRadii = (id: number, remainsIfNo: boolean, remainsIfYes: boolean) => {
-    const outlines = baseLocationOutlines(id)
-    if (!remainsIfNo || !remainsIfYes) {
-      return { single: nextLocationOutlineRadius(outlines, LOCATION_OUTLINES.outcomeSingle) }
-    }
-    const inner = nextLocationOutlineRadius(outlines, LOCATION_OUTLINES.outcomeInner)
-    const outer = nextLocationOutlineRadius(
-      [...outlines, { ...LOCATION_OUTLINES.outcomeInner, radius: inner }],
-      LOCATION_OUTLINES.outcomeOuter,
-    )
-    return { single: inner, inner, outer }
-  }
-  const possibilityLocationOutlines = (id: number) => {
-    const outlines: Array<{ radius: number; strokeWidth: number }> = possibleLocationOutlines(id)
-    if (showPossible && hoveredOutcome) {
-      const remainsIfNo = hoveredOutcome.ifNo.has(id)
-      const remainsIfYes = hoveredOutcome.ifYes.has(id)
-      if (remainsIfNo || remainsIfYes) {
-        const radii = outcomeMarkerRadii(id, remainsIfNo, remainsIfYes)
-        outlines.push({
-          ...(remainsIfNo && remainsIfYes ? LOCATION_OUTLINES.outcomeOuter : LOCATION_OUTLINES.outcomeSingle),
-          radius: remainsIfNo && remainsIfYes ? radii.outer ?? radii.single : radii.single,
-        })
-      }
-    }
-    return outlines
-  }
-  const privateDiscoveryRadius = (id: number) =>
-    nextLocationOutlineRadius(
-      [...baseLocationOutlines(id), ...possibilityLocationOutlines(id)],
-      LOCATION_OUTLINES.discovery,
-    )
-  const displayedLocationOutlines = (id: number) => {
-    const outlines = [...baseLocationOutlines(id), ...possibilityLocationOutlines(id)]
-    if (privateSelections.has(id) && !state.reachedDiscoveries.includes(id)) {
-      outlines.push({ ...LOCATION_OUTLINES.discovery, radius: privateDiscoveryRadius(id) })
-    }
-    return outlines
-  }
-  const routePreviewLocationRadius = (id: number) =>
-    enclosingLocationOutlineRadius(displayedLocationOutlines(id))
-  const investigatorRouteCrossingRadius = (id: string) =>
-    enclosingOutlineRadius(
-      [CROSSING_OUTLINES.mapCrossing, ...(legalCrossingIds.has(id) ? [CROSSING_OUTLINES.legal] : [])],
-      CROSSING_OUTLINES.routePreview.strokeWidth,
-    )
   const boardImage = `${import.meta.env.BASE_URL}map_pptx_simplified.jpg`
 
   // With future hidden, these markers exist only while hovering a piece.
@@ -575,7 +502,7 @@ function GameBoard({
             className="investigator-maybe-circle"
             cx={circle.x}
             cy={circle.y}
-            r={investigatorMaybeRadius(id)}
+            r={locationOutlines.get(id)?.future}
           />
         ) : null
       })}
@@ -642,11 +569,11 @@ function GameBoard({
 
       {showInvestigatorMaybes && investigatorMaybeMarkers}
 
-      {showPossible && !hoveredOutcome &&
+      {showPossibleMarkers &&
         [...possibleIds].map((id) => {
           const circle = circlesById.get(id)
           const outcome = possibleOutcomes.get(id)
-          const radius = possibleLocationRadius(id)
+          const radius = locationOutlines.get(id)?.possible
           const alleyNeed = alleyNeeds.get(id)
           return circle ? (
             <g key={`possible-${id}`}>
@@ -676,7 +603,7 @@ function GameBoard({
             className={outlined ? 'clue-marker encircling-legal' : 'clue-marker'}
             cx={circle.x}
             cy={circle.y}
-            r={clueLocationRadius(id)}
+            r={locationOutlines.get(id)?.clue}
           />
         ) : null
       })}
@@ -684,12 +611,12 @@ function GameBoard({
       {state.reachedDiscoveries.map((id) => {
         const circle = circlesById.get(id)
         return circle ? (
-          <circle key={`discovery-${id}`} className="discovery-marker" cx={circle.x} cy={circle.y} r={publicDiscoveryRadius(id)} />
+          <circle key={`discovery-${id}`} className="discovery-marker" cx={circle.x} cy={circle.y} r={locationOutlines.get(id)?.discovery} />
         ) : null
       })}
 
       {[...privateSelections]
-        .filter((id) => !state.reachedDiscoveries.includes(id))
+        .filter((id) => !reachedDiscoveries.has(id))
         .map((id) => {
           const circle = circlesById.get(id)
           return circle ? (
@@ -698,7 +625,7 @@ function GameBoard({
               className="private-discovery-marker"
               cx={circle.x}
               cy={circle.y}
-              r={privateDiscoveryRadius(id)}
+              r={locationOutlines.get(id)?.privateDiscovery}
             />
           ) : null
         })}
@@ -717,7 +644,7 @@ function GameBoard({
       {circles.map((circle) => {
         const legal = legalCircleIds.has(circle.id)
         const selectable = legal || (state.stage === 'jackDiscoverySetup' && circle.color === 'white')
-        const coachReachable = coachReachableCircleIds.has(circle.id)
+        const radii = locationOutlines.get(circle.id)
         const inferenceHoverTarget = showPossible && possibleOutcomes.has(circle.id)
         const routePreviewHoverTarget =
           state.stage === 'jackMove' && state.currentJack !== circle.id && !legalCircleIds.has(circle.id)
@@ -726,24 +653,24 @@ function GameBoard({
         const selected = selectedJackDestinations.has(circle.id)
         return (
           <g key={`circle-target-${circle.id}`}>
-            {coachReachable && (
+            {radii?.coach !== undefined && (
               <>
                 <circle
                   className="coach-reachable-circle-gap"
                   cx={circle.x}
                   cy={circle.y}
-                  r={COACH_REACHABLE_CIRCLE_RADIUS}
+                  r={radii.coach}
                 />
                 <circle
                   className="coach-reachable-circle"
                   cx={circle.x}
                   cy={circle.y}
-                  r={COACH_REACHABLE_CIRCLE_RADIUS}
+                  r={radii.coach}
                 />
               </>
             )}
-            {legal && <circle className="legal-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
-            {selected && <circle className="selected-circle" cx={circle.x} cy={circle.y} r={ROUTE_CIRCLE_RADIUS} />}
+            {radii?.choice !== undefined && <circle className={selected ? 'selected-circle' : 'legal-circle'}
+              cx={circle.x} cy={circle.y} r={radii.choice} />}
             <circle
               className={`map-hit-target${selectable ? ' selectable' : ''}${inferenceHoverTarget ? ' inference-hover-target' : ''}${routePreviewHoverTarget ? ' route-preview-hover-target' : ''}${unrestrictedDistanceHoverTarget ? ' unrestricted-distance-hover-target' : ''}`}
               cx={circle.x}
@@ -1051,7 +978,7 @@ function GameBoard({
               className="route-preview-location"
               cx={circle.x}
               cy={circle.y}
-              r={routePreviewLocationRadius(id)}
+              r={locationOutlines.get(id)?.routePreview}
             />
           ) : null
         })}
@@ -1077,7 +1004,7 @@ function GameBoard({
               className={`hovered-investigator-maybe-circle ${hoveredInvestigatorColor ?? ''}`}
               cx={circle.x}
               cy={circle.y}
-              r={hoveredInvestigatorMaybeRadius(id)}
+              r={locationOutlines.get(id)?.hoveredFuture}
             />
           ) : null
         })}
@@ -1096,29 +1023,27 @@ function GameBoard({
           ) : null
         })}
 
-        {showPossible && hoveredOutcome &&
+        {hoveredOutcome &&
           [...new Set([...hoveredOutcome.ifNo, ...hoveredOutcome.ifYes])].map((id) => {
             const circle = circlesById.get(id)
             if (!circle) return null
-            const remainsIfNo = hoveredOutcome.ifNo.has(id)
-            const remainsIfYes = hoveredOutcome.ifYes.has(id)
-            const radii = outcomeMarkerRadii(id, remainsIfNo, remainsIfYes)
+            const radii = locationOutlines.get(id)
             return (
               <g key={`outcome-${id}`}>
-                {remainsIfNo && (
+                {radii?.outcomeNo !== undefined && (
                   <circle
                     className="possible-outcome-marker possible-outcome-no"
                     cx={circle.x}
                     cy={circle.y}
-                    r={remainsIfYes ? radii.inner : radii.single}
+                    r={radii.outcomeNo}
                   />
                 )}
-                {remainsIfYes && (
+                {radii?.outcomeYes !== undefined && (
                   <circle
                     className="possible-outcome-marker possible-outcome-yes"
                     cx={circle.x}
                     cy={circle.y}
-                    r={remainsIfNo ? radii.outer : radii.single}
+                    r={radii.outcomeYes}
                   />
                 )}
               </g>
