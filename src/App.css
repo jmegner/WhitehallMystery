@@ -276,12 +276,6 @@ button:disabled {
   color: white;
 }
 
-.board-toolbar > div {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .board-toolbar button {
   padding: 6px 9px;
   min-width: 34px;
@@ -301,7 +295,7 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 6px !important;
+  gap: 6px 4px;
   flex-wrap: nowrap;
 }
 
@@ -339,18 +333,8 @@ button:disabled {
   padding-inline: 4px;
 }
 
-.possibility-toggle,
-.sprint-toggle,
-.worst-crossings-toggle,
-.next-turn-toggle,
-.coach-preview-toggle,
-.crossing-toggle,
-.alternate-angle-toggle,
-.past-path-toggle,
-.past-round-select,
-.investigator-maybes-toggle,
-.investigator-knowledge-toggle,
-.jack-peek-toggle {
+.board-options > label,
+.past-round-select {
   display: flex;
   gap: 4px;
   align-items: center;
@@ -359,17 +343,14 @@ button:disabled {
   font-weight: 700;
 }
 
-.possibility-toggle input,
-.sprint-toggle input,
-.worst-crossings-toggle input,
-.next-turn-toggle input,
-.coach-preview-toggle input,
-.crossing-toggle input,
-.alternate-angle-toggle input,
-.past-path-toggle input,
-.investigator-maybes-toggle input,
-.investigator-knowledge-toggle input,
-.jack-peek-toggle input {
+.board-options > label:not(.past-round-select) {
+  gap: 1px;
+  font-size: 0.69rem;
+}
+
+.board-options input[type='checkbox'] {
+  width: 11px;
+  height: 11px;
   margin: 0;
 }
 
@@ -788,12 +769,12 @@ button:disabled {
   stroke: #c91423;
   stroke-width: 5;
   stroke-linecap: round;
-  opacity: 0.65;
+  opacity: 0.55;
 }
 
 .discovery-warning.special-needed {
   stroke: #e7b400;
-  opacity: 0.8;
+  opacity: 0.7;
 }
 
 .legend-discovery-warning {
@@ -1663,7 +1644,12 @@ button:disabled {
     /* Reserve the history row and two toggle rows to keep the map steady between sides. */
     min-height: 5rem;
     justify-content: flex-start;
+    column-gap: 2px;
     flex-wrap: wrap;
+  }
+
+  .board-options > .history-controls {
+    flex-basis: 100%;
   }
 
   .control-panel {

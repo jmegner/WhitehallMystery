@@ -832,13 +832,16 @@ test('versus AI floating Undo is available during Yellow’s action until the fi
   await expect(undo).toHaveCount(0)
 })
 
-test('deadline markers cover the board, change with perspective, and allow selecting a warned location near its edge', async ({ page }) => {
+test('doom is on by default and stays off through refresh and a side change', async ({ page }) => {
   const state: GameState = { ...jackState(), round: 3, moveSlot: 11, currentJack: 81,
     reachedDiscoveries: [33, 46, 147], roundTrail: [147, 81],
     publicRound: { start: 147, moves: [], observations: [] } }
   await restore(page, state)
   await page.goto('/')
+  const doom = page.getByRole('checkbox', { name: 'doom', exact: true })
+  const markers = page.locator('.game-board .discovery-warning')
   const warning = (id: number) => page.locator(`.game-board .discovery-warning[data-location-id="${id}"]`)
+  await expect(doom).toBeChecked()
   await expect(warning(68)).toHaveClass(/unreachable/)
   await expect(warning(118)).toHaveClass(/special-needed/)
   await expect(warning(117)).toHaveCount(0)
@@ -846,6 +849,25 @@ test('deadline markers cover the board, change with perspective, and allow selec
   await expect(page.getByLabel('Location 164', { exact: true })).toBeAttached()
   await expect(warning(1)).toHaveClass(/unreachable/)
   await expect(warning(164)).toHaveClass(/special-needed/)
+  await expect(warning(1)).toHaveCSS('opacity', '0.55')
+  await expect(warning(164)).toHaveCSS('opacity', '0.7')
+
+  const viewport = page.viewportSize()!
+  await page.setViewportSize({ width: 414, height: 800 })
+  await page.evaluate(() => document.fonts.ready)
+  const labels = page.locator('.board-options > label')
+  await expect(labels).toHaveCount(9)
+  expect(await labels.evaluateAll(elements => new Set(elements.map(element => element.getBoundingClientRect().top)).size)).toBe(1)
+  await page.setViewportSize(viewport)
+
+  await doom.uncheck()
+  await expect(markers).toHaveCount(0)
+  await expect(page.locator('.legend-discovery-warning')).toHaveCount(0)
+  await page.reload()
+  await expect(doom).not.toBeChecked()
+  await expect(markers).toHaveCount(0)
+  await doom.check()
+  await expect(warning(118)).toHaveClass(/special-needed/)
 
   const location = page.getByLabel('Location 118, selectable', { exact: true })
   await location.scrollIntoViewIfNeeded()
@@ -861,8 +883,12 @@ test('deadline markers cover the board, change with perspective, and allow selec
   expect(edge).not.toBeNull()
   await page.mouse.click(edge!.x, edge!.y)
   expect((await saved(page)).jackMoveSelection.path).toEqual([118])
+  await doom.uncheck()
   await fillViewport(page)
   await floating(page).getByRole('button', { name: 'Submit', exact: true }).click()
+  await expect(doom).not.toBeChecked()
+  await expect(markers).toHaveCount(0)
+  await doom.check()
   await expect(warning(1)).toHaveClass(/unreachable/)
   await expect(warning(68)).toHaveCount(0)
   await expect(warning(109)).toHaveClass(/special-needed/)

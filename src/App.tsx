@@ -82,6 +82,7 @@ import {
   ALT_ANGLE_STORAGE_KEY,
   COACH_PREVIEW_STORAGE_KEY,
   CROSSING_IDS_STORAGE_KEY,
+  DOOM_STORAGE_KEY,
   INVESTIGATOR_KNOW_STORAGE_KEY,
   INVESTIGATOR_MAYBES_STORAGE_KEY,
   JACK_PEEK_STORAGE_KEY,
@@ -1653,6 +1654,10 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, COACH_PREVIEW_STORAGE_KEY, true) : true
   })
+  const [showDoom, setShowDoom] = useState(() => {
+    const storage = browserStorage()
+    return storage ? loadBooleanPreference(storage, DOOM_STORAGE_KEY, true) : true
+  })
   const [alternateIndicatorAngle, setAlternateIndicatorAngle] = useState(() => {
     const storage = browserStorage()
     return storage ? loadBooleanPreference(storage, ALT_ANGLE_STORAGE_KEY) : false
@@ -2040,10 +2045,13 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const clueVisitTurns = showPossibilityMarkers ? possibleClueVisitTurns(boardState.publicRound, sprint, clueForecast) : new Map<number, number[]>()
   if (remote?.waiting && !replayTurn && !showCurrentInvestigatorTargets) { legalCircleIds.clear(); legalCrossingIds.clear(); coachReachableCircleIds.clear() }
   if (replayTurn) { legalCircleIds.clear(); legalCrossingIds.clear() }
-  const discoveryWarnings = !replayTurn && state.stage === 'jackMove' && !remote?.waiting
-    ? jackDiscoveryWarnings(state, coachReachableCircleIds)
-    : !replayTurn && isInspectorInteraction(state.stage) ? investigatorDiscoveryWarnings(state)
-    : new Map<number, DiscoveryWarning>()
+  const investigatorDoomAvailable = isInspectorInteraction(state.stage) && state.publicRound !== null
+  const showDoomOption = !replayTurn && (state.stage === 'jackMove' || investigatorDoomAvailable)
+  let discoveryWarnings: ReadonlyMap<number, DiscoveryWarning> = new Map()
+  if (showDoom && showDoomOption) {
+    if (investigatorDoomAvailable) discoveryWarnings = investigatorDiscoveryWarnings(state)
+    else if (!remote?.waiting) discoveryWarnings = jackDiscoveryWarnings(state, coachReachableCircleIds)
+  }
   const visibleDiscoveryWarnings = new Set(discoveryWarnings.values())
   const handleCircle = (circleId: number) => {
     if (replayTurn || remote?.waiting) return
@@ -2284,6 +2292,17 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                   title={SPRINT_TITLE}>
                   <input type="checkbox" checked={sprint} onChange={event => changeSprint(event.target.checked)} />
                   sprint
+                </label>
+              )}
+              {showDoomOption && (
+                <label title="Show red and yellow Xs for locations that miss the move-15 discovery deadline or require a special move">
+                  <input type="checkbox" checked={showDoom} onChange={event => {
+                    const checked = event.target.checked
+                    setShowDoom(checked)
+                    const storage = browserStorage()
+                    if (storage) saveBooleanPreference(storage, DOOM_STORAGE_KEY, checked)
+                  }} />
+                  doom
                 </label>
               )}
               {!replayTurn && canPeek && isInspectorInteraction(state.stage) && (
