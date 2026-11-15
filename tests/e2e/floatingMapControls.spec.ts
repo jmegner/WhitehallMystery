@@ -832,7 +832,7 @@ test('versus AI floating Undo is available during Yellow’s action until the fi
   await expect(undo).toHaveCount(0)
 })
 
-test('deadline markers change with perspective and allow selecting a warned location near its edge', async ({ page }) => {
+test('deadline markers cover the board, change with perspective, and allow selecting a warned location near its edge', async ({ page }) => {
   const state: GameState = { ...jackState(), round: 3, moveSlot: 11, currentJack: 81,
     reachedDiscoveries: [33, 46, 147], roundTrail: [147, 81],
     publicRound: { start: 147, moves: [], observations: [] } }
@@ -842,6 +842,10 @@ test('deadline markers change with perspective and allow selecting a warned loca
   await expect(warning(68)).toHaveClass(/unreachable/)
   await expect(warning(118)).toHaveClass(/special-needed/)
   await expect(warning(117)).toHaveCount(0)
+  await expect(page.getByLabel('Location 1', { exact: true })).toBeAttached()
+  await expect(page.getByLabel('Location 164', { exact: true })).toBeAttached()
+  await expect(warning(1)).toHaveClass(/unreachable/)
+  await expect(warning(164)).toHaveClass(/special-needed/)
 
   const location = page.getByLabel('Location 118, selectable', { exact: true })
   await location.scrollIntoViewIfNeeded()

@@ -5,8 +5,7 @@ import type { GameState } from './types'
 
 export type DiscoveryWarning = 'unreachable' | 'special-needed'
 
-export function jackDiscoveryWarnings(state: GameState, destinations: ReadonlySet<number>,
-  coachDestinations: ReadonlySet<number>): ReadonlyMap<number, DiscoveryWarning> {
+export function jackDiscoveryWarnings(state: GameState, coachDestinations: ReadonlySet<number>): ReadonlyMap<number, DiscoveryWarning> {
   const targets = new Set(state.discoveryLocations.filter(id => !state.reachedDiscoveries.includes(id)))
   const warnings = new Map<number, DiscoveryWarning>()
   if (!targets.size) return warnings
@@ -15,6 +14,7 @@ export function jackDiscoveryWarnings(state: GameState, destinations: ReadonlySe
   // moves again, so use optimistic distances for the rest of the round.
   const distances = minimumDiscoveryMoves(targets, state.specialRemaining, true)
   const { type, path } = state.jackMoveSelection
+  const firstCoachStops = new Set(type === 'coach' && path.length === 0 ? legalJackDestinations(state) : [])
   const { alley, boat } = state.specialRemaining
   const afterCoach = 15 - state.moveSlot - 2
   const slots = type === 'coach' ? afterCoach : 15 - state.moveSlot - 1
@@ -25,21 +25,20 @@ export function jackDiscoveryWarnings(state: GameState, destinations: ReadonlySe
     return (moves?.get(id) ?? Infinity) <= remaining ? 'special-needed' : 'unreachable'
   }
 
-  for (const id of coachDestinations) {
-    const warning = warningAt(id, afterCoach, distances[alley]![boat]!)
-    if (warning) warnings.set(id, warning)
-  }
-  for (const id of destinations) {
-    warnings.delete(id)
-    if (type === 'normal' && targets.has(id)) continue
-    if (type === 'coach' && path.length === 0) {
+  // Treat each location as a hypothetical landing spot for the selected move.
+  // A selectable first Coach stop still has to complete the two-stop route.
+  for (const { id } of circles) {
+    let warning: DiscoveryWarning | undefined
+    if (firstCoachStops.has(id)) {
       const endings = legalJackDestinations({ ...state, jackMoveSelection: { type, path: [id] } })
       const outcomes = endings.map(end => warningAt(end, slots))
-      if (outcomes.every(Boolean)) warnings.set(id, outcomes.includes('special-needed') ? 'special-needed' : 'unreachable')
-    } else {
-      const warning = warningAt(id, slots)
-      if (warning) warnings.set(id, warning)
+      if (outcomes.every(Boolean)) warning = outcomes.includes('special-needed') ? 'special-needed' : 'unreachable'
+    } else if (coachDestinations.has(id)) {
+      warning = warningAt(id, afterCoach, distances[alley]![boat]!)
+    } else if (type !== 'normal' || !targets.has(id)) {
+      warning = warningAt(id, slots)
     }
+    if (warning) warnings.set(id, warning)
   }
   return warnings
 }

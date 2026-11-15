@@ -1,24 +1,29 @@
 import { expect, test } from 'vitest'
 import { investigatorDiscoveryWarnings, jackDiscoveryWarnings } from './discoveryWarnings'
 import { createInitialGame, legalJackDestinations } from './gameEngine'
+import { circles } from './mapData'
 import type { GameState } from './types'
 
 const positions = { yellow: 'FP', blue: 'HP', red: 'HZ' }
 const state: GameState = { ...createInitialGame(), stage: 'jackMove', round: 3, moveSlot: 11, currentJack: 81,
   discoveryLocations: [33, 46, 147, 159], reachedDiscoveries: [33, 46, 147], investigatorPositions: positions }
-const jackWarnings = (state: GameState) => jackDiscoveryWarnings(state, new Set(legalJackDestinations(state)), new Set())
+const jackWarnings = (state: GameState) => jackDiscoveryWarnings(state, new Set())
 
 test('Jack’s warnings account for remaining slots and the availability of special moves', () => {
   const warnings = jackWarnings(state)
   expect(warnings.get(68)).toBe('unreachable')
   expect(warnings.get(118)).toBe('special-needed')
   expect(warnings.has(117)).toBe(false)
+  expect(legalJackDestinations(state)).not.toContain(1)
+  expect(legalJackDestinations(state)).not.toContain(164)
+  expect(warnings.get(1)).toBe('unreachable')
+  expect(warnings.get(164)).toBe('special-needed')
   expect(jackWarnings({ ...state, specialRemaining: { alley: 0, boat: 0, coach: 2 } }).get(118)).toBe('unreachable')
 
   const finalMove = { ...state, currentJack: 155, moveSlot: 14 }
   expect(legalJackDestinations(finalMove)).toContain(159)
   expect(jackWarnings(finalMove).has(159)).toBe(false)
-  expect(jackWarnings(finalMove).size).toBe(legalJackDestinations(finalMove).length - 1)
+  expect(jackWarnings(finalMove).size).toBe(circles.length - 1)
 })
 
 test('Coach warnings include both slots and allow the best second stop', () => {

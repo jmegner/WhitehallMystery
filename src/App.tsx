@@ -2041,7 +2041,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   if (remote?.waiting && !replayTurn && !showCurrentInvestigatorTargets) { legalCircleIds.clear(); legalCrossingIds.clear(); coachReachableCircleIds.clear() }
   if (replayTurn) { legalCircleIds.clear(); legalCrossingIds.clear() }
   const discoveryWarnings = !replayTurn && state.stage === 'jackMove' && !remote?.waiting
-    ? jackDiscoveryWarnings(state, legalCircleIds, coachReachableCircleIds)
+    ? jackDiscoveryWarnings(state, coachReachableCircleIds)
     : !replayTurn && isInspectorInteraction(state.stage) ? investigatorDiscoveryWarnings(state)
     : new Map<number, DiscoveryWarning>()
   const visibleDiscoveryWarnings = new Set(discoveryWarnings.values())
