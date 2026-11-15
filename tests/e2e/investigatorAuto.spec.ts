@@ -52,7 +52,7 @@ for (const mode of ['same-device', 'versus-ai'] as const) {
     await expect(page.getByLabel('InvAuto', { exact: true })).toHaveValue('off')
     await expect(page.locator('.public-log')).toContainText('blue ended the clue search.')
     await expect(page.locator('.public-log')).not.toContainText('blue searched 36:')
-    await page.getByRole('button', { name: 'Undo', exact: true }).click()
+    await page.getByLabel('Action history controls', { exact: true }).getByRole('button', { name: 'Undo', exact: true }).click()
     await expect(blue).toBeVisible()
     await expect(choices.getByRole('button', { name: '36', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Redo', exact: true }).click()

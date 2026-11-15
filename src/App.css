@@ -434,7 +434,7 @@ button:disabled {
   transform-origin: center bottom;
 }
 
-.floating-map-controls:not(.map-top-controls) {
+.floating-map-controls:not(.map-top-controls, .map-bottom-controls) {
   /* This width already accounts for pinch zoom, unlike viewport units. */
   container-type: inline-size;
 }
@@ -456,6 +456,13 @@ button:disabled {
   flex-wrap: wrap;
   justify-content: center;
   gap: 4px;
+}
+
+.map-future-control {
+  position: absolute;
+  z-index: 30;
+  top: 4px;
+  right: 4px;
 }
 
 .floating-turn-summary,
@@ -607,6 +614,13 @@ button:disabled {
 .map-top-controls button:focus-visible {
   outline-width: 0.1em;
   outline-offset: 0;
+}
+
+.map-bottom-controls {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
 }
 
 .board-frame[class*='active-investigator-'] {
@@ -767,6 +781,24 @@ button:disabled {
 .map-hit-target {
   fill: transparent;
   pointer-events: auto;
+}
+
+.discovery-warning {
+  fill: none;
+  stroke: #c91423;
+  stroke-width: 5;
+  stroke-linecap: round;
+  opacity: 0.65;
+}
+
+.discovery-warning.special-needed {
+  stroke: #e7b400;
+  opacity: 0.8;
+}
+
+.legend-discovery-warning {
+  width: 14px;
+  height: 14px;
 }
 
 .map-hit-target.selectable {

@@ -72,6 +72,9 @@ test.describe('zoomed results continuation', () => {
         const initial = await saved(page)
         await expect(endTurn(page)).toHaveCount(0)
         await expect(page.locator('.map-continue-prompt')).toHaveCount(1)
+        if (stage === 'investigatorTurnResult') {
+          await expect(page.locator('body > .floating-map-controls').getByRole('button', { name: 'Undo', exact: true })).toBeInViewport()
+        }
         const cdp = await context.newCDPSession(page)
         await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: scale })
         await page.evaluate(() => scrollTo(0, 0))

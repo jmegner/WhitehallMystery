@@ -62,6 +62,8 @@ test.describe('floating analysis toggles', () => {
     test(`${side} toggles mirror checkboxes and survive refresh`, async ({ page }) => {
       await restore(page, side)
       const maybes = page.locator(side === 'jack' ? '.investigator-knowledge-toggle input' : '.possibility-toggle input')
+      const future = ['future', '.investigator-maybes-toggle input'] as const
+      const initialCount = side === 'jack' ? 2 : 1
       const floatingMaybes = toggles(page).getByRole('button', { name: 'maybes', exact: true })
       const count = page.locator('.floating-possible-count')
       async function expectCount() {
@@ -71,7 +73,7 @@ test.describe('floating analysis toggles', () => {
         expect(await summary.textContent()).toMatch(new RegExp(` \\b${await count.innerText()}$`))
       }
       await expect(count).toHaveCount(0)
-      await expect(toggles(page).getByRole('button')).toHaveCount(1)
+      await expect(toggles(page).getByRole('button')).toHaveCount(initialCount)
       await expect(floatingMaybes).toHaveAttribute('aria-pressed', 'false')
       await expect(floatingMaybes).toHaveAttribute('title', await maybes.locator('..').getAttribute('title') as string)
       await floatingMaybes.click()
@@ -79,7 +81,7 @@ test.describe('floating analysis toggles', () => {
       await expect(maybes).toBeChecked()
       await expectCount()
       await expectCompactTopbar(page)
-      const available = preferences.filter(([name]) => side === 'investigators' || name !== 'next')
+      const available = side === 'jack' ? [future, ...preferences.filter(([name]) => name !== 'next')] : preferences
       await expect(toggles(page).getByRole('button')).toHaveCount(available.length + 1)
       const before = await page.evaluate(() => localStorage.getItem('whitehall-mystery.saved-game.v1.floating-analysis-controls'))
       for (const [name, selector] of available) {
@@ -112,7 +114,7 @@ test.describe('floating analysis toggles', () => {
       await reviewScreenshot(page, { path: test.info().outputPath(`${side}-floating-analysis.png`) })
       await maybes.uncheck()
       await expect(count).toHaveCount(0)
-      await expect(toggles(page).getByRole('button')).toHaveCount(1)
+      await expect(toggles(page).getByRole('button')).toHaveCount(initialCount)
       await expect(floatingMaybes).toHaveAttribute('aria-pressed', 'false')
       await maybes.check()
       await expect(floatingMaybes).toHaveAttribute('aria-pressed', 'true')

@@ -290,7 +290,7 @@ test('Jack-view future checkbox shows investigator reach and searchable location
   await page.getByRole('button', { name: /reveal my view/i }).click()
 
   await page.getByLabel('Secret Discovery Locations').getByRole('button').first().click()
-  await expect(page.getByText('future', { exact: true })).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'future', exact: true })).toBeVisible()
   await expect(page.locator('.investigator-maybe-crossing')).toHaveCount(0)
 
   const investigatorPieces = page.locator('.investigator-piece')
@@ -325,7 +325,7 @@ test('Jack-view future checkbox shows investigator reach and searchable location
   await expect(crossingMaybe.evaluate((element) => element.tagName.toLowerCase())).resolves.toBe('rect')
   await expect(page.locator('.investigator-maybe-circle').first()).toHaveAttribute('r', '17.5')
 
-  await page.getByText('future', { exact: true }).click()
+  await page.getByRole('checkbox', { name: 'future', exact: true }).check()
   await page.mouse.move(0, 0)
   expect(await page.locator('.investigator-maybe-crossing').count()).toBeGreaterThan(0)
   await expect(page.locator('.hovered-investigator-maybe-crossing')).toHaveCount(0)
@@ -730,7 +730,7 @@ test('logs investigator moves and staying put, including after undo, redo, and r
     await expect(publicLog).toHaveText([...expectedLog].reverse())
   }
 
-  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await page.getByLabel('Action history controls', { exact: true }).getByRole('button', { name: 'Undo', exact: true }).click()
   await expect(publicLog).toHaveText(expectedLog.slice(0, -1).reverse())
   await page.getByRole('button', { name: 'Redo', exact: true }).click()
   await expect(publicLog).toHaveText([...expectedLog].reverse())

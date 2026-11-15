@@ -118,7 +118,7 @@ test('floating controls keep their anchors and investigator colors across mobile
     })
     await floating(page).getByRole('button', { name: 'Pass', exact: true }).click()
   }
-  await expect(floating(page)).toHaveCount(0)
+  await expect(floating(page).getByRole('button', { name: 'Pass', exact: true })).toHaveCount(0)
 })
 
 for (const side of ['Jack', 'Investigators'] as const) {
@@ -405,6 +405,8 @@ for (const action of ['search', 'arrest'] as const) {
     expect((await saved(page)).stage).toBe('investigatorTurnResult')
     await expect(floating(page)).toHaveCount(0)
     await expect(activePiece(page)).toHaveCount(0)
+    await page.getByRole('group', { name: 'Floating undo control' }).getByRole('button', { name: 'Undo', exact: true }).click()
+    expect(await saved(page)).toEqual(state)
   })
 }
 
@@ -474,7 +476,7 @@ test('Jack cycles only legal move types, completes both Coach steps, and submits
   await submit.click()
   expect(await saved(page)).toMatchObject({ stage: 'investigatorMove', currentJack: second,
     moveSlot: 3, specialRemaining: { coach: 1 } })
-  await expect(floating(page).getByRole('button')).toHaveCount(1)
+  await expect(floating(page).getByRole('button', { name: 'Undo!', exact: true })).toBeEnabled()
   await expect(focusButton(page)).toBeVisible()
 })
 
@@ -530,12 +532,12 @@ test('investigators toggle only Search/Arrest and can pass directly from either 
   await page.reload()
   await fillViewport(page)
   await expect(toggle()).toHaveAccessibleName('Toggle search/arrest: Arrest')
-  await expect(floating(page).getByRole('button')).toHaveCount(3)
+  await expect(floating(page).getByRole('button')).toHaveCount(4)
   await reviewScreenshot(page, { path: test.info().outputPath('investigator-floating-controls.png') })
   await pass().click()
   expect((await saved(page)).activeInvestigator).toBe(1)
   await expect(toggle()).toHaveAccessibleName('Toggle search/arrest: Search')
-  await page.getByRole('button', { name: 'Undo', exact: true }).click()
+  await floating(page).getByRole('button', { name: 'Undo', exact: true }).click()
   await fillViewport(page)
   expect((await saved(page)).activeInvestigator).toBe(0)
   await expect(toggle()).toHaveAccessibleName('Toggle search/arrest: Arrest')
@@ -543,7 +545,7 @@ test('investigators toggle only Search/Arrest and can pass directly from either 
   await pass().click()
   expect((await saved(page)).activeInvestigator).toBe(2)
   await pass().click()
-  await expect(floating(page)).toHaveCount(0)
+  await expect(pass()).toHaveCount(0)
 })
 
 test('starting a search hides the toggle while keeping Pass available', async ({ page }) => {
@@ -768,12 +770,12 @@ for (const edge of ['top', 'bottom'] as const) {
   })
 }
 
-test('Blue and Red movement controls undo the previous investigator move and preserve it through refresh', async ({ page }) => {
+test('same-device floating Undo stays available through movement and search, including after a search miss', async ({ page }) => {
   await restore(page, { ...investigatorState(), stage: 'investigatorMove' })
   await page.goto('/')
   await fillViewport(page)
-  const undo = floating(page).getByRole('button', { name: 'Undo', exact: true })
-  await expect(undo).toHaveCount(0)
+  const undo = page.locator('.floating-map-controls').getByRole('button', { name: 'Undo', exact: true })
+  await expect(undo).toBeDisabled()
 
   for (const [color, nextLetter] of [['yellow', 'B'], ['blue', 'R']] as const) {
     const before = await saved(page)
@@ -802,7 +804,66 @@ test('Blue and Red movement controls undo the previous investigator move and pre
   await page.getByLabel('Legal red Investigator destinations', { exact: true })
     .getByRole('button', { name: 'HZ', exact: true }).click()
   await fillViewport(page)
+  await expect(undo).toBeEnabled()
+  const beforeSearch = await saved(page)
+  const target = legalInspectorActionCircles(beforeSearch).find(id => !beforeSearch.roundTrail.includes(id))!
+  await page.getByLabel(`Location ${target}, selectable`, { exact: true }).click()
+  await expect(undo).toBeEnabled()
+  await undo.click()
+  expect(await saved(page)).toEqual(beforeSearch)
+  await undo.click()
+  expect(await saved(page)).toMatchObject({ stage: 'investigatorMove', activeInvestigator: 2 })
+})
+
+test('versus AI floating Undo is available during Yellow’s action until the first search', async ({ page }) => {
+  const state = { ...investigatorState(), stage: 'investigatorMove' as const, activeInvestigator: 2 }
+  await restore(page, state, { mode: 'versus-ai', role: 'investigators' })
+  await page.goto('/')
+  await page.getByLabel('Legal red Investigator destinations', { exact: true }).getByRole('button', { name: 'HZ', exact: true }).click()
+  await fillViewport(page)
+  const undo = floating(page).getByRole('button', { name: 'Undo', exact: true })
+  await expect(undo).toBeEnabled()
+  await undo.click()
+  expect(await saved(page)).toEqual(state)
+  await page.getByLabel('Legal red Investigator destinations', { exact: true }).getByRole('button', { name: 'HZ', exact: true }).click()
+  await fillViewport(page)
+  const miss = legalInspectorActionCircles(await saved(page)).find(id => !state.roundTrail.includes(id))!
+  await page.getByLabel(`Location ${miss}, selectable`, { exact: true }).click()
   await expect(undo).toHaveCount(0)
+})
+
+test('deadline markers change with perspective and allow selecting a warned location near its edge', async ({ page }) => {
+  const state: GameState = { ...jackState(), round: 3, moveSlot: 11, currentJack: 81,
+    reachedDiscoveries: [33, 46, 147], roundTrail: [147, 81],
+    publicRound: { start: 147, moves: [], observations: [] } }
+  await restore(page, state)
+  await page.goto('/')
+  const warning = (id: number) => page.locator(`.game-board .discovery-warning[data-location-id="${id}"]`)
+  await expect(warning(68)).toHaveClass(/unreachable/)
+  await expect(warning(118)).toHaveClass(/special-needed/)
+  await expect(warning(117)).toHaveCount(0)
+
+  const location = page.getByLabel('Location 118, selectable', { exact: true })
+  await location.scrollIntoViewIfNeeded()
+  const edge = await location.evaluate((target: SVGCircleElement) => {
+    const matrix = target.getScreenCTM()!
+    for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 8) {
+      const point = new DOMPoint(target.cx.baseVal.value + Math.cos(angle) * 20,
+        target.cy.baseVal.value + Math.sin(angle) * 20).matrixTransform(matrix)
+      if (document.elementFromPoint(point.x, point.y) === target) return { x: point.x, y: point.y }
+    }
+    return null
+  })
+  expect(edge).not.toBeNull()
+  await page.mouse.click(edge!.x, edge!.y)
+  expect((await saved(page)).jackMoveSelection.path).toEqual([118])
+  await fillViewport(page)
+  await floating(page).getByRole('button', { name: 'Submit', exact: true }).click()
+  await expect(warning(1)).toHaveClass(/unreachable/)
+  await expect(warning(68)).toHaveCount(0)
+  await expect(warning(109)).toHaveClass(/special-needed/)
+  await expect(warning(118)).toHaveCount(0)
+  await expect(page.locator('.private-discovery-marker')).toHaveCount(0)
 })
 
 for (const stage of ['jackMove', 'investigatorMove', 'investigatorAction'] as const) {

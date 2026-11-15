@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { planInvestigatorDeployment } from './game/aiDeployment'
+import { investigatorDiscoveryWarnings, jackDiscoveryWarnings, type DiscoveryWarning } from './game/discoveryWarnings'
 import { availableDiscoveryLevels, chooseDiscoveryCompletion, DISCOVERY_LEVELS, type DiscoveryLevel } from './game/aiDiscoveries'
 import { useBoardHover } from './useBoardHover'
 import { useWorstCrossingEliminations } from './useWorstCrossingEliminations'
@@ -141,6 +142,7 @@ const CROSSING_OUTLINES = {
   routePreview: { strokeWidth: 2.5 },
 } as const
 const ROUTE_CIRCLE_RADIUS = 18.5
+const DISCOVERY_WARNING_X = 'M-11 -11 11 11 M11 -11 -11 11'
 const INVESTIGATOR_MAYBE_CROSSING_SIZE = 15
 
 const HOVERED_INVESTIGATOR_MAYBE_CROSSING_SIZE = 24
@@ -239,6 +241,7 @@ interface BoardProps {
   legalCircleIds: Set<number>
   coachReachableCircleIds: Set<number>
   legalCrossingIds: Set<string>
+  discoveryWarnings: ReadonlyMap<number, DiscoveryWarning>
   possibleIds: Set<number>
   possibleOutcomes: Map<number, SearchOutcome>
   alleyNeeds: ReadonlyMap<number, AlleyNeed>
@@ -299,6 +302,7 @@ function GameBoard({
   legalCircleIds,
   coachReachableCircleIds,
   legalCrossingIds,
+  discoveryWarnings,
   possibleIds,
   possibleOutcomes,
   alleyNeeds,
@@ -641,6 +645,14 @@ function GameBoard({
         />
       ))}
 
+      <g aria-hidden="true" pointerEvents="none">
+        {[...discoveryWarnings].map(([id, warning]) => {
+          const { x, y } = circlesById.get(id)!
+          return <path key={id} data-location-id={id} className={`discovery-warning ${warning}`}
+            transform={`translate(${x} ${y})`} d={DISCOVERY_WARNING_X} />
+        })}
+      </g>
+
       {circles.map((circle) => {
         const legal = legalCircleIds.has(circle.id)
         const selectable = legal || (state.stage === 'jackDiscoverySetup' && circle.color === 'white')
@@ -675,7 +687,7 @@ function GameBoard({
               className={`map-hit-target${selectable ? ' selectable' : ''}${inferenceHoverTarget ? ' inference-hover-target' : ''}${routePreviewHoverTarget ? ' route-preview-hover-target' : ''}${unrestrictedDistanceHoverTarget ? ' unrestricted-distance-hover-target' : ''}`}
               cx={circle.x}
               cy={circle.y}
-              r="18"
+              r={legal && (state.stage === 'jackMove' || state.stage === 'jackChooseStart' || state.stage === 'investigatorAction') ? 22 : 18}
               data-board-hover={`location:${circle.id}`}
               onClick={() => selectable && onCircle(circle.id)}
               onMouseDown={(event) => {
@@ -1720,6 +1732,16 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   // at the current history cursor, including undo/redo through an AI turn.
   const observingInvestigators = !replayTurn && (online?.role ?? ai?.role) === 'jack' &&
     playerViewForState(currentHistoryState(history)) === 'investigators'
+  const future = isPrivateJackView(state.stage) ? {
+    checked: showInvestigatorMaybes,
+    title: observingInvestigators ? 'Show the active investigator’s current legal moves and search/arrest targets'
+      : 'show what crossings are reachable and locations are searchable/arrestable by investigators after they move',
+    onChange: (checked: boolean) => {
+      setShowInvestigatorMaybes(checked)
+      const storage = browserStorage()
+      if (storage) saveBooleanPreference(storage, INVESTIGATOR_MAYBES_STORAGE_KEY, checked)
+    },
+  } : undefined
   const boardState = observingInvestigators ? currentHistoryState(history) : state
   const showCurrentInvestigatorTargets = observingInvestigators && showInvestigatorMaybes
   const { yellow, blue, red } = state.investigatorPositions
@@ -2018,6 +2040,11 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
   const clueVisitTurns = showPossibilityMarkers ? possibleClueVisitTurns(boardState.publicRound, sprint, clueForecast) : new Map<number, number[]>()
   if (remote?.waiting && !replayTurn && !showCurrentInvestigatorTargets) { legalCircleIds.clear(); legalCrossingIds.clear(); coachReachableCircleIds.clear() }
   if (replayTurn) { legalCircleIds.clear(); legalCrossingIds.clear() }
+  const discoveryWarnings = !replayTurn && state.stage === 'jackMove' && !remote?.waiting
+    ? jackDiscoveryWarnings(state, legalCircleIds, coachReachableCircleIds)
+    : !replayTurn && isInspectorInteraction(state.stage) ? investigatorDiscoveryWarnings(state)
+    : new Map<number, DiscoveryWarning>()
+  const visibleDiscoveryWarnings = new Set(discoveryWarnings.values())
   const handleCircle = (circleId: number) => {
     if (replayTurn || remote?.waiting) return
     if (state.stage === 'jackDiscoverySetup') dispatch({ type: 'toggleDiscovery', circleId })
@@ -2187,22 +2214,9 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                   coach
                 </label>
               )}
-              {isPrivateJackView(state.stage) && (
-                <label
-                  className="investigator-maybes-toggle"
-                  title={observingInvestigators ? 'Show the active investigator’s current legal moves and search/arrest targets'
-                    : 'show what crossings are reachable and locations are searchable/arrestable by investigators after they move'}
-                >
-                  <input
-                    type="checkbox"
-                    checked={showInvestigatorMaybes}
-                    onChange={(event) => {
-                      const checked = event.target.checked
-                      setShowInvestigatorMaybes(checked)
-                      const storage = browserStorage()
-                      if (storage) saveBooleanPreference(storage, INVESTIGATOR_MAYBES_STORAGE_KEY, checked)
-                    }}
-                  />
+              {future && (
+                <label className="investigator-maybes-toggle" title={future.title}>
+                  <input type="checkbox" checked={future.checked} onChange={event => future.onChange(event.target.checked)} />
                   future
                 </label>
               )}
@@ -2312,6 +2326,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 legalCircleIds={legalCircleIds}
                 coachReachableCircleIds={coachReachableCircleIds}
                 legalCrossingIds={legalCrossingIds}
+                discoveryWarnings={discoveryWarnings}
                 possibleIds={possibleIds}
                 possibleOutcomes={possibleOutcomes}
                 alleyNeeds={alleyNeeds}
@@ -2340,7 +2355,8 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               pastRoundControl={pastRoundControl}
               replay={replayTurn && replayIndex !== null ? { turns: replayTurns, index: replayIndex, onChange: changeReplay } : undefined}
               possibleLocationCount={showPossibilityMarkers ? possibleIds.size : undefined}
-              analysisToggles={maybes ? {
+              analysisToggles={future || maybes ? {
+                future,
                 maybes,
                 ...(showPossibilityMarkers && state.publicRound && {
                   alt: { checked: alternateIndicatorAngle, title: ALT_TITLE, onChange: changeAlt },
@@ -2351,6 +2367,7 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
               side={replayTurn?.side ?? remote?.role ?? playerViewForState(state) ?? 'investigators'}
               onTypicalDeployment={handleTypicalDeployment}
               canContinueFromMap={canContinueFromMap}
+              sameDevice={!remote} crossViewUndo={!remote && undoMode(history) === 'cross-view'}
               onUndo={handleUndo} canUndo={remote ? online?.requestUndo ? online.requestUndo.canRequest
                 : !online?.waiting && history.cursor > remote.turnStart : undoMode(history) !== 'disabled'}
               endTurnLabel={ai?.awaitingEnd ? 'End turn' : online && isInvestigatorReview(state)
@@ -2394,6 +2411,15 @@ function App({ gameId = 'local', local, mail, online, ai, onNewGame, onResumeGam
                 <i className="legend-dot coach-reachable" /> Reachable via Coach
               </span>
             )}
+            {(['unreachable', 'special-needed'] as const).filter(warning => visibleDiscoveryWarnings.has(warning)).map(warning => (
+              <span key={warning} title={isPrivateJackView(state.stage) ? 'Based on Jack’s unreached discoveries and remaining moves'
+                : 'Based on possible white discovery locations in unreached quadrants and Jack’s remaining moves'}>
+                <svg className="legend-discovery-warning" viewBox="-14 -14 28 28" aria-hidden="true">
+                  <path className={`discovery-warning ${warning}`} d={DISCOVERY_WARNING_X} />
+                </svg>
+                {warning === 'unreachable' ? 'Cannot reach a discovery by move 15' : 'Needs a special move to reach a discovery by move 15'}
+              </span>
+            ))}
             {(isPrivateJackView(state.stage) || (showJackPeek && isInspectorInteraction(state.stage))) &&
               state.discoveryLocations.length > 0 && (
               <span>
